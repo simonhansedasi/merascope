@@ -1,0 +1,482 @@
+/* ── Merascope data layer: synthetic-but-plausible WA suitability model ── */
+(function () {
+  'use strict';
+  var clamp = function (v, a, b) { return Math.max(a, Math.min(b, v)); };
+  var lerp = function (a, b, t) { return a + (b - a) * t; };
+
+  /* ── color ramps ── */
+  var RAMPS = {
+    field: ['#C0392B', '#E67E22', '#F1C40F', '#7DBB6C', '#1F8A4C'],
+    cb: ['#440154', '#414487', '#2A788E', '#7AD151', '#FDE725']
+  };
+  function hex2rgb(h) { h = h.slice(1); return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]; }
+  function rampColor(t, variant) {
+    var stops = RAMPS[variant || 'field'] || RAMPS.field;
+    t = clamp(t, 0, 1);
+    var seg = t * (stops.length - 1), i = Math.min(Math.floor(seg), stops.length - 2), f = seg - i;
+    var a = hex2rgb(stops[i]), b = hex2rgb(stops[i + 1]);
+    return 'rgb(' + Math.round(lerp(a[0], b[0], f)) + ',' + Math.round(lerp(a[1], b[1], f)) + ',' + Math.round(lerp(a[2], b[2], f)) + ')';
+  }
+  function rampText(t, variant) {
+    if ((variant || 'field') === 'cb') return (t > 0.55) ? '#2B2B0A' : '#fff';
+    return (t > 0.32 && t < 0.80) ? '#3A3214' : '#fff';
+  }
+
+  /* ── deterministic value noise ── */
+  function n2(x, y) { var s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return s - Math.floor(s); }
+  function smoothN(x, y) {
+    var xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+    var u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    return lerp(lerp(n2(xi, yi), n2(xi + 1, yi), u), lerp(n2(xi, yi + 1), n2(xi + 1, yi + 1), u), v);
+  }
+  function fbm(x, y) { return 0.62 * smoothN(x, y) + 0.27 * smoothN(x * 2.13 + 7, y * 2.13 + 3) + 0.11 * smoothN(x * 4.31 + 13, y * 4.31 + 5); }
+
+  /* ── WA boundary (simplified) ── */
+  var WA = [
+    [-124.73, 48.39], [-124.55, 47.95], [-124.35, 47.55], [-124.18, 47.15], [-124.10, 46.80],
+    [-124.07, 46.40], [-124.05, 46.25], [-123.70, 46.20], [-123.40, 46.22], [-123.12, 46.15],
+    [-122.90, 46.10], [-122.78, 45.90], [-122.60, 45.62], [-122.33, 45.56], [-121.90, 45.65],
+    [-121.40, 45.69], [-121.08, 45.65], [-120.65, 45.74], [-120.20, 45.76], [-119.85, 45.83],
+    [-119.55, 45.92], [-119.25, 45.93], [-118.98, 46.00], [-116.95, 46.00], [-117.03, 49.00],
+    [-122.76, 49.00], [-122.80, 48.75], [-123.00, 48.70], [-123.15, 48.55], [-123.30, 48.45],
+    [-124.00, 48.35], [-124.73, 48.39]
+  ];
+  function inWA(lon, lat) {
+    var inside = false;
+    for (var i = 0, j = WA.length - 1; i < WA.length; j = i++) {
+      var xi = WA[i][0], yi = WA[i][1], xj = WA[j][0], yj = WA[j][1];
+      if (((yi > lat) !== (yj > lat)) && (lon < (xj - xi) * (lat - yi) / (yj - yi) + xi)) inside = !inside;
+    }
+    return inside;
+  }
+  function dist(lon, lat, LON, LAT) { var dx = (lon - LON) * 0.72, dy = lat - LAT; return Math.sqrt(dx * dx + dy * dy); }
+  function minDistTo(pts, lon, lat) { var m = 99; for (var i = 0; i < pts.length; i++) { var d = dist(lon, lat, pts[i][0], pts[i][1]); if (d < m) m = d; } return m; }
+
+  /* ── geography features ── */
+  var TX = [ /* transmission corridors [lon,lat,strength] */
+    [-118.98, 47.96, 1.0], [-119.85, 47.23, 0.92], [-120.31, 47.42, 0.85], [-119.20, 46.22, 0.9],
+    [-122.30, 47.50, 0.95], [-122.40, 47.25, 0.9], [-122.62, 45.70, 0.95], [-117.40, 47.66, 0.85],
+    [-122.90, 46.72, 0.92], [-120.82, 45.95, 0.8], [-118.34, 46.07, 0.7], [-119.0, 47.0, 0.8]
+  ];
+  var RIVER = [ /* Columbia path */
+    [-119.0, 48.9], [-119.5, 48.4], [-119.9, 48.1], [-119.6, 47.9], [-120.0, 47.6], [-120.3, 47.4],
+    [-120.0, 47.0], [-119.9, 46.7], [-119.3, 46.3], [-118.95, 46.05], [-119.6, 45.93], [-120.5, 45.73],
+    [-121.4, 45.7], [-122.3, 45.57], [-122.78, 45.9], [-123.4, 46.2], [-124.0, 46.25]
+  ];
+  var URB = [
+    [-122.33, 47.61, 0.95], [-122.44, 47.25, 0.6], [-122.66, 45.63, 0.55], [-117.43, 47.66, 0.55],
+    [-122.20, 48.05, 0.5], [-119.28, 46.21, 0.35], [-120.31, 47.42, 0.3], [-122.90, 46.15, 0.25]
+  ];
+  var CONTAM = [[-119.45, 46.55], [-122.43, 47.25], [-122.30, 47.58], [-117.36, 47.70]];
+  var PROT = [
+    { c: [-123.55, 47.85], r: 0.52 }, { c: [-121.75, 46.86], r: 0.27 }, { c: [-121.20, 48.70], r: 0.52 },
+    { c: [-121.10, 48.15], r: 0.30 }, { c: [-121.95, 46.15], r: 0.32 }, { c: [-121.45, 46.20], r: 0.24 }
+  ];
+
+  function indicatorsAt(lon, lat) {
+    var nA = fbm(lon * 2.6, lat * 2.6), nB = fbm(lon * 2.6 + 31, lat * 2.6 + 17), nC = fbm(lon * 4.1 + 53, lat * 4.1 + 7);
+    var riverProx = Math.exp(-minDistTo(RIVER, lon, lat) * 3.2);
+    /* transmission */
+    var tx = 0;
+    for (var i = 0; i < TX.length; i++) { var v = TX[i][2] * Math.exp(-dist(lon, lat, TX[i][0], TX[i][1]) * 1.7); if (v > tx) tx = v; }
+    var transmission = clamp(0.12 + tx * 0.85 + (nA - 0.5) * 0.14, 0.02, 1);
+    /* water */
+    var water;
+    if (lon < -121.8) water = 0.70 + (nB - 0.5) * 0.34;
+    else water = 0.46 - ((lon + 121.8) / 5.0) * 0.52 + riverProx * 0.30 + (nB - 0.5) * 0.22;
+    if (lat < 46.9 && lon > -120.2 && lon < -118.0) water -= 0.22; /* lower-basin dryness */
+    water = clamp(water, 0.0, 1);
+    /* community (1 = low burden) */
+    var burden = 0;
+    for (i = 0; i < URB.length; i++) burden += URB[i][2] * Math.exp(-dist(lon, lat, URB[i][0], URB[i][1]) * 4.5);
+    var community = clamp(0.82 - clamp(burden, 0, 0.8) + (nC - 0.5) * 0.22, 0.05, 1);
+    /* seismic (east safer) */
+    var e = (lon + 124.85) / 8.0;
+    var seismic = clamp(0.16 + e * 0.74 + (nA - 0.5) * 0.12, 0.05, 1);
+    /* flood */
+    var coast = (lat < 48.5) ? Math.exp(-Math.abs(lon + 124.0) * 2.4) : 0;
+    var flood = clamp(0.86 - riverProx * 0.5 - coast * 0.4 + (nB - 0.5) * 0.12, 0.05, 1);
+    /* contamination distance */
+    var cont = 1;
+    for (i = 0; i < CONTAM.length; i++) { var cv = 1 - Math.exp(-dist(lon, lat, CONTAM[i][0], CONTAM[i][1]) * 2.1); if (cv < cont) cont = cv; }
+    var contamination = clamp(cont + (nC - 0.5) * 0.06, 0.0, 1);
+    /* waterway sensitivity */
+    var sound = (lat > 47.0 && lat < 48.6) ? Math.exp(-Math.abs(lon + 122.45) * 3.6) : 0;
+    var waterway = clamp(0.88 - riverProx * 0.72 - sound * 0.5 + (nA - 0.5) * 0.1, 0.0, 1);
+    /* geothermal (Cascade arc) */
+    var arc = Math.exp(-Math.pow((lon + 121.7) / 0.55, 2));
+    var geothermal = clamp(arc * 0.72 + nB * 0.2, 0.02, 1);
+    /* terrain flatness */
+    var f;
+    if (lon > -120.6 && lat < 48.3 && lat > 45.9) f = 0.70 + nA * 0.30;            /* Columbia basin */
+    else if (lon <= -120.6 && lon > -122.1) f = 0.06 + nA * 0.34;                  /* Cascades */
+    else if (lon <= -122.1 && lon > -123.1) f = 0.44 + nA * 0.40;                  /* Puget lowland */
+    else if (lon <= -123.1 && lon > -124.05 && lat > 47.1) f = 0.08 + nA * 0.30;   /* Olympics */
+    else f = 0.34 + nA * 0.36;                                                     /* SW hills / coast */
+    if (lat > 48.3 && lon > -122.2 && lon < -119.8) f = 0.05 + nA * 0.28;          /* North Cascades */
+    if (lat > 47.8 && lon > -119.8 && lon < -117.5) f = 0.28 + nA * 0.36;          /* Okanogan highlands */
+    if (lat < 46.45 && lon > -118.4) f = Math.min(f, 0.26 + nA * 0.3);             /* Blue Mts */
+    var flatness = clamp(f, 0.01, 1);
+    return { transmission: transmission, water: water, community: community, seismic: seismic, flood: flood, contamination: contamination, waterway: waterway, geothermal: geothermal, flatness: flatness };
+  }
+
+  /* ── grid ── */
+  var lonMin = -124.85, latMax = 49.05, D = 0.15;
+  var cols = 53, rows = 24;
+  var cells = [], cellIndex = {};
+  for (var r = 0; r < rows; r++) {
+    for (var c = 0; c < cols; c++) {
+      var lat = latMax - (r + 0.5) * D, lon = lonMin + (c + 0.5) * D;
+      if (!inWA(lon, lat)) continue;
+      var ind = indicatorsAt(lon, lat);
+      var gate = null;
+      if (ind.flatness < 0.16) gate = 'terrain';
+      for (var p = 0; p < PROT.length; p++) if (dist(lon, lat, PROT[p].c[0], PROT[p].c[1]) < PROT[p].r) { gate = 'protected'; break; }
+      var cell = { id: r + '-' + c, r: r, c: c, lat: lat, lon: lon, ind: ind, gate: gate };
+      cells.push(cell); cellIndex[cell.id] = cell;
+    }
+  }
+  function cellAt(lat, lon) {
+    var r2 = Math.floor((latMax - lat) / D), c2 = Math.floor((lon - lonMin) / D);
+    return cellIndex[r2 + '-' + c2] || null;
+  }
+
+  var INDICATORS = [
+    { k: 'transmission', label: 'Transmission proximity', def: 40, icon: 'pylon' },
+    { k: 'water', label: 'Water availability', def: 35, icon: 'droplet' },
+    { k: 'community', label: 'Community burden', def: 25, icon: 'rings' },
+    { k: 'seismic', label: 'Seismic safety', def: 0, icon: 'wave' },
+    { k: 'flood', label: 'Flood safety', def: 0, icon: 'flood' },
+    { k: 'contamination', label: 'Contamination distance', def: 0, icon: 'borehole' },
+    { k: 'waterway', label: 'Waterway sensitivity', def: 0, icon: 'river' },
+    { k: 'geothermal', label: 'Geothermal opportunity', def: 0, icon: 'thermal' },
+    { k: 'flatness', label: 'Terrain flatness', def: 0, icon: 'contour' }
+  ];
+  var DEFAULT_WEIGHTS = {};
+  INDICATORS.forEach(function (m) { DEFAULT_WEIGHTS[m.k] = m.def; });
+  function composite(ind, w) {
+    var s = 0, tot = 0;
+    for (var i = 0; i < INDICATORS.length; i++) {
+      var k = INDICATORS[i].k, wt = w[k] || 0;
+      s += wt * (ind[k] || 0); tot += wt;
+    }
+    return tot > 0 ? s / tot : 0;
+  }
+
+  /* ── clusters (real composites from the published model) ── */
+  var CLUSTERS = [
+    { name: 'Quincy', lat: 47.23, lon: -119.85, status: 'existing', composite: 0.599, ind: { transmission: 0.85, water: 0.35, community: 0.55, seismic: 0.86, flood: 0.78, contamination: 0.74, waterway: 0.62, geothermal: 0.12, flatness: 0.769 } },
+    { name: 'Malaga–East Wenatchee', lat: 47.37, lon: -120.26, status: 'existing', composite: 0.656, ind: { transmission: 0.78, water: 0.60, community: 0.52, seismic: 0.80, flood: 0.66, contamination: 0.82, waterway: 0.40, geothermal: 0.18, flatness: 0.479 } },
+    { name: 'Seattle downtown', lat: 47.60, lon: -122.33, status: 'existing', composite: 0.783, ind: { transmission: 0.95, water: 0.75, community: 0.56, seismic: 0.22, flood: 0.70, contamination: 0.55, waterway: 0.35, geothermal: 0.10, flatness: 0.62 } },
+    { name: 'Tukwila', lat: 47.47, lon: -122.26, status: 'existing', composite: 0.683, ind: { transmission: 0.95, water: 0.80, community: 0.109, seismic: 0.24, flood: 0.55, contamination: 0.50, waterway: 0.38, geothermal: 0.10, flatness: 0.828 } },
+    { name: 'Liberty Lake', lat: 47.65, lon: -117.08, status: 'existing', composite: 0.703, ind: { transmission: 0.80, water: 0.65, community: 0.62, seismic: 0.88, flood: 0.72, contamination: 0.78, waterway: 0.55, geothermal: 0.08, flatness: 0.66 } },
+    { name: 'Digital Realty (proposed)', lat: 47.14, lon: -119.28, status: 'proposed', composite: 0.783, ind: { transmission: 0.90, water: 0.70, community: 0.71, seismic: 0.85, flood: 0.80, contamination: 0.72, waterway: 0.66, geothermal: 0.10, flatness: 0.91 } },
+    { name: 'Wallula Gap–Burbank (proposed)', lat: 46.06, lon: -118.93, status: 'proposed', composite: 0.506, ind: { transmission: 0.90, water: 0.000, community: 0.58, seismic: 0.82, flood: 0.60, contamination: 0.014, waterway: 0.015, geothermal: 0.06, flatness: 1.0 } },
+    { name: 'Richland–Horn Rapids (proposed)', lat: 46.35, lon: -119.32, status: 'proposed', composite: 0.583, ind: { transmission: 0.85, water: 0.35, community: 0.48, seismic: 0.83, flood: 0.65, contamination: 0.20, waterway: 0.30, geothermal: 0.06, flatness: 1.0 } },
+    { name: 'West Richland–Lewis & Clark (proposed)', lat: 46.30, lon: -119.42, status: 'proposed', composite: 0.556, ind: { transmission: 0.84, water: 0.32, community: 0.45, seismic: 0.83, flood: 0.68, contamination: 0.25, waterway: 0.34, geothermal: 0.06, flatness: 1.0 } }
+  ];
+  CLUSTERS.forEach(function (cl) { var cell = cellAt(cl.lat, cl.lon); if (cell) { cell.ind = cl.ind; cell.gate = null; cell.cluster = cl.name; } });
+
+  /* ── top unclaimed cells (pinned: identical indicator vector ⇒ weight-invariant) ── */
+  var RECOMMENDED = [
+    { lat: 46.07, lon: -122.22, score: 0.996, label: 'Cell 46.07N / 122.22W' },
+    { lat: 45.77, lon: -122.67, score: 0.953, label: 'Cell 45.77N / 122.67W' },
+    { lat: 46.52, lon: -124.02, score: 0.952, label: 'Cell 46.52N / 124.02W' }
+  ];
+  RECOMMENDED.forEach(function (rc) {
+    var cell = cellAt(rc.lat, rc.lon);
+    if (cell) { var ind2 = {}; INDICATORS.forEach(function (m) { ind2[m.k] = rc.score; }); cell.ind = ind2; cell.gate = null; cell.pinned = rc.score; }
+  });
+
+  function nearestCluster(lat, lon) {
+    var best = null, bd = 99;
+    CLUSTERS.forEach(function (cl) { var d = dist(lon, lat, cl.lon, cl.lat); if (d < bd) { bd = d; best = cl; } });
+    return bd < 0.5 ? best : null;
+  }
+
+  var GATE_COUNTS = { terrain: 61, protected: 82, total: 124, scored: 974, viable: 850 };
+
+  /* ── builder site listings ── */
+  var SITES = [
+    { id: 'kittitas', title: 'Kittitas Corridor', cell: 'Cell 46.97N / 120.54W', lat: 46.97, lon: -120.54, composite: 0.81, acres: 412, kv: 345, kvDist: 3.1, zcta: '98926', pop: 21400, parcels: 14,
+      bars: { Water: 0.71, Grid: 0.88, Community: 0.74, Hazard: 0.69, 'Heat-reuse': 0.55 },
+      flags: [{ t: 'Insurance: Moderate (wind)', tone: 'med' }, { t: 'Water rights: available', tone: 'lo' }, { t: 'No Superfund within 40 km', tone: 'lo' }],
+      county: 'Kittitas', waterRights: 'Available', blurb: 'Flat shrub-steppe bench east of the Cascade crest. Two existing 345 kV circuits cross the corridor; municipal water district holds unallocated industrial rights.' },
+    { id: 'woodland', title: 'Woodland Foothills', cell: 'Cell 46.07N / 122.22W', lat: 46.07, lon: -122.22, composite: 0.996, acres: 268, kv: 500, kvDist: 2.4, zcta: '98674', pop: 12800, parcels: 9,
+      bars: { Water: 0.95, Grid: 0.97, Community: 0.92, Hazard: 0.81, 'Heat-reuse': 0.66 },
+      flags: [{ t: 'Insurance: Low', tone: 'lo' }, { t: 'Water rights: adjudicated', tone: 'lo' }, { t: 'No Superfund within 40 km', tone: 'lo' }],
+      county: 'Cowlitz', waterRights: 'Adjudicated', blurb: 'The highest-scoring unclaimed cell in the state. Westside water durability with eastside-grade transmission access off the lower Columbia 500 kV path.' },
+    { id: 'vancouver', title: 'Vancouver North — Salmon Creek', cell: 'Cell 45.77N / 122.67W', lat: 45.77, lon: -122.67, composite: 0.953, acres: 188, kv: 500, kvDist: 1.8, zcta: '98685', pop: 34100, parcels: 7,
+      bars: { Water: 0.9, Grid: 0.96, Community: 0.7, Hazard: 0.78, 'Heat-reuse': 0.82 },
+      flags: [{ t: 'Insurance: Low', tone: 'lo' }, { t: 'Water rights: adjudicated', tone: 'lo' }, { t: 'Heat-reuse demand < 5 km', tone: 'lo' }],
+      county: 'Clark', waterRights: 'Adjudicated', blurb: 'Urban-edge cell with district-heat offtake potential and the shortest line distance to 500 kV in the portfolio.' },
+    { id: 'willapa', title: 'Willapa Coast Bench', cell: 'Cell 46.52N / 124.02W', lat: 46.52, lon: -124.02, composite: 0.952, acres: 530, kv: 230, kvDist: 6.7, zcta: '98631', pop: 4900, parcels: 11,
+      bars: { Water: 0.93, Grid: 0.74, Community: 0.9, Hazard: 0.62, 'Heat-reuse': 0.4 },
+      flags: [{ t: 'Insurance: Moderate (wind)', tone: 'med' }, { t: 'Water rights: available', tone: 'lo' }, { t: 'Tsunami zone 4 km west', tone: 'med' }],
+      county: 'Pacific', waterRights: 'Available', blurb: 'Coastal terrace above the inundation line. Exceptional water durability; transmission is the constraint to engineer around.' },
+    { id: 'centralia', title: 'Centralia Transition Site', cell: 'Cell 46.72N / 122.95W', lat: 46.72, lon: -122.95, composite: 0.77, acres: 960, kv: 500, kvDist: 0.9, zcta: '98531', pop: 18200, parcels: 22,
+      bars: { Water: 0.72, Grid: 0.98, Community: 0.68, Hazard: 0.7, 'Heat-reuse': 0.88 },
+      flags: [{ t: 'Interconnection rights: legacy thermal', tone: 'lo' }, { t: 'Water rights: adjudicated', tone: 'lo' }, { t: 'Heat-reuse demand < 5 km', tone: 'lo' }],
+      county: 'Lewis', waterRights: 'Adjudicated', blurb: 'Retiring thermal plant with existing switchyard and water infrastructure. Greenhouse co-op and district-heat studies already on file.' },
+    { id: 'creston', title: 'Creston Ridge', cell: 'Cell 47.76N / 118.52W', lat: 47.76, lon: -118.52, composite: 0.72, acres: 1240, kv: 500, kvDist: 4.2, zcta: '99117', pop: 2300, parcels: 18,
+      bars: { Water: 0.48, Grid: 0.92, Community: 0.88, Hazard: 0.83, 'Heat-reuse': 0.2 },
+      flags: [{ t: 'Insurance: Low', tone: 'lo' }, { t: 'Water rights: constrained', tone: 'med' }, { t: 'No Superfund within 40 km', tone: 'lo' }],
+      county: 'Lincoln', waterRights: 'Constrained', blurb: 'Wheat-country plateau on the Grand Coulee 500 kV path. Grid access is elite; water strategy must be closed-loop from day one.' },
+    { id: 'moses', title: 'Moses Lake North', cell: 'Cell 47.19N / 119.32W', lat: 47.19, lon: -119.32, composite: 0.64, acres: 720, kv: 230, kvDist: 2.2, zcta: '98837', pop: 25900, parcels: 26,
+      bars: { Water: 0.31, Grid: 0.86, Community: 0.61, Hazard: 0.84, 'Heat-reuse': 0.35 },
+      flags: [{ t: 'Water rights: constrained', tone: 'med' }, { t: 'Aquifer decline zone', tone: 'hi' }, { t: 'Insurance: Low', tone: 'lo' }],
+      county: 'Grant', waterRights: 'Constrained', blurb: 'Industrial-zoned and shovel-flat, but it sits over the declining Odessa aquifer. The score says what the brochure won\u2019t.' },
+    { id: 'goldendale', title: 'Goldendale Plateau', cell: 'Cell 45.86N / 120.70W', lat: 45.86, lon: -120.70, composite: 0.69, acres: 840, kv: 500, kvDist: 5.5, zcta: '98620', pop: 3500, parcels: 12,
+      bars: { Water: 0.52, Grid: 0.84, Community: 0.79, Hazard: 0.8, 'Heat-reuse': 0.25 },
+      flags: [{ t: 'Waterway: Columbia 4 km', tone: 'med' }, { t: 'Water rights: available', tone: 'lo' }, { t: 'Insurance: Low', tone: 'lo' }],
+      county: 'Klickitat', waterRights: 'Available', blurb: 'Wind-belt plateau south of the Simcoes. Strong grid posture; cultural-resource survey required before any parcel motion.' }
+  ];
+
+  /* ── watchlist + alerts ── */
+  var ALERTS = [
+    { kind: 'bill', icon: '⚠', title: 'New bill filed: WA HB — data center water reporting', detail: 'Affects 3 watched sites (Kittitas Corridor, Moses Lake North, Creston Ridge). Disclosure of consumptive use above 50k gal/day.', age: '2h ago', tone: 'med' },
+    { kind: 'rate', icon: '▲', title: 'Rate case opened — Grant PUD', detail: 'New large-load tariff class proposed. Filing 26-UE-0388; comment window 30 days.', age: '1d ago', tone: 'med' },
+    { kind: 'moratorium', icon: '●', title: 'Moratorium expired — Frederick Co, MD', detail: 'Out-of-state comparable you follow. County resumed application intake with new substation setback rules.', age: '3d ago', tone: 'lo' },
+    { kind: 'score', icon: '◆', title: 'Score change: Moses Lake North 0.66 → 0.64', detail: 'USGS spring aquifer survey lowered the water indicator from 0.35 to 0.31.', age: '5d ago', tone: 'hi' }
+  ];
+  var WATCHED = ['kittitas', 'moses', 'creston', 'centralia'];
+
+  /* ── portfolio screening ── */
+  var PORTFOLIO = [
+    { name: 'Candidate A — Wallula bench', cell: '46.06N / 118.93W', composite: 0.506, fail: true, why: 'Water 0.000 — would have flagged like all 2025 WA cancellations.' },
+    { name: 'Candidate B — Kittitas Corridor', cell: '46.97N / 120.54W', composite: 0.81, fail: false, why: '' },
+    { name: 'Candidate C — Horn Rapids annex', cell: '46.35N / 119.32W', composite: 0.583, fail: true, why: 'Contamination distance 0.20 (Hanford-adjacent); insurer pre-screen declined.' },
+    { name: 'Candidate D — Centralia Transition', cell: '46.72N / 122.95W', composite: 0.77, fail: false, why: '' },
+    { name: 'Candidate E — Odessa flats', cell: '47.33N / 118.69W', composite: 0.61, fail: true, why: 'Water 0.04 over declining aquifer; rights queue closed since 2023.' },
+    { name: 'Candidate F — Woodland Foothills', cell: '46.07N / 122.22W', composite: 0.996, fail: false, why: '' },
+    { name: 'Candidate G — North Cascades shelf', cell: '48.42N / 121.34W', composite: 0, fail: true, why: 'Hard gate: protected land. Gates apply regardless of weights.' }
+  ];
+
+  /* ── steward docket ── */
+  var STAGES = ['Intake', 'Analysis', 'Findings Exchange', 'Negotiation', 'Rebuttal Cycle', 'Resolution'];
+  var CASES = [
+    { id: '26-0187', site: 'Goldendale Plateau', applicant: 'Klickitat Energy Partners', score: 0.69, stage: 'Intake', days: 4, parties: ['KC', 'YN', 'PUD'], dot: '#7DBB6C' },
+    { id: '26-0171', site: 'Moses Lake North', applicant: 'Columbia Compute Co.', score: 0.64, stage: 'Analysis', days: 11, parties: ['GC', 'PUD'], dot: '#F1C40F' },
+    { id: '26-0168', site: 'Richland–Horn Rapids', applicant: 'Atlas Data Infrastructure', score: 0.583, stage: 'Analysis', days: 19, parties: ['BC', 'AG', 'PUD'], dot: '#F1C40F' },
+    { id: '26-0154', site: 'West Richland–Lewis & Clark', applicant: 'Cascade Hyperscale LLC', score: 0.556, stage: 'Findings Exchange', days: 8, parties: ['BC', 'CT', 'PUD', 'AG'], dot: '#E67E22' },
+    { id: '26-0142', site: 'Wallula Gap Campus — Burbank, WA', applicant: 'Skyline Infrastructure Partners', score: 0.506, stage: 'Negotiation', days: 23, parties: ['WW', 'CT', 'PUD', 'UT', 'AG'], dot: '#C0392B' },
+    { id: '26-0139', site: 'Quincy Expansion — Bay 4', applicant: 'NorthPeak Cloud', score: 0.599, stage: 'Rebuttal Cycle', days: 6, parties: ['GC', 'PUD'], dot: '#E67E22' },
+    { id: '26-0103', site: 'Liberty Lake East', applicant: 'Inland Compute Partners', score: 0.703, stage: 'Resolution', days: 2, parties: ['SC', 'PUD', 'UT'], dot: '#1F8A4C', resolution: 'Approved with conditions' }
+  ];
+  var PARTY_NAMES = { KC: 'Klickitat County', YN: 'Yakama Nation', PUD: 'Public Utility District', GC: 'Grant County', BC: 'Benton County', AG: 'Attorney General', CT: 'CTUIR', WW: 'Walla Walla County', UT: 'Serving utility', SC: 'Spokane County' };
+
+  var CASE_DETAIL = {
+    id: '26-0142', title: 'Wallula Gap Campus — Burbank, WA', applicant: 'Skyline Infrastructure Partners',
+    score: 0.506, stage: 'Negotiation', daysToRebuttal: 9,
+    findings: [
+      { k: 'Water availability', v: '0.000', ver: 'v2', contested: true, evidence: 'Ecology well-log series WW-114; Open-Meteo ERA5 1991–2025' },
+      { k: 'Contamination distance', v: '0.014', ver: 'v1', contested: false, evidence: 'EPA NPL — Hanford 200 Area, 38.2 km' },
+      { k: 'Waterway sensitivity', v: '0.015', ver: 'v1', contested: true, evidence: 'Columbia mainstem reach WB-26; salmonid critical habitat' },
+      { k: 'Terrain flatness', v: '1.000', ver: 'v1', contested: false, evidence: 'USGS 3DEP 10 m DEM' },
+      { k: 'Transmission proximity', v: '0.910', ver: 'v2', contested: false, evidence: 'OSM power=line ≥230 kV; 2.8 km to McNary–Franklin' },
+      { k: 'Community burden', v: '0.580', ver: 'v1', contested: false, evidence: 'Census ACS 2024 5-yr, ZCTA 99323' }
+    ],
+    conditions: [
+      { text: 'Water replenishment at 3:4 ratio, metered at wellhead', by: 'Applicant', type: 'Water', status: 'Under review' },
+      { text: 'Closed-loop cooling required above 85°F ambient', by: 'Ecology', type: 'Water', status: 'Accepted' },
+      { text: 'Heat supply to greenhouse co-op (12 MW thermal, 20-yr term)', by: 'Community benefit', type: 'Heat reuse', status: 'Countered' },
+      { text: 'Curtailment compact: 72-hr load shed at PUD request', by: 'PUD', type: 'Grid', status: 'Accepted' },
+      { text: 'Aquifer monitoring wells ×6, public telemetry', by: 'Ecology', type: 'Water', status: 'Under review' },
+      { text: 'Construction water trucked — zero local draw before COD', by: 'CTUIR', type: 'Water', status: 'Impasse' }
+    ],
+    consultation: { party: 'CTUIR', status: 'Consultation: meeting held 5/22 — written response pending' },
+    docs: [
+      { name: 'Application v3 + site control affidavits', date: 'Apr 14' },
+      { name: 'Ecology findings memo v2 (water)', date: 'May 9' },
+      { name: 'Applicant rebuttal — water model', date: 'May 27' },
+      { name: 'CTUIR consultation record 5/22', date: 'May 29' }
+    ]
+  };
+
+  var IMPASSES = [
+    { caseId: '26-0142', site: 'Wallula Gap Campus', cat: 'Water rights', item: 'Construction-phase water sourcing', days: 12, parties: 'Applicant / CTUIR / Ecology' },
+    { caseId: '26-0154', site: 'West Richland', cat: 'EJ burden', item: 'Diesel genset siting vs. school buffer', days: 7, parties: 'Applicant / Benton Co.' },
+    { caseId: '26-0139', site: 'Quincy Expansion', cat: 'Rate allocation', item: 'Transmission upgrade cost share', days: 19, parties: 'Applicant / Grant PUD' },
+    { caseId: '26-0168', site: 'Horn Rapids', cat: 'Discharge', item: 'Blowdown TDS limit — winter window', days: 4, parties: 'Applicant / Ecology' }
+  ];
+  var IMPASSE_UNLOCKS = {
+    'Water rights': [{ c: 'Trucked construction water + 3:4 replenishment', p: 71 }, { c: 'Seasonal draw cap with public telemetry', p: 58 }, { c: 'Purchase + retirement of senior right', p: 44 }],
+    'EJ burden': [{ c: 'Genset relocation + Tier-4 retrofit', p: 66 }, { c: 'Community benefit agreement w/ air monitoring', p: 52 }],
+    'Rate allocation': [{ c: 'Contribution-in-aid w/ refund mechanism', p: 74 }, { c: 'Take-or-pay minimum demand charge', p: 61 }],
+    'Discharge': [{ c: 'Closed-loop conversion', p: 80 }, { c: 'Winter holding + summer discharge window', p: 49 }]
+  };
+
+  var LITIGATION = [
+    { name: 'Friends of the Lower Snake v. Dept. of Ecology', court: 'Franklin Co. Superior Court', no: '26-2-00891-11', status: 'Stayed pending mediation', filed: 'Mar 2026' },
+    { name: 'Skyline Infrastructure Partners — permit appeal', court: 'Pollution Control Hearings Board', no: 'PCHB 26-041', status: 'Briefing', filed: 'May 2026' }
+  ];
+
+  var STUDIES = [
+    { name: 'Moratorium impact study — NY-style', body: 'Office of the Governor', progress: 62, due: '2026-09-01', sections: '14 of 22 sections drafted' },
+    { name: 'Application review scorecard', body: 'Klickitat County', progress: 30, due: '2026-07-15', sections: '4 of 12 sections drafted' }
+  ];
+
+  /* ── shared context ── */
+  var STATS = [
+    { n: '300+', t: 'state data-center bills filed in the first six weeks of 2026' },
+    { n: '7+ yrs', t: 'average wait from interconnection queue to power' },
+    { n: '$11.3M', t: 'construction cost per megawatt, and rising' },
+    { n: '2 of 3', t: 'recent U.S. data centers sit in water-stressed areas' },
+    { n: '>40%', t: 'of 2025\u2019s canceled projects cited water' }
+  ];
+  var GRADES = [
+    { k: 'Water Durability', g: 'D', why: 'Two-thirds of the state\u2019s proposed capacity sits in cells scoring under 0.35 for water. The Columbia Basin\u2019s paper rights exceed wet-year supply, and the Odessa aquifer is in documented decline. New campuses east of the Cascades start from a structural deficit.' },
+    { k: 'Grid Access', g: 'A−', why: 'Federal hydro spine plus an unusually dense ≥230 kV network keep median line-distance to transmission under 7 km across viable cells. Queue time, not wire distance, is the binding constraint.' },
+    { k: 'Hazard Exposure', g: 'B', why: 'Eastern cells carry low seismic and flood exposure. The west side trades Cascadia subduction risk for water durability. No viable cell sits in a tornado belt; wildfire interface affects 9% of viable cells.' },
+    { k: 'Community Burden', g: 'C', why: 'Existing clusters concentrate near lower-income ZCTAs (Tukwila EJ score 0.109). Rural basin siting reduces direct burden but shifts rate and water externalities onto small PUD customer bases.' },
+    { k: 'Contamination Distance', g: 'C−', why: 'Hanford dominates the southeast quadrant: three of four proposed Tri-Cities-area campuses score under 0.25 on contamination distance. Statewide median is healthy; the growth corridor is not.' }
+  ];
+  var STATE_GRADE = 'C+';
+  var DATA_SOURCES = 'OSM (ODbL) · US Census · Open-Meteo ERA5 · USGS · FEMA · EPA · IHFC 2024';
+  var PROMISE = {
+    short: 'Same Score Promise',
+    long: 'Our methodology, weights, and sources are public and identical for every user. Subscriptions buy resolution and workflow. They have never bought a friendlier number, and they never will — because a flattering score on a failing site bankrupts everyone who trusted it. The aquifer doesn\u2019t read press releases.'
+  };
+  var VERSION = 'v2026.06.11';
+
+  /* ── additional states: synthetic aggregate models (public high-level layer) ── */
+  function pip(poly, lon, lat) {
+    var inside = false;
+    for (var i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      var xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+      if (((yi > lat) !== (yj > lat)) && (lon < (xj - xi) * (lat - yi) / (yj - yi) + xi)) inside = !inside;
+    }
+    return inside;
+  }
+  function genCells(cfg) {
+    var lo = 999, hi = -999, la = 999, ha = -999;
+    cfg.poly.forEach(function (p) { if (p[0] < lo) lo = p[0]; if (p[0] > hi) hi = p[0]; if (p[1] < la) la = p[1]; if (p[1] > ha) ha = p[1]; });
+    var sLonMin = lo - 0.04, sLatMax = ha + 0.04;
+    var sCols = Math.ceil((hi - lo + 0.08) / D), sRows = Math.ceil((ha - la + 0.08) / D);
+    var out = [];
+    for (var r = 0; r < sRows; r++) {
+      for (var c = 0; c < sCols; c++) {
+        var lat = sLatMax - (r + 0.5) * D, lon = sLonMin + (c + 0.5) * D;
+        if (!pip(cfg.poly, lon, lat)) continue;
+        var nA = fbm(lon * 2.6, lat * 2.6), nB = fbm(lon * 2.6 + 31, lat * 2.6 + 17), nC = fbm(lon * 4.1 + 53, lat * 4.1 + 7);
+        var riverProx = cfg.river.length ? Math.exp(-minDistTo(cfg.river, lon, lat) * 3.2) : 0;
+        var tx = 0;
+        for (var i = 0; i < cfg.tx.length; i++) { var v = cfg.tx[i][2] * Math.exp(-dist(lon, lat, cfg.tx[i][0], cfg.tx[i][1]) * 1.7); if (v > tx) tx = v; }
+        var burden = 0;
+        for (i = 0; i < cfg.urban.length; i++) burden += cfg.urban[i][2] * Math.exp(-dist(lon, lat, cfg.urban[i][0], cfg.urban[i][1]) * 4.5);
+        var cont = 1;
+        for (i = 0; i < cfg.contam.length; i++) { var cv = 1 - Math.exp(-dist(lon, lat, cfg.contam[i][0], cfg.contam[i][1]) * 2.1); if (cv < cont) cont = cv; }
+        var ind = {
+          transmission: clamp(0.12 + tx * 0.85 + (nA - 0.5) * 0.14, 0.02, 1),
+          water: clamp(cfg.water(lon, lat) + riverProx * 0.28 + (nB - 0.5) * 0.2, 0, 1),
+          community: clamp(0.82 - clamp(burden, 0, 0.8) + (nC - 0.5) * 0.22, 0.05, 1),
+          seismic: clamp(cfg.seismic(lon, lat) + (nA - 0.5) * 0.12, 0.05, 1),
+          flood: clamp(0.86 - riverProx * 0.5 + (nB - 0.5) * 0.12, 0.05, 1),
+          contamination: clamp(cont + (nC - 0.5) * 0.06, 0, 1),
+          waterway: clamp(0.88 - riverProx * 0.72 + (nA - 0.5) * 0.1, 0, 1),
+          geothermal: clamp(cfg.geo(lon, lat) + nB * 0.2, 0.02, 1),
+          flatness: clamp(cfg.flat(lon, lat, nA), 0.01, 1)
+        };
+        var gate = null;
+        if (ind.flatness < 0.16) gate = 'terrain';
+        for (i = 0; i < cfg.prot.length; i++) if (dist(lon, lat, cfg.prot[i].c[0], cfg.prot[i].c[1]) < cfg.prot[i].r) { gate = 'protected'; break; }
+        out.push({ id: r + '-' + c, r: r, c: c, lat: lat, lon: lon, ind: ind, gate: gate });
+      }
+    }
+    return { cells: out, cols: sCols, rows: sRows, lonMin: sLonMin, latMax: sLatMax, D: D };
+  }
+  function mkState(key, name, cfg, grade, grades) {
+    var G = genCells(cfg);
+    var viable = 0; G.cells.forEach(function (x) { if (!x.gate) viable++; });
+    return { key: key, name: name, GRID: G, CLUSTERS: [], RECOMMENDED: [], isWA: false, grade: grade, grades: grades, scored: G.cells.length, viable: viable };
+  }
+
+  var STATES = {
+    WA: { key: 'WA', name: 'Washington', GRID: { cells: cells, cols: cols, rows: rows, lonMin: lonMin, latMax: latMax, D: D }, CLUSTERS: CLUSTERS, RECOMMENDED: RECOMMENDED, isWA: true, grade: STATE_GRADE, grades: GRADES, scored: 974, viable: 850 },
+    ID: mkState('ID', 'Idaho', {
+      poly: [[-117.04, 49], [-116.05, 49], [-116.05, 46.7], [-115.0, 45.7], [-113.45, 44.9], [-111.05, 44.55], [-111.05, 42.0], [-117.03, 42.0], [-117.03, 44.3], [-116.45, 45.5], [-117.04, 46.0]],
+      tx: [[-116.2, 43.6, 1.0], [-112.04, 43.5, 0.85], [-114.46, 42.56, 0.8], [-116.78, 47.7, 0.85], [-112.45, 42.87, 0.7], [-116.7, 45.0, 0.75]],
+      urban: [[-116.2, 43.61, 0.7], [-116.78, 47.7, 0.35], [-112.03, 43.49, 0.3], [-112.45, 42.87, 0.25]],
+      river: [[-117.0, 43.9], [-116.4, 43.55], [-115.4, 43.3], [-114.4, 42.6], [-113.2, 42.7], [-112.2, 43.2], [-111.5, 43.7]],
+      contam: [[-112.85, 43.6]],
+      prot: [{ c: [-115.2, 45.2], r: 0.6 }, { c: [-114.3, 44.2], r: 0.45 }, { c: [-116.6, 45.4], r: 0.3 }],
+      water: function (lon, lat) { return lat > 46 ? 0.6 : (lat > 44.2 ? 0.35 : 0.24); },
+      seismic: function (lon, lat) { return 0.72 - Math.exp(-dist(lon, lat, -111.3, 44.3) * 1.2) * 0.45; },
+      geo: function (lon, lat) { return 0.3 + Math.exp(-dist(lon, lat, -111.6, 44.0) * 1.0) * 0.45; },
+      flat: function (lon, lat, n) { return (lat < 44.0 && lat > 42.2) ? 0.68 + n * 0.3 : (lat < 46.3 && lat >= 44.0) ? 0.07 + n * 0.3 : 0.28 + n * 0.32; }
+    }, 'B−', [
+      { k: 'Water Durability', g: 'C+', why: 'The Snake River Plain aquifer is fully appropriated; the panhandle is wet but far from load. New consumptive rights effectively require retiring old ones.' },
+      { k: 'Grid Access', g: 'B−', why: 'Boise and the I-84 corridor are well served; central Idaho is effectively off-grid for heavy load.' },
+      { k: 'Hazard Exposure', g: 'B', why: 'Low statewide except the Yellowstone-adjacent east, which carries elevated seismic exposure.' },
+      { k: 'Community Burden', g: 'B+', why: 'Sparse siting pressure to date; the Kuna and Eagle hearings ran clean and fast.' },
+      { k: 'Contamination Distance', g: 'B+', why: 'INL is the single material exclusion zone, and it is well-mapped.' }
+    ]),
+    OR: mkState('OR', 'Oregon', {
+      poly: [[-124.55, 42.0], [-124.1, 43.4], [-123.9, 45.5], [-123.95, 46.2], [-123.4, 46.2], [-122.78, 45.9], [-122.6, 45.62], [-122.33, 45.56], [-121.9, 45.65], [-121.08, 45.65], [-120.65, 45.74], [-119.85, 45.83], [-119.25, 45.93], [-118.98, 46.0], [-116.92, 46.0], [-117.03, 44.25], [-117.03, 42.0]],
+      tx: [[-122.62, 45.55, 0.95], [-119.6, 45.85, 0.95], [-121.3, 44.05, 0.8], [-123.1, 44.05, 0.8], [-122.9, 42.35, 0.7], [-121.78, 42.2, 0.7], [-117.85, 44.8, 0.6]],
+      urban: [[-122.65, 45.5, 0.85], [-123.03, 44.94, 0.4], [-123.1, 44.05, 0.45], [-121.3, 44.06, 0.3], [-122.87, 42.33, 0.3]],
+      river: [[-123.9, 46.2], [-123.0, 46.15], [-122.4, 45.6], [-121.2, 45.65], [-120.0, 45.75], [-119.0, 45.95], [-122.7, 45.4], [-123.0, 44.8], [-123.1, 44.0]],
+      contam: [[-122.7, 45.6]],
+      prot: [{ c: [-122.12, 42.93], r: 0.2 }, { c: [-121.8, 44.15], r: 0.3 }, { c: [-117.3, 45.25], r: 0.35 }, { c: [-122.15, 45.35], r: 0.2 }],
+      water: function (lon) { return lon < -122.2 ? 0.68 : 0.3; },
+      seismic: function (lon) { return 0.18 + Math.min(1, (lon + 124.6) / 4) * 0.62; },
+      geo: function (lon) { return Math.exp(-Math.pow((lon + 121.9) / 0.55, 2)) * 0.7 + 0.12; },
+      flat: function (lon, lat, n) { return (lon > -123.35 && lon < -122.45 && lat < 45.4) ? 0.5 + n * 0.35 : (lon >= -122.45 && lon < -121.2) ? 0.08 + n * 0.3 : (lon >= -121.2) ? 0.6 + n * 0.32 : 0.15 + n * 0.3; }
+    }, 'B', [
+      { k: 'Water Durability', g: 'B', why: 'The Willamette and the coast are durable; the eastern plateau is not — and the eastern plateau is where the land is.' },
+      { k: 'Grid Access', g: 'B+', why: 'The McNary–Boardman corridor is the strongest siting asset between Portland and Boise.' },
+      { k: 'Hazard Exposure', g: 'C+', why: 'Cascadia subduction risk dominates west of the Cascades; the east side is calm.' },
+      { k: 'Community Burden', g: 'C+', why: 'Hillsboro fatigue is real; The Dalles set the water-disclosure precedent the rest of the state now expects.' },
+      { k: 'Contamination Distance', g: 'B', why: 'Portland Harbor is the only large exclusion in a scored cell.' }
+    ]),
+    UT: mkState('UT', 'Utah', {
+      poly: [[-114.05, 42.0], [-111.05, 42.0], [-111.05, 41.0], [-109.05, 41.0], [-109.05, 37.0], [-114.05, 37.0]],
+      tx: [[-111.9, 40.76, 1.0], [-112.58, 39.38, 0.9], [-111.66, 40.23, 0.8], [-111.97, 41.22, 0.8], [-113.58, 37.1, 0.6], [-109.55, 40.45, 0.5]],
+      urban: [[-111.9, 40.76, 0.8], [-111.66, 40.23, 0.5], [-111.97, 41.22, 0.45], [-113.57, 37.1, 0.3]],
+      river: [[-109.6, 40.6], [-110.0, 39.6], [-110.2, 38.9], [-109.4, 38.6], [-110.1, 37.9], [-110.9, 37.3]],
+      contam: [[-112.2, 40.73], [-112.35, 40.55]],
+      prot: [{ c: [-110.45, 40.75], r: 0.45 }, { c: [-113.05, 37.25], r: 0.2 }, { c: [-109.9, 38.2], r: 0.3 }, { c: [-112.5, 41.15], r: 0.35 }],
+      water: function (lon, lat) { return 0.2 + (lat > 39.6 ? Math.exp(-Math.abs(lon + 111.6) * 2.2) * 0.3 : 0); },
+      seismic: function (lon) { return 0.72 - Math.exp(-Math.abs(lon + 111.85) * 4.5) * 0.42; },
+      geo: function () { return 0.34; },
+      flat: function (lon, lat, n) { return (lon < -112.3) ? 0.66 + n * 0.3 : (Math.abs(lon + 111.75) < 0.45) ? 0.1 + n * 0.3 : (lat > 40.4 && lon > -111.0) ? 0.08 + n * 0.3 : 0.34 + n * 0.34; }
+    }, 'C', [
+      { k: 'Water Durability', g: 'D+', why: 'The Colorado compact is oversubscribed and the Great Salt Lake deficit is now state policy. New consumptive load starts from a structural deficit.' },
+      { k: 'Grid Access', g: 'B+', why: 'IPP at Delta is a generational interconnection asset; the Wasatch Front backbone is dense.' },
+      { k: 'Hazard Exposure', g: 'B−', why: 'The Wasatch fault runs directly under the population — and the fiber.' },
+      { k: 'Community Burden', g: 'C+', why: 'Wasatch Front siting competes with housing; the west desert does not.' },
+      { k: 'Contamination Distance', g: 'C+', why: 'Legacy smelter and mining plumes ring the Salt Lake valley.' }
+    ]),
+    NV: mkState('NV', 'Nevada', {
+      poly: [[-120.0, 42.0], [-114.04, 42.0], [-114.04, 36.1], [-114.74, 36.1], [-114.63, 35.0], [-120.0, 39.0]],
+      tx: [[-115.14, 36.17, 1.0], [-119.8, 39.5, 0.9], [-114.74, 36.02, 0.95], [-114.88, 39.25, 0.6], [-117.15, 40.8, 0.75], [-115.0, 36.35, 0.9]],
+      urban: [[-115.14, 36.17, 0.85], [-119.81, 39.53, 0.55], [-119.77, 39.16, 0.3]],
+      river: [[-114.7, 36.1], [-114.6, 35.6], [-119.2, 39.5], [-118.7, 40.0], [-117.7, 40.9], [-116.6, 40.7]],
+      contam: [[-116.1, 37.1]],
+      prot: [{ c: [-116.0, 37.25], r: 0.55 }, { c: [-119.95, 39.05], r: 0.18 }, { c: [-115.4, 38.9], r: 0.3 }],
+      water: function () { return 0.13; },
+      seismic: function (lon) { return 0.3 + Math.min(1, (lon + 120) / 5.5) * 0.55; },
+      geo: function (lon, lat) { return lat > 38.5 ? 0.55 : 0.35; },
+      flat: function (lon, lat, n) { return 0.55 + Math.sin(lon * 9.0) * 0.22 + (n - 0.5) * 0.3; }
+    }, 'C−', [
+      { k: 'Water Durability', g: 'D−', why: 'Two of three scored basins are over-appropriated on paper before a single rack lands. Closed-loop is not a virtue here; it is the entry fee.' },
+      { k: 'Grid Access', g: 'A−', why: 'Hoover, the I-80 corridor, and the Apex build-out make wire the easy part of Nevada.' },
+      { k: 'Hazard Exposure', g: 'B+', why: 'Low flood, low wind; Walker Lane seismicity rides the western edge.' },
+      { k: 'Community Burden', g: 'B', why: 'The federal checkerboard keeps most viable siting away from neighborhoods.' },
+      { k: 'Contamination Distance', g: 'C+', why: 'The test-site legacy gates the south-central interior outright.' }
+    ])
+  };
+
+  window.MERA = {
+    RAMPS: RAMPS, rampColor: rampColor, rampText: rampText, clamp: clamp,
+    GRID: { cells: cells, cols: cols, rows: rows, lonMin: lonMin, latMax: latMax, D: D },
+    cellAt: cellAt, nearestCluster: nearestCluster,
+    INDICATORS: INDICATORS, DEFAULT_WEIGHTS: DEFAULT_WEIGHTS, composite: composite,
+    CLUSTERS: CLUSTERS, RECOMMENDED: RECOMMENDED, GATE_COUNTS: GATE_COUNTS, STATES: STATES,
+    SITES: SITES, ALERTS: ALERTS, WATCHED: WATCHED, PORTFOLIO: PORTFOLIO,
+    STAGES: STAGES, CASES: CASES, PARTY_NAMES: PARTY_NAMES, CASE_DETAIL: CASE_DETAIL,
+    IMPASSES: IMPASSES, IMPASSE_UNLOCKS: IMPASSE_UNLOCKS, LITIGATION: LITIGATION, STUDIES: STUDIES,
+    STATS: STATS, GRADES: GRADES, STATE_GRADE: STATE_GRADE, DATA_SOURCES: DATA_SOURCES,
+    PROMISE: PROMISE, VERSION: VERSION, fbm: fbm
+  };
+})();
