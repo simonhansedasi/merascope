@@ -4,7 +4,7 @@
 Creates grid_scores.geojson with columns:
   cell_id            — integer fishnet cell index
   tx_score           — proximity to HV transmission (1 = adjacent)
-  water_score        — 30-yr mean annual precipitation (1 = highest / least stressed)
+  water_score        — PRISM 4km 30-yr annual precip normals (1 = highest / least stressed)
   ej_score           — 1 - Census ACS demographic burden (1 = least burdened)
   pop_exposure_score — 1 - population density per km² (1 = fewest residents)
 
@@ -24,7 +24,6 @@ import argparse
 import io
 import os
 import sys
-import time
 import warnings
 import zipfile
 from pathlib import Path
@@ -34,7 +33,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import requests
-from shapely.geometry import Point, box
+from PIL import Image
+from shapely.geometry import box
 
 sys.path.insert(0, str(Path(__file__).parent))
 from config import get_state, get_paths
@@ -44,6 +44,11 @@ CRS = "EPSG:4326"
 DARK_BG = "#1a1a2e"
 WHITE = "white"
 CELL_SIZE = 0.15
+
+PRISM_URL   = "https://data.prism.oregonstate.edu/normals/us/4km/ppt/monthly/prism_ppt_us_25m_2020_avg_30y.zip"
+PRISM_WEST  = -125.0208333
+PRISM_NORTH = 49.9375000
+PRISM_PIXEL = 1.0 / 24.0
 
 
 def create_fishnet(state_gdf, cell_size=CELL_SIZE):
@@ -80,8 +85,17 @@ def fetch_tracts(state_fips, raw):
         return gpd.read_file(path)
     url = f"https://www2.census.gov/geo/tiger/TIGER2022/TRACT/tl_2022_{state_fips}_tract.zip"
     print(f"  Downloading tract boundaries for FIPS {state_fips}...")
-    r = requests.get(url, timeout=60)
-    r.raise_for_status()
+    for attempt in range(4):
+        try:
+            r = requests.get(url, timeout=300)
+            r.raise_for_status()
+            break
+        except Exception as e:
+            if attempt == 3:
+                raise
+            wait = 15 * (2 ** attempt)
+            print(f"  Attempt {attempt+1} failed ({e}); retrying in {wait}s...")
+            import time; time.sleep(wait)
     shp_dir = raw / "tracts_shp"
     shp_dir.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(io.BytesIO(r.content)) as z:
@@ -127,47 +141,33 @@ def fetch_acs(state_fips, raw):
     return out
 
 
-def fetch_precip(state_gdf, raw):
-    path = raw / "precip_coarse.csv"
-    if path.exists():
-        return pd.read_csv(path)
-    bounds = state_gdf.total_bounds
-    state_union = state_gdf.geometry.unary_union
-    sample_lats = np.linspace(bounds[1] + 0.4, bounds[3] - 0.2, 7)
-    sample_lons = np.linspace(bounds[0] + 0.4, bounds[2] - 0.2, 11)
-    records = []
-    for lat in sample_lats:
-        for lon in sample_lons:
-            if not state_union.contains(Point(lon, lat)):
-                continue
-            try:
-                params = {
-                    "latitude": round(lat, 2), "longitude": round(lon, 2),
-                    "start_date": "1991-01-01", "end_date": "2020-12-31",
-                    "daily": "precipitation_sum", "timezone": "UTC",
-                }
-                r = requests.get("https://archive-api.open-meteo.com/v1/archive",
-                                 params=params, timeout=30)
-                r.raise_for_status()
-                vals = [v for v in r.json()["daily"]["precipitation_sum"] if v is not None]
-                records.append({"lat": lat, "lon": lon, "ann_precip_mm": sum(vals) / 30.0})
-                time.sleep(0.05)
-            except Exception as e:
-                print(f"  Skipped ({lat:.2f},{lon:.2f}): {e}")
-    df = pd.DataFrame(records)
-    df.to_csv(path, index=False)
-    print(f"  Saved {len(df)} precip points to {path.name}")
-    return df
+def fetch_prism_ppt(data_dir):
+    """Return PRISM 4km 30-yr annual precip array (mm/yr). Downloads once to data_dir."""
+    tif_path = data_dir / "prism_ppt_30yr.tif"
+    if not tif_path.exists():
+        print("  Downloading PRISM 4km 30-yr annual precip normals (~2.7 MB)...")
+        r = requests.get(PRISM_URL, timeout=120)
+        r.raise_for_status()
+        with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+            for name in z.namelist():
+                if name.endswith(".tif"):
+                    tif_path.write_bytes(z.read(name))
+                    break
+        print(f"  Saved {tif_path.name}")
+    arr = np.array(Image.open(tif_path), dtype=np.float32)
+    return arr
 
 
-def idw(src_lats, src_lons, src_vals, tgt_lats, tgt_lons, power=2):
-    results = []
-    for lat, lon in zip(tgt_lats, tgt_lons):
-        dists = np.sqrt((src_lats - lat) ** 2 + (src_lons - lon) ** 2)
-        dists = np.maximum(dists, 1e-10)
-        w = 1.0 / dists ** power
-        results.append(float(np.sum(w * src_vals) / np.sum(w)))
-    return results
+def sample_prism(arr, lons, lats):
+    """Nearest-pixel sample of PRISM array at (lons, lats). Returns mm/yr float array."""
+    cols = np.round((lons - PRISM_WEST) / PRISM_PIXEL).astype(int)
+    rows = np.round((PRISM_NORTH - lats) / PRISM_PIXEL).astype(int)
+    nrows, ncols = arr.shape
+    cols = np.clip(cols, 0, ncols - 1)
+    rows = np.clip(rows, 0, nrows - 1)
+    vals = arr[rows, cols].astype(float)
+    vals[vals < -9000] = np.nan
+    return vals
 
 
 def plot_indicators(cfg, state, dc_gdf, grid, processed):
@@ -244,14 +244,21 @@ def main():
     print(f"  tx_score: {grid['tx_score'].min():.3f} - {grid['tx_score'].max():.3f}")
 
     print("Precipitation / water availability (water_score)...")
-    precip_df = fetch_precip(state, raw)
+    prism_arr = fetch_prism_ppt(root / "data")
     centroids_ll = grid.geometry.centroid
-    grid["ann_precip_mm"] = idw(
-        precip_df["lat"].values, precip_df["lon"].values, precip_df["ann_precip_mm"].values,
-        np.array([p.y for p in centroids_ll]), np.array([p.x for p in centroids_ll]),
-    )
-    p05, p95 = grid["ann_precip_mm"].quantile([0.05, 0.95])
-    grid["water_score"] = ((grid["ann_precip_mm"] - p05) / (p95 - p05)).clip(0, 1)
+    lons = np.array([p.x for p in centroids_ll])
+    lats = np.array([p.y for p in centroids_ll])
+    ann_precip = sample_prism(prism_arr, lons, lats)
+    valid = ann_precip[~np.isnan(ann_precip)]
+    if len(valid) < 2:
+        print("  PRISM sampling returned no valid cells; water_score=0.5")
+        grid["ann_precip_mm"] = 0.5
+        grid["water_score"] = 0.5
+    else:
+        p05, p95 = np.nanpercentile(ann_precip, [5, 95])
+        grid["ann_precip_mm"] = np.where(np.isnan(ann_precip), np.nanmean(ann_precip), ann_precip)
+        grid["water_score"] = ((grid["ann_precip_mm"] - p05) / max(p95 - p05, 1e-6)).clip(0, 1)
+    print(f"  precip range: {np.nanmin(ann_precip):.0f}-{np.nanmax(ann_precip):.0f} mm/yr")
     print(f"  water_score: {grid['water_score'].min():.3f} - {grid['water_score'].max():.3f}")
 
     print("Community burden / EJ score (ej_score)...")
@@ -298,7 +305,7 @@ def main():
     print(f"  pop_exposure_score: {grid['pop_exposure_score'].min():.3f} - {grid['pop_exposure_score'].max():.3f}")
 
     grid_out = grid.drop(
-        columns=["tx_dist_m", "ann_precip_mm", "demog_index", "pop_density"],
+        columns=["demog_index"],
         errors="ignore",
     )
     grid_out.to_file(grid_path, driver="GeoJSON")

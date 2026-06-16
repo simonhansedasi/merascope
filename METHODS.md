@@ -34,9 +34,9 @@ Hard gates (terrain flatness, protected lands) are applied at the fishnet tier; 
 
 ### 2. Water Availability (`water_score`)
 
-**Source:** Open-Meteo Historical Weather API (ERA5 reanalysis, 1991–2020 climatological mean annual precipitation).
-**Method:** Mean annual precipitation per cell centroid queried from ERA5 reanalysis (Zippenfenig, 2023; Hersbach et al., 2023). Normalized 0–1 (high = higher precipitation).
-**Rationale:** Cooling tower water demand makes freshwater availability a binding constraint for large hyperscale facilities.
+**Source:** PRISM Climate Group 4km 30-year normal annual precipitation (1991–2020), Oregon State University. Downloaded as national GeoTIFF from `data.prism.oregonstate.edu/normals/us/4km/ppt/monthly/prism_ppt_us_25m_2020_avg_30y.zip`.
+**Method:** Nearest-pixel sampling of the PRISM 4km grid at each cell centroid. Values in mm/yr. Normalized 0–1 using 5th–95th percentile range within the state.
+**Rationale:** PRISM is a spatially interpolated climate dataset derived from thousands of weather stations using terrain-informed regression (Daly et al., 2008). It eliminates the sparse-sampling artifacts that afflict IDW interpolation from a small number of API-queried points, particularly in large arid states (Nevada, Utah) where IDW produces artificially high scores in corners of the sampling grid.
 
 ### 3. Environmental Justice Burden (`ej_score`)
 

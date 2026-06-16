@@ -142,6 +142,7 @@ def main():
     hf_df = load_heatflow(cfg["abbr"], cfg["bbox"], raw)
 
     if len(hf_df) < 2:
+        grid["heatflow_mwm2"] = np.nan
         grid["geothermal_score"] = 0.5
         print("  Not enough borehole data; geothermal_score=0.5")
     else:
@@ -157,6 +158,7 @@ def main():
             [c.y for c in grid_proj.geometry.centroid],
         ])
         q_interp = idw_k(src_pts, hf_df["q_capped"].values, tgt_pts)
+        grid["heatflow_mwm2"] = q_interp.round(2)
         grid["geothermal_score"] = q_interp / q_interp.max()
         print(f"  geothermal_score: {grid['geothermal_score'].min():.3f} - {grid['geothermal_score'].max():.3f}")
 

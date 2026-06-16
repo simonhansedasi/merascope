@@ -202,6 +202,8 @@ def main():
 
     interp_depth = idw_k(src_pts, src_vals, tgt_pts, k=IDW_K, power=IDW_POWER)
 
+    grid["aquifer_depth_ft"] = interp_depth.round(1)
+
     # Normalize: p95 cap → 0-1 (deeper = higher score)
     p95 = np.percentile(interp_depth, 95)
     grid["aquifer_score"] = np.clip(interp_depth / p95, 0, 1).round(4)

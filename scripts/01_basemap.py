@@ -177,10 +177,11 @@ def plot_basemap(cfg, state, dc_gdf, tx_gdf, plants_gdf, processed):
         ax.scatter(plants_gdf.geometry.x, plants_gdf.geometry.y,
                    c=colors, s=sizes.clip(10, 200), alpha=0.7, zorder=4, linewidths=0)
 
-    colors_src = {"OSM": "#FF4444", "reported": "#FF6B35", "proposed": "#FFB347"}
-    for src, grp in dc_gdf.groupby("source"):
-        ax.scatter(grp.geometry.x, grp.geometry.y, c=colors_src.get(src, "#FF4444"),
-                   s=120, marker="D", zorder=6, edgecolors="white", linewidths=0.5)
+    if not dc_gdf.empty and "source" in dc_gdf.columns:
+        colors_src = {"OSM": "#FF4444", "reported": "#FF6B35", "proposed": "#FFB347"}
+        for src, grp in dc_gdf.groupby("source"):
+            ax.scatter(grp.geometry.x, grp.geometry.y, c=colors_src.get(src, "#FF4444"),
+                       s=120, marker="D", zorder=6, edgecolors="white", linewidths=0.5)
 
     patches = [mpatches.Patch(color=c, label=l) for c, l in [
         ("#5a9aba", "TX >= 230kV"), ("#3a5a7a", "TX < 230kV"),
@@ -229,7 +230,10 @@ def main():
         except Exception as e:
             print(f"  OSM failed ({e}); saving empty file")
             dc_gdf = gpd.GeoDataFrame(columns=["name", "operator", "source", "geometry"], crs=CRS)
-        dc_gdf.to_file(dc_path, driver="GeoJSON")
+        if len(dc_gdf) == 0:
+            dc_path.write_text('{"type":"FeatureCollection","features":[]}')
+        else:
+            dc_gdf.to_file(dc_path, driver="GeoJSON")
         print(f"  Saved {len(dc_gdf)} data centers")
 
     print("OSM transmission lines...")
@@ -243,7 +247,10 @@ def main():
         except Exception as e:
             print(f"  OSM failed ({e}); saving empty file")
             tx_gdf = gpd.GeoDataFrame(columns=["geometry"], crs=CRS)
-        tx_gdf.to_file(tx_path, driver="GeoJSON")
+        if len(tx_gdf) == 0:
+            tx_path.write_text('{"type":"FeatureCollection","features":[]}')
+        else:
+            tx_gdf.to_file(tx_path, driver="GeoJSON")
         print(f"  Saved {len(tx_gdf)} transmission segments")
 
     print("EIA 860 power plants...")

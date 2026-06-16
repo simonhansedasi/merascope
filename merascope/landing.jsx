@@ -1,23 +1,86 @@
-/* ── Merascope landing page — copy is verbatim from brand spec ── */
+/* ── Merascope landing page ── */
 
-function HeroMapBackdrop() {
+function EngineVisual() {
   const M = window.MERA;
-  const [w, setW] = React.useState({ ...M.DEFAULT_WEIGHTS });
-  React.useEffect(() => {
-    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    let flip = false;
-    const t = setInterval(() => {
-      flip = !flip;
-      setW(normalizeWeights({ ...M.DEFAULT_WEIGHTS }, 'water', flip ? 18 : 35));
-    }, 2600);
-    return () => clearInterval(t);
-  }, []);
+
+  const SOURCES = [
+    { label: 'EPA TRI', sub: 'toxic release inventory' },
+    { label: 'USGS NWIS', sub: 'well + aquifer data' },
+    { label: 'FEMA NFHL', sub: 'flood hazard layer' },
+    { label: 'PRISM Climate', sub: '30-yr precip normals' },
+    { label: 'SSURGO', sub: 'soil hydraulics' },
+    { label: 'SRTM 1 arc-sec', sub: 'terrain elevation' },
+    { label: 'OSM Power', sub: 'transmission network' },
+  ];
+
+  const INDS = [
+    { label: 'Water availability', v: 0.78 },
+    { label: 'Grid proximity', v: 0.91 },
+    { label: 'Seismic safety', v: 0.74 },
+    { label: 'Flood exposure', v: 0.86 },
+    { label: 'Contamination dist.', v: 0.82 },
+    { label: 'Aquifer depth', v: 0.65 },
+    { label: 'Soil permeability', v: 0.71 },
+  ];
+
+  const composite = 0.791;
+
+  const Arrow = () => (
+    <div style={{ display: 'flex', alignItems: 'center', padding: '0 2px', flexShrink: 0 }}>
+      <svg width="22" height="12" viewBox="0 0 22 12" aria-hidden="true">
+        <path d="M0 6 H18 M12 1 L18 6 L12 11" fill="none" stroke="var(--line)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </div>
+  );
+
   return (
-    <div aria-hidden="true" style={{ position: 'absolute', inset: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ width: '118%', maxWidth: 1500, opacity: 0.34, filter: 'saturate(.92)' }}>
-        <WAMap weights={w} interactive={false} markers={false} />
+    <div style={{ background: 'var(--mist)', border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1.5fr auto 1fr', alignItems: 'stretch' }}>
+
+        <div style={{ padding: '20px 20px', borderRight: '1px solid var(--line-soft)' }}>
+          <div className="eyebrow" style={{ marginBottom: 12 }}>Public data sources</div>
+          {SOURCES.map(s => (
+            <div key={s.label} style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 7 }}>
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--evergreen)', display: 'inline-block', flexShrink: 0, position: 'relative', top: 1 }}></span>
+              <span style={{ fontSize: 12.5, color: 'var(--ink)', fontWeight: 600 }}>{s.label}</span>
+              <span style={{ fontSize: 11, color: 'var(--slate)' }}>{s.sub}</span>
+            </div>
+          ))}
+          <div style={{ fontSize: 11.5, color: 'var(--slate)', marginTop: 5 }}>+ 9 more · all public domain</div>
+        </div>
+
+        <Arrow />
+
+        <div style={{ padding: '20px 20px', borderRight: '1px solid var(--line-soft)' }}>
+          <div className="eyebrow" style={{ marginBottom: 12 }}>16 indicators · 0-1 normalized</div>
+          {INDS.map(ind => (
+            <div key={ind.label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
+              <span style={{ width: 132, color: 'var(--slate)', fontSize: 12, flexShrink: 0 }}>{ind.label}</span>
+              <span className="mb-track" style={{ flex: 1 }}>
+                <span className="mb-fill" style={{ width: (ind.v * 100) + '%', background: M.rampColor(ind.v, 'field') }}></span>
+              </span>
+              <span className="score-serif" style={{ fontSize: 12, width: 32, textAlign: 'right', color: 'var(--ink)' }}>{ind.v.toFixed(2)}</span>
+            </div>
+          ))}
+          <div style={{ fontSize: 11.5, color: 'var(--slate)', marginTop: 5 }}>+ 9 more indicators</div>
+        </div>
+
+        <Arrow />
+
+        <div style={{ padding: '20px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, textAlign: 'center' }}>
+          <div className="eyebrow">Composite score</div>
+          <div className="score-serif" style={{ fontSize: 52, lineHeight: 1, color: M.rampColor(composite, 'field') }}>{composite.toFixed(3)}</div>
+          <div className="microcopy">per 0.15 degree cell</div>
+          <div style={{ height: 1, background: 'var(--line-soft)', width: '75%' }}></div>
+          <div style={{ fontSize: 12, color: 'var(--evergreen)', fontWeight: 650, lineHeight: 1.45 }}>◈ Same number<br />for every user</div>
+          <div className="microcopy" style={{ fontSize: 11 }}>Builder · Regulator · Press · Public</div>
+        </div>
+
       </div>
-      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, rgba(250,248,244,.55), rgba(250,248,244,.86) 70%, var(--paper))' }}></div>
+      <div style={{ borderTop: '1px solid var(--line-soft)', padding: '9px 20px', display: 'flex', gap: 14, alignItems: 'center', background: 'var(--sand)' }}>
+        <span style={{ fontSize: 11.5, color: 'var(--slate)' }}>All sources are public · methodology is published · weights are adjustable · scores are not</span>
+        <a href="#/methodology" style={{ fontSize: 11.5, fontWeight: 650, marginLeft: 'auto', whiteSpace: 'nowrap' }}>Read the methodology →</a>
+      </div>
     </div>
   );
 }
@@ -50,25 +113,25 @@ function LandingPage() {
   return (
     <div data-screen-label="Landing">
       {/* HERO */}
-      <section style={{ position: 'relative', padding: '86px 24px 70px', textAlign: 'center', overflow: 'hidden' }}>
-        <HeroMapBackdrop />
-        <div style={{ position: 'relative', maxWidth: 760, margin: '0 auto' }}>
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14 }}><AnimatedGlyph size={76} /></div>
-          <div className="eyebrow" style={{ marginBottom: 16 }}>Site-selection intelligence for the data center era</div>
-          <div style={{ fontSize: 13, letterSpacing: '.18em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--slate)', marginBottom: 8 }}>Our goal</div>
-          <h1 style={{ fontSize: 'clamp(30px, 4.6vw, 48px)', lineHeight: 1.12, fontWeight: 700 }}>
-            Approve more data centers,<br />but eliminate environmental harm.
-          </h1>
-          <p style={{ fontSize: 18, lineHeight: 1.55, color: 'var(--slate)', maxWidth: 620, margin: '20px auto 26px' }}>
-            The build-out is coming either way. One scoring engine. Nine indicators. Two hard gates. The same map for the people who approve data centers and the people who build them.
-          </p>
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-            <a className="btn btn-primary" href="#/explorer" style={{ fontSize: 16, padding: '12px 24px' }}>Explore the live map — free</a>
-            <a className="btn btn-ghost" href="#/methodology" style={{ fontSize: 16, padding: '12px 24px' }}>See the methodology</a>
+      <section style={{ padding: '72px 24px 52px' }}>
+        <div style={{ maxWidth: 1060, margin: '0 auto' }}>
+          <div style={{ textAlign: 'center', maxWidth: 660, margin: '0 auto 44px' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 18 }}><AnimatedGlyph size={60} /></div>
+            <h1 style={{ fontSize: 'clamp(28px, 3.8vw, 44px)', lineHeight: 1.12, fontWeight: 700 }}>
+              One engine. One score.<br />For everyone.
+            </h1>
+            <p style={{ fontSize: 17, lineHeight: 1.6, color: 'var(--slate)', margin: '18px auto 28px', maxWidth: 560 }}>
+              Sixteen public data sources. Sixteen normalized indicators. One composite score per cell — methodology published, weights adjustable, scores identical for everyone in the room.
+            </p>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <a className="btn btn-primary" href="#/explorer" style={{ fontSize: 15, padding: '11px 22px' }}>Explore the live map — free</a>
+              <a className="btn btn-ghost" href="#/methodology" style={{ fontSize: 15, padding: '11px 22px' }}>Read the methodology</a>
+            </div>
+            <p className="microcopy" style={{ marginTop: 14 }}>
+              Public data · Published methodology · Reproducible end to end
+            </p>
           </div>
-          <p className="microcopy" style={{ marginTop: 18 }}>
-            Public data. Published methodology. Reproducible end to end.<br />As featured in statewide press coverage of the 2026 moratorium.
-          </p>
+          <EngineVisual />
         </div>
       </section>
 
@@ -76,7 +139,7 @@ function LandingPage() {
       <section style={{ padding: '30px 24px 0', maxWidth: 980, margin: '0 auto' }}>
         <div className="dual-doors" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 22 }}>
           <Door icon="gavel" h3="I review and approve projects"
-            body="You’re staffing a moratorium study, reviewing an application, or writing the bill. The applicant arrives with consultants. You should arrive with more. Independent scoring, mandated-study workbenches, and a case system that turns hearings into records — built for agencies, counties, commissions, and tribal governments."
+            body="You're staffing a moratorium study, reviewing an application, or writing the bill. The applicant arrives with consultants. You should arrive with more. Independent scoring, mandated-study workbenches, and a case system that turns hearings into records — built for agencies, counties, commissions, and tribal governments."
             bullets={['Statewide atlases & report cards', 'The Docket: findings, conditions, rebuttals — versioned', 'Expert testimony backed by a scientific bench']}
             cta="Enter the Steward console" ctaHref="#/steward"
             micro="Entra ID single sign-on · procurement-friendly contracting" />
@@ -143,12 +206,12 @@ function LandingPage() {
           <div style={{ flex: '1 1 380px' }}>
             <h3 style={{ fontSize: 22 }}>Every state gets a grade. Every claim gets checked.</h3>
             <p style={{ fontSize: 14.5, lineHeight: 1.65, color: 'var(--ink)', margin: '12px 0 16px' }}>
-              Our public report cards grade each state’s data-center footprint on water durability, hazard exposure, grid posture, and community burden — and compare what companies claim against where they actually build. When a fleet advertises record water efficiency while its newest campuses cluster in the driest cells of the state, the map says so. Quotably.
+              Our public report cards grade each state's data-center footprint on water durability, hazard exposure, grid posture, and community burden — and compare what companies claim against where they actually build. When a fleet advertises record water efficiency while its newest campuses cluster in the driest cells of the state, the map says so. Quotably.
             </p>
-            <a className="btn btn-ghost" href="#/explorer">See Washington’s report card</a>
+            <a className="btn btn-ghost" href="#/explorer">See Washington's report card</a>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-            <div style={{ textAlign: 'center', background: '#fff', border: '1px solid var(--line)', borderRadius: 12, padding: '20px 30px' }}>
+            <div style={{ textAlign: 'center', background: 'var(--mist)', border: '1px solid var(--line)', borderRadius: 12, padding: '20px 30px' }}>
               <div className="microcopy" style={{ letterSpacing: '.1em', textTransform: 'uppercase' }}>Washington</div>
               <div className="score-serif" style={{ fontSize: 64, lineHeight: 1, color: 'var(--basalt)' }}>{M.STATE_GRADE}</div>
               <div className="microcopy">composite grade · {M.VERSION}</div>
@@ -170,13 +233,12 @@ function LandingPage() {
 
       {/* FREE TIER STRIP */}
       <section style={{ background: 'var(--evergreen)', color: '#fff', padding: '44px 24px', textAlign: 'center' }}>
-        <h3 style={{ fontSize: 24 }}>Start with the public map. It’s free, and it stays free.</h3>
+        <h3 style={{ fontSize: 24 }}>Start with the public map. It's free, and it stays free.</h3>
         <p style={{ maxWidth: 620, margin: '12px auto 22px', fontSize: 14.5, lineHeight: 1.6, opacity: 0.92 }}>
-          The explorer, the indicators, the report cards, and the methodology are public — they’re the point. So is the Token Tracker plug-in: your own prompts’ water and carbon, per request. Accounts add resolution, parcels, alerts, and workflow when you need them.
+          The explorer, the indicators, the report cards, and the methodology are public — they're the point. Accounts add resolution, parcels, alerts, and workflow when you need them.
         </p>
         <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
           <a className="btn" href="#/explorer" style={{ background: '#fff', color: 'var(--evergreen)' }}>Open the Explorer</a>
-          <a className="btn" href="#/tracker" style={{ border: '1px solid rgba(255,255,255,.55)', color: '#fff' }}>Get the Token Tracker</a>
           <a className="btn" href="#/pricing" style={{ border: '1px solid rgba(255,255,255,.55)', color: '#fff' }}>Compare plans</a>
         </div>
       </section>

@@ -66,10 +66,21 @@ HYDGRP_SCORE = {
 
 # ── SDM helpers ────────────────────────────────────────────────────────────────
 
-def sdm_query(q, timeout=120):
-    r = requests.post(SDM_URL, headers=SDM_HDR, json={"query": q, "FORMAT": "JSON"}, timeout=timeout)
-    r.raise_for_status()
-    return requests.models.Response.json(r).get("Table", [])
+def sdm_query(q, timeout=120, retries=4):
+    for attempt in range(retries):
+        try:
+            r = requests.post(SDM_URL, headers=SDM_HDR, json={"query": q, "FORMAT": "JSON"}, timeout=timeout)
+            r.raise_for_status()
+            if not r.text.strip():
+                raise ValueError("Empty response from SDM")
+            return r.json().get("Table", [])
+        except Exception as e:
+            if attempt < retries - 1:
+                wait = 2 ** attempt
+                print(f"  SDM attempt {attempt+1} failed ({e}); retrying in {wait}s")
+                time.sleep(wait)
+            else:
+                raise
 
 
 def fetch_mukey_hydgrp(state_abbr, cache_path):

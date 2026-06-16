@@ -122,7 +122,7 @@ function PromiseBadge({ compact = false, align = 'right' }) {
         <span style={{ color: 'var(--basalt)' }}>◈</span> {M.PROMISE.short}
       </button>
       {open && (
-        <span style={{ position: 'absolute', top: 'calc(100% + 8px)', [align]: 0, width: 318, zIndex: 90, background: '#fff', border: '1px solid var(--line)', borderRadius: 10, boxShadow: '0 8px 28px rgba(26,26,26,.16)', padding: '14px 16px', display: 'block', textAlign: 'left' }}>
+        <span style={{ position: 'absolute', top: 'calc(100% + 8px)', [align]: 0, width: 318, zIndex: 90, background: 'var(--mist)', border: '1px solid var(--line)', borderRadius: 10, boxShadow: '0 8px 28px rgba(0,0,0,.4)', padding: '14px 16px', display: 'block', textAlign: 'left' }}>
           <span style={{ display: 'block', fontWeight: 700, fontSize: 13, marginBottom: 5, color: 'var(--evergreen)' }}>◈ The Same Score Promise</span>
           <span style={{ display: 'block', fontSize: 13, lineHeight: 1.55, color: 'var(--ink)' }}>{M.PROMISE.long}</span>
           <a href="#/methodology" onClick={() => setOpen(false)} style={{ display: 'inline-block', marginTop: 8, fontSize: 12.5, fontWeight: 650 }}>Read the full methodology →</a>
@@ -187,7 +187,7 @@ function DemoSwitch() {
 
 /* ── top navigation ── */
 function TopNav({ route, role }) {
-  const pub = [['#/explorer', 'Explorer'], ['#/factsheets', 'Fact sheets'], ['#/methodology', 'Methodology'], ['#/pricing', 'Pricing'], ['#/tracker', 'Token Tracker']];
+  const pub = [['#/explorer', 'Explorer'], ['#/factsheets', 'Fact sheets'], ['#/methodology', 'Methodology']];
   let links = pub;
   if (role === 'builder') links = [pub[0], ['#/builder', 'Builder'], ...pub.slice(1)];
   if (role === 'steward') links = [pub[0], ['#/steward', 'Steward'], ...pub.slice(1)];
@@ -226,7 +226,7 @@ function FooterMain() {
             <p className="microcopy" style={{ marginTop: 10 }}>The marked path for heavy infrastructure.</p>
             <PromiseBadge compact align="left" />
           </div>
-          {col('Product', [['Explorer', '#/explorer'], ['Builder', '#/builder'], ['Steward', '#/steward'], ['Fact sheets', '#/factsheets'], ['Pricing', '#/pricing']])}
+          {col('Product', [['Explorer', '#/explorer'], ['Builder', '#/builder'], ['Steward', '#/steward'], ['Fact sheets', '#/factsheets']])}
           {col('Methodology', [['Indicators', '#/methodology'], ['Hard gates', '#/methodology'], ['Data sources', '#/methodology'], ['Reproducibility', '#/methodology'], ['Changelog', '#/methodology']])}
           {col('Company', [['About', '#/methodology'], ['Advisory bench', '#/methodology'], ['Press', '#/explorer'], ['Careers', '#/'], ['Contact', '#/login']])}
         </div>
@@ -260,4 +260,17 @@ function useFakeLoad(ms = 700) {
   return loading;
 }
 
-Object.assign(window, { MeraCtx, AuthCtx, Glyph, AnimatedGlyph, Wordmark, Icon, useCountUp, ScoreNum, ScoreBadge, Chip, BarRow, PromiseBadge, SurfaceSwitch, DemoSwitch, PersonaBadge, TopNav, FooterMain, PageHead, useFakeLoad });
+function NotifyToast({ message, onDone }) {
+  React.useEffect(() => {
+    const t = setTimeout(onDone, 3000);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <div style={{ position: 'fixed', bottom: 28, right: 28, zIndex: 9999, background: 'var(--evergreen)', color: '#fff', borderRadius: 10, padding: '12px 20px', fontSize: 13.5, fontWeight: 650, boxShadow: '0 4px 18px rgba(0,0,0,0.22)', display: 'flex', alignItems: 'center', gap: 10, animation: 'fadeSlideUp .22s ease' }}>
+      <Icon name="check" size={16} color="#fff" />
+      {message}
+    </div>
+  );
+}
+
+Object.assign(window, { MeraCtx, AuthCtx, Glyph, AnimatedGlyph, Wordmark, Icon, useCountUp, ScoreNum, ScoreBadge, Chip, BarRow, PromiseBadge, SurfaceSwitch, DemoSwitch, PersonaBadge, TopNav, FooterMain, PageHead, useFakeLoad, NotifyToast });

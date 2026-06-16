@@ -1,4 +1,152 @@
 /* ── Merascope data layer: synthetic-but-plausible WA suitability model ── */
+
+/* ── session ID + server-side event log ── */
+window.MERA_SESSION = (function() {
+  var k = 'mera_session_v1';
+  var id = localStorage.getItem(k);
+  if (!id) { id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8); localStorage.setItem(k, id); }
+  return id;
+})();
+
+window.cellLabel = function(p) {
+  var state = (window.STATE_NAMES ? window.STATE_NAMES[p._state] : null) || p._state || '';
+  var num   = p.cell_id != null ? ' #' + (p.cell_id + 1) : '';
+  return state + num;
+};
+
+window.serverLog = function(eventType, fid, payload) {
+  try {
+    fetch('/api/log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: window.MERA_SESSION, fid: fid, event_type: eventType, payload: payload || {} })
+    }).catch(function() {});
+  } catch(e) {}
+};
+
+/* ── builder workspace: saved cells (localStorage) ── */
+(function() {
+  var KEY = 'mera_saved_v1';
+  var GEO_KEY = 'mera_geo_v1';
+  function load() { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch(e) { return []; } }
+  function store(cells) { try { localStorage.setItem(KEY, JSON.stringify(cells)); } catch(e) {} }
+  function loadGeo() { try { return JSON.parse(localStorage.getItem(GEO_KEY) || '{}'); } catch(e) { return {}; } }
+  function storeGeo(g) { try { localStorage.setItem(GEO_KEY, JSON.stringify(g)); } catch(e) {} }
+
+  window.getSavedCells = function() { return load(); };
+
+  window.saveCellToBuilder = function(feat) {
+    var fid = feat.properties._fid;
+    if (fid == null) return;
+    var cells = load();
+    if (cells.find(function(c) { return c.fid === fid; })) return;
+    var coords = feat.geometry && feat.geometry.coordinates && feat.geometry.coordinates[0];
+    var lat = null, lon = null;
+    if (coords && coords.length) {
+      lat = coords.reduce(function(s,c){return s+c[1];},0) / coords.length;
+      lon = coords.reduce(function(s,c){return s+c[0];},0) / coords.length;
+    }
+    var stateRank = null;
+    if (window.computeCellRank && window.propsToInd && window.MERA) {
+      var ind = window.propsToInd(feat.properties, false);
+      var comp = window.MERA.composite(ind, window.MERA.DEFAULT_WEIGHTS);
+      stateRank = window.computeCellRank(comp, feat.properties._state);
+    }
+    var natComp = null, stateComp = null;
+    if (window.propsToInd && window.MERA) {
+      natComp   = window.MERA.composite(window.propsToInd(feat.properties, true),  window.MERA.DEFAULT_WEIGHTS);
+      stateComp = window.MERA.composite(window.propsToInd(feat.properties, false), window.MERA.DEFAULT_WEIGHTS);
+    }
+    cells.push({ fid: fid, properties: feat.properties, lat: lat, lon: lon, stateRank: stateRank });
+    store(cells);
+    var logPayload = { props: feat.properties, lat: lat, lon: lon, state_rank: stateRank, nat_composite: natComp, state_composite: stateComp };
+    if (lat != null) {
+      window.fetchMunicipality(fid, lat, lon).then(function(geo) {
+        if (geo) logPayload.municipality = geo.display;
+        window.serverLog('save_cell', fid, logPayload);
+      });
+    } else {
+      window.serverLog('save_cell', fid, logPayload);
+    }
+  };
+
+  window.removeSavedCell = function(fid) {
+    store(load().filter(function(c){return c.fid !== fid;}));
+    window.serverLog('remove_cell', fid, {});
+  };
+  window.isCellSaved = function(fid) { return load().some(function(c){return c.fid === fid;}); };
+
+  /* returns cached municipality or fetches+caches from Nominatim */
+  window.fetchMunicipality = function(fid, lat, lon) {
+    var geo = loadGeo();
+    if (geo[fid]) return Promise.resolve(geo[fid]);
+    return fetch(
+      'https://nominatim.openstreetmap.org/reverse?lat=' + lat + '&lon=' + lon + '&format=json&zoom=10',
+      { headers: { 'User-Agent': 'Merascope/1.0 (datacenter-siting research; contact: research@merascope.io)' } }
+    ).then(function(r) { return r.json(); }).then(function(d) {
+      var a = d.address || {};
+      var county = a.county || a.administrative || null;
+      var city = a.city || a.town || a.village || a.hamlet || a.suburb || null;
+      var result = { county: county, city: city, state: a.state || null };
+      if (city && county) result.display = city + ', ' + county;
+      else if (county) result.display = 'Unincorporated ' + county;
+      else result.display = a.state || null;
+      geo[fid] = result;
+      storeGeo(geo);
+      return result;
+    }).catch(function() { return null; });
+  };
+
+  window.getCachedMunicipality = function(fid) {
+    return loadGeo()[fid] || null;
+  };
+})();
+
+/* ── CRM tracker (localStorage) ── */
+(function() {
+  var KEY = 'mera_crm_v1';
+  function load() { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch(e) { return {}; } }
+  function store(d) { try { localStorage.setItem(KEY, JSON.stringify(d)); } catch(e) {} }
+  function blank() { return { status: 'researching', contacts: [], events: [], notes: '' }; }
+  function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+  window.getCrm = function(fid) { var d = load(); return d[fid] || blank(); };
+  window.getAllCrm = function() { return load(); };
+
+  window.setCrmStatus = function(fid, status) {
+    var d = load(); if (!d[fid]) d[fid] = blank(); d[fid].status = status; store(d);
+    window.serverLog('status_change', fid, { status: status });
+  };
+  window.setCrmNotes = function(fid, notes) {
+    var d = load(); if (!d[fid]) d[fid] = blank(); d[fid].notes = notes; store(d);
+    window.serverLog('note_update', fid, { notes: notes });
+  };
+  window.addCrmContact = function(fid, contact) {
+    var d = load(); if (!d[fid]) d[fid] = blank();
+    var c = Object.assign({ id: uid() }, contact);
+    d[fid].contacts.push(c); store(d);
+    window.serverLog('contact_add', fid, c);
+    return d[fid];
+  };
+  window.removeCrmContact = function(fid, contactId) {
+    var d = load(); if (!d[fid]) return;
+    d[fid].contacts = d[fid].contacts.filter(function(c) { return c.id !== contactId; }); store(d);
+    window.serverLog('contact_remove', fid, { contact_id: contactId });
+  };
+  window.addCrmEvent = function(fid, ev) {
+    var d = load(); if (!d[fid]) d[fid] = blank();
+    var e = Object.assign({ id: uid(), date: new Date().toISOString().slice(0, 10) }, ev);
+    d[fid].events.unshift(e); store(d);
+    window.serverLog('activity_log', fid, e);
+    return d[fid];
+  };
+  window.removeCrmEvent = function(fid, evId) {
+    var d = load(); if (!d[fid]) return;
+    d[fid].events = d[fid].events.filter(function(e) { return e.id !== evId; }); store(d);
+    window.serverLog('activity_remove', fid, { event_id: evId });
+  };
+})();
+
 (function () {
   'use strict';
   var clamp = function (v, a, b) { return Math.max(a, Math.min(b, v)); };
@@ -142,15 +290,18 @@
   }
 
   var INDICATORS = [
-    { k: 'transmission', label: 'Transmission proximity', def: 40, icon: 'pylon' },
-    { k: 'water', label: 'Water availability', def: 35, icon: 'droplet' },
-    { k: 'community', label: 'Community burden', def: 25, icon: 'rings' },
-    { k: 'seismic', label: 'Seismic safety', def: 0, icon: 'wave' },
-    { k: 'flood', label: 'Flood safety', def: 0, icon: 'flood' },
-    { k: 'contamination', label: 'Contamination distance', def: 0, icon: 'borehole' },
-    { k: 'waterway', label: 'Waterway sensitivity', def: 0, icon: 'river' },
-    { k: 'geothermal', label: 'Geothermal opportunity', def: 0, icon: 'thermal' },
-    { k: 'flatness', label: 'Terrain flatness', def: 0, icon: 'contour' }
+    { k: 'transmission', label: 'Transmission proximity', def: 50, icon: 'pylon' },
+    { k: 'water', label: 'Water availability', def: 50, icon: 'droplet' },
+    { k: 'community', label: 'Community burden', def: 50, icon: 'rings' },
+    { k: 'seismic', label: 'Seismic safety', def: 50, icon: 'wave' },
+    { k: 'flood', label: 'Flood safety', def: 50, icon: 'flood' },
+    { k: 'contamination', label: 'Contamination distance', def: 50, icon: 'borehole' },
+    { k: 'waterway', label: 'Waterway sensitivity', def: 50, icon: 'river' },
+    { k: 'geothermal', label: 'Geothermal opportunity', def: 50, icon: 'thermal' },
+    { k: 'flatness', label: 'Terrain flatness', def: 50, icon: 'contour' },
+    { k: 'aquifer', label: 'Aquifer depth', def: 50, icon: 'borehole' },
+    { k: 'soil', label: 'Soil suitability', def: 50, icon: 'parcel' },
+    { k: 'slope', label: 'Slope suitability', def: 50, icon: 'wave' }
   ];
   var DEFAULT_WEIGHTS = {};
   INDICATORS.forEach(function (m) { DEFAULT_WEIGHTS[m.k] = m.def; });
@@ -268,21 +419,24 @@
   var CASE_DETAIL = {
     id: '26-0142', title: 'Wallula Gap Campus — Burbank, WA', applicant: 'Skyline Infrastructure Partners',
     score: 0.506, stage: 'Negotiation', daysToRebuttal: 9,
+    leadParty: 'Dept. of Ecology',
+    invitedParties: ['WW', 'CT', 'PUD', 'UT', 'AG'],
     findings: [
-      { k: 'Water availability', v: '0.000', ver: 'v2', contested: true, evidence: 'Ecology well-log series WW-114; Open-Meteo ERA5 1991–2025' },
+      { k: 'Water availability', v: '0.000', ver: 'v2', contested: true, evidence: 'Ecology well-log series WW-114; Open-Meteo ERA5 1991-2025' },
       { k: 'Contamination distance', v: '0.014', ver: 'v1', contested: false, evidence: 'EPA NPL — Hanford 200 Area, 38.2 km' },
       { k: 'Waterway sensitivity', v: '0.015', ver: 'v1', contested: true, evidence: 'Columbia mainstem reach WB-26; salmonid critical habitat' },
       { k: 'Terrain flatness', v: '1.000', ver: 'v1', contested: false, evidence: 'USGS 3DEP 10 m DEM' },
-      { k: 'Transmission proximity', v: '0.910', ver: 'v2', contested: false, evidence: 'OSM power=line ≥230 kV; 2.8 km to McNary–Franklin' },
+      { k: 'Transmission proximity', v: '0.910', ver: 'v2', contested: false, evidence: 'OSM power=line >=230 kV; 2.8 km to McNary-Franklin' },
       { k: 'Community burden', v: '0.580', ver: 'v1', contested: false, evidence: 'Census ACS 2024 5-yr, ZCTA 99323' }
     ],
     conditions: [
-      { text: 'Water replenishment at 3:4 ratio, metered at wellhead', by: 'Applicant', type: 'Water', status: 'Under review' },
-      { text: 'Closed-loop cooling required above 85°F ambient', by: 'Ecology', type: 'Water', status: 'Accepted' },
-      { text: 'Heat supply to greenhouse co-op (12 MW thermal, 20-yr term)', by: 'Community benefit', type: 'Heat reuse', status: 'Countered' },
-      { text: 'Curtailment compact: 72-hr load shed at PUD request', by: 'PUD', type: 'Grid', status: 'Accepted' },
-      { text: 'Aquifer monitoring wells ×6, public telemetry', by: 'Ecology', type: 'Water', status: 'Under review' },
-      { text: 'Construction water trucked — zero local draw before COD', by: 'CTUIR', type: 'Water', status: 'Impasse' }
+      { text: 'Water replenishment at 3:4 ratio, metered at wellhead', by: 'Applicant', type: 'Water', status: 'Under review', submittedByRole: 'builder', pendingApproval: false },
+      { text: 'Closed-loop cooling required above 85F ambient', by: 'Ecology', type: 'Water', status: 'Accepted', submittedByRole: 'lead', pendingApproval: false },
+      { text: 'Heat supply to greenhouse co-op (12 MW thermal, 20-yr term)', by: 'Community benefit', type: 'Heat reuse', status: 'Countered', submittedByRole: 'co-party', pendingApproval: false },
+      { text: 'Curtailment compact: 72-hr load shed at PUD request', by: 'PUD', type: 'Grid', status: 'Accepted', submittedByRole: 'co-party', pendingApproval: false },
+      { text: 'Aquifer monitoring wells x6, public telemetry', by: 'Ecology', type: 'Water', status: 'Under review', submittedByRole: 'lead', pendingApproval: false },
+      { text: 'Construction water trucked — zero local draw before COD', by: 'CTUIR', type: 'Water', status: 'Impasse', submittedByRole: 'co-party', pendingApproval: false },
+      { text: 'Stormwater plan — Walla Walla River tributary buffer (150 ft setback)', by: 'Walla Walla County', type: 'Environmental', status: 'Proposed', submittedByRole: 'co-party', pendingApproval: true }
     ],
     consultation: { party: 'CTUIR', status: 'Consultation: meeting held 5/22 — written response pending' },
     docs: [
@@ -290,7 +444,76 @@
       { name: 'Ecology findings memo v2 (water)', date: 'May 9' },
       { name: 'Applicant rebuttal — water model', date: 'May 27' },
       { name: 'CTUIR consultation record 5/22', date: 'May 29' }
+    ],
+    coParties: [
+      ['CTUIR', 'Consultation: meeting held 5/22 — written response pending', 'med'],
+      ['Walla Walla County', 'Findings v2 acknowledged', 'lo'],
+      ['Franklin PUD', 'Rate impact memo filed', 'lo'],
+      ['Attorney General', 'Observer status', 'slate'],
+      ['Serving utility', 'Interconnection study shared', 'lo']
     ]
+  };
+
+  var CASE_DETAIL_MAP = {
+    '26-0142': CASE_DETAIL,
+    '26-0171': {
+      id: '26-0171', title: 'Moses Lake North', applicant: 'Columbia Compute Co.',
+      score: 0.64, stage: 'Analysis', daysToRebuttal: null,
+      leadParty: 'Dept. of Ecology',
+      invitedParties: ['GC', 'PUD'],
+      findings: [
+        { k: 'Water availability', v: '0.310', ver: 'v1', contested: true, evidence: 'USGS GW-2025-WA-044; Odessa aquifer in documented decline; active monitoring curtailment' },
+        { k: 'Transmission proximity', v: '0.860', ver: 'v1', contested: false, evidence: 'OSM power=line; 2.2 km to 230 kV; Grant PUD service territory' },
+        { k: 'Community burden', v: '0.610', ver: 'v1', contested: false, evidence: 'Census ACS 2024 5-yr, ZCTA 98837; pop. 25,900; moderate EJ exposure' },
+        { k: 'Contamination distance', v: '0.740', ver: 'v1', contested: false, evidence: 'EPA TRI; nearest facility 8.2 km; no Superfund within 40 km' },
+        { k: 'Seismic safety', v: '0.840', ver: 'v1', contested: false, evidence: 'USGS ASCE 7-22 PGAm; low hazard eastern WA craton' }
+      ],
+      conditions: [
+        { text: 'Closed-loop cooling required above 85F ambient', by: 'Ecology', type: 'Water', status: 'Proposed', submittedByRole: 'lead', pendingApproval: false },
+        { text: 'Independent hydrogeologist — aquifer impact assessment before COD', by: 'Grant County', type: 'Water', status: 'Under review', submittedByRole: 'co-party', pendingApproval: false },
+        { text: 'Community benefit agreement — job training fund ($2M over 5 yr)', by: 'Community benefit', type: 'Economic', status: 'Proposed', submittedByRole: 'co-party', pendingApproval: true }
+      ],
+      docs: [
+        { name: 'Application v1 + site control letter', date: 'Mar 28' },
+        { name: 'Preliminary intake findings', date: 'Apr 15' },
+        { name: 'Odessa aquifer baseline report', date: 'May 3' }
+      ],
+      coParties: [
+        ['Grant County', 'Preliminary findings — aquifer assessment requested', 'med'],
+        ['Grant PUD', 'Interconnection study ordered', 'lo'],
+        ['DNR', 'Parcel land use classification pending', 'slate']
+      ]
+    },
+    '26-0168': {
+      id: '26-0168', title: 'Richland — Horn Rapids', applicant: 'Atlas Data Infrastructure',
+      score: 0.583, stage: 'Analysis', daysToRebuttal: null,
+      leadParty: 'Dept. of Ecology',
+      invitedParties: ['BC', 'AG', 'PUD'],
+      findings: [
+        { k: 'Contamination distance', v: '0.200', ver: 'v1', contested: true, evidence: 'EPA NPL — Hanford 200 Area, 38.2 km; radiological exclusion zone' },
+        { k: 'Water availability', v: '0.350', ver: 'v1', contested: false, evidence: 'Columbia River junior rights; curtailment risk in dry years per Ecology WR-2024' },
+        { k: 'Transmission proximity', v: '0.850', ver: 'v1', contested: false, evidence: 'OSM power=line; 1.1 km to 230 kV; Benton County PUD' },
+        { k: 'Community burden', v: '0.480', ver: 'v1', contested: true, evidence: 'Census ACS 2024 5-yr, ZCTA 99352; elevated EJ burden; cumulative impact concern' },
+        { k: 'Flood safety', v: '0.650', ver: 'v1', contested: false, evidence: 'FEMA NFHL; 500-yr fringe; minor SFHA exposure' }
+      ],
+      conditions: [
+        { text: 'EJ cumulative impact assessment — independent consultant required', by: 'Attorney General', type: 'Community', status: 'Proposed', submittedByRole: 'co-party', pendingApproval: true },
+        { text: 'Radiological monitoring protocol — quarterly public reports', by: 'Ecology', type: 'Environmental', status: 'Under review', submittedByRole: 'lead', pendingApproval: false },
+        { text: 'Water rights priority documentation — junior right curtailment plan', by: 'Ecology', type: 'Water', status: 'Proposed', submittedByRole: 'lead', pendingApproval: false }
+      ],
+      docs: [
+        { name: 'Application v2 + environmental exhibit', date: 'Feb 19' },
+        { name: 'Benton County preliminary findings', date: 'Mar 22' },
+        { name: 'EPA Hanford proximity memo', date: 'Apr 8' },
+        { name: 'AG cumulative impact notice', date: 'May 14' }
+      ],
+      coParties: [
+        ['Benton County', 'Initial review in progress', 'med'],
+        ['Attorney General', 'Cumulative impact notice filed', 'hi'],
+        ['Benton County PUD', 'Interconnection study ordered', 'lo'],
+        ['EPA', 'Observer — Hanford proximity monitoring', 'slate']
+      ]
+    }
   };
 
   var IMPASSES = [
@@ -332,7 +555,7 @@
     { k: 'Contamination Distance', g: 'C−', why: 'Hanford dominates the southeast quadrant: three of four proposed Tri-Cities-area campuses score under 0.25 on contamination distance. Statewide median is healthy; the growth corridor is not.' }
   ];
   var STATE_GRADE = 'C+';
-  var DATA_SOURCES = 'OSM (ODbL) · US Census · Open-Meteo ERA5 · USGS · FEMA · EPA · IHFC 2024';
+  var DATA_SOURCES = 'OSM (ODbL) · Census ACS · PRISM Climate Group · USGS NWIS + ASCE 7-22 · FEMA NFHL · EPA TRI · SSURGO SDM · IHFC 2024 GHFDB · SRTM1 · EIA Form 860';
   var PROMISE = {
     short: 'Same Score Promise',
     long: 'Our methodology, weights, and sources are public and identical for every user. Subscriptions buy resolution and workflow. They have never bought a friendlier number, and they never will — because a flattering score on a failing site bankrupts everyone who trusted it. The aquifer doesn\u2019t read press releases.'
@@ -467,6 +690,109 @@
     ])
   };
 
+  var AGENCY_DIRECTORY = [
+    /* state */
+    { key: 'ECO',    name: 'WA Dept. of Ecology',                     type: 'state'   },
+    { key: 'AG',     name: 'WA Attorney General',                      type: 'state'   },
+    { key: 'DNR',    name: 'WA Dept. of Natural Resources',            type: 'state'   },
+    { key: 'EFSEC',  name: 'Energy Facility Site Evaluation Council',  type: 'state'   },
+    { key: 'WDFW',   name: 'WA Dept. of Fish and Wildlife',            type: 'state'   },
+    { key: 'COM',    name: 'WA Dept. of Commerce',                     type: 'state'   },
+    { key: 'DOH',    name: 'WA Dept. of Health',                       type: 'state'   },
+    { key: 'SHPO',   name: 'State Historic Preservation Office',        type: 'state'   },
+    /* federal */
+    { key: 'EPA',    name: 'EPA Region 10',                            type: 'federal' },
+    { key: 'ACOE',   name: 'US Army Corps of Engineers',               type: 'federal' },
+    { key: 'USFWS',  name: 'US Fish and Wildlife Service',             type: 'federal' },
+    { key: 'BLM',    name: 'Bureau of Land Management',                type: 'federal' },
+    { key: 'USBR',   name: 'Bureau of Reclamation',                    type: 'federal' },
+    /* counties */
+    { key: 'ADA',  name: 'Adams County',        type: 'county' },
+    { key: 'ASO',  name: 'Asotin County',       type: 'county' },
+    { key: 'BEN',  name: 'Benton County',       type: 'county' },
+    { key: 'CHE',  name: 'Chelan County',       type: 'county' },
+    { key: 'CLA',  name: 'Clallam County',      type: 'county' },
+    { key: 'CLK',  name: 'Clark County',        type: 'county' },
+    { key: 'COL',  name: 'Columbia County',     type: 'county' },
+    { key: 'COW',  name: 'Cowlitz County',      type: 'county' },
+    { key: 'DOU',  name: 'Douglas County',      type: 'county' },
+    { key: 'FER',  name: 'Ferry County',        type: 'county' },
+    { key: 'FRA',  name: 'Franklin County',     type: 'county' },
+    { key: 'GAR',  name: 'Garfield County',     type: 'county' },
+    { key: 'GRA',  name: 'Grant County',        type: 'county' },
+    { key: 'GHC',  name: 'Grays Harbor County', type: 'county' },
+    { key: 'ISL',  name: 'Island County',       type: 'county' },
+    { key: 'JEF',  name: 'Jefferson County',    type: 'county' },
+    { key: 'KIN',  name: 'King County',         type: 'county' },
+    { key: 'KIS',  name: 'Kitsap County',       type: 'county' },
+    { key: 'KTT',  name: 'Kittitas County',     type: 'county' },
+    { key: 'KLI',  name: 'Klickitat County',    type: 'county' },
+    { key: 'LEW',  name: 'Lewis County',        type: 'county' },
+    { key: 'LIN',  name: 'Lincoln County',      type: 'county' },
+    { key: 'MAS',  name: 'Mason County',        type: 'county' },
+    { key: 'OKA',  name: 'Okanogan County',     type: 'county' },
+    { key: 'PAC',  name: 'Pacific County',      type: 'county' },
+    { key: 'PEO',  name: 'Pend Oreille County', type: 'county' },
+    { key: 'PIE',  name: 'Pierce County',       type: 'county' },
+    { key: 'SJI',  name: 'San Juan County',     type: 'county' },
+    { key: 'SKA',  name: 'Skagit County',       type: 'county' },
+    { key: 'SKM',  name: 'Skamania County',     type: 'county' },
+    { key: 'SNO',  name: 'Snohomish County',    type: 'county' },
+    { key: 'SPO',  name: 'Spokane County',      type: 'county' },
+    { key: 'STE',  name: 'Stevens County',      type: 'county' },
+    { key: 'THU',  name: 'Thurston County',     type: 'county' },
+    { key: 'WAH',  name: 'Wahkiakum County',    type: 'county' },
+    { key: 'WW',   name: 'Walla Walla County',  type: 'county' },
+    { key: 'WHA',  name: 'Whatcom County',      type: 'county' },
+    { key: 'WHI',  name: 'Whitman County',      type: 'county' },
+    { key: 'YAK',  name: 'Yakima County',       type: 'county' },
+    /* tribes */
+    { key: 'CHT',  name: 'Chehalis Tribe',                    type: 'tribe' },
+    { key: 'COLV', name: 'Colville Confederated Tribes',       type: 'tribe' },
+    { key: 'CWT',  name: 'Cowlitz Indian Tribe',               type: 'tribe' },
+    { key: 'CT',   name: 'CTUIR',                              type: 'tribe' },
+    { key: 'HOH',  name: 'Hoh Indian Tribe',                   type: 'tribe' },
+    { key: 'JSK',  name: "Jamestown S'Klallam Tribe",          type: 'tribe' },
+    { key: 'KAL',  name: 'Kalispel Tribe of Indians',          type: 'tribe' },
+    { key: 'LEK',  name: 'Lower Elwha Klallam Tribe',          type: 'tribe' },
+    { key: 'LUM',  name: 'Lummi Nation',                       type: 'tribe' },
+    { key: 'MAK',  name: 'Makah Tribe',                        type: 'tribe' },
+    { key: 'MCK',  name: 'Muckleshoot Indian Tribe',           type: 'tribe' },
+    { key: 'NIS',  name: 'Nisqually Indian Tribe',             type: 'tribe' },
+    { key: 'NOK',  name: 'Nooksack Indian Tribe',              type: 'tribe' },
+    { key: 'NEZ',  name: 'Nez Perce Tribe',                    type: 'tribe' },
+    { key: 'PGS',  name: "Port Gamble S'Klallam Tribe",        type: 'tribe' },
+    { key: 'PUY',  name: 'Puyallup Tribe',                     type: 'tribe' },
+    { key: 'QUI',  name: 'Quileute Tribe',                     type: 'tribe' },
+    { key: 'QUN',  name: 'Quinault Indian Nation',             type: 'tribe' },
+    { key: 'SAM',  name: 'Samish Indian Nation',               type: 'tribe' },
+    { key: 'SST',  name: 'Sauk-Suiattle Indian Tribe',         type: 'tribe' },
+    { key: 'SHB',  name: 'Shoalwater Bay Tribe',               type: 'tribe' },
+    { key: 'SKO',  name: 'Skokomish Indian Tribe',             type: 'tribe' },
+    { key: 'SNQ',  name: 'Snoqualmie Indian Tribe',            type: 'tribe' },
+    { key: 'SPT',  name: 'Spokane Tribe of Indians',           type: 'tribe' },
+    { key: 'SQI',  name: 'Squaxin Island Tribe',               type: 'tribe' },
+    { key: 'STL',  name: 'Stillaguamish Tribe',                type: 'tribe' },
+    { key: 'SUQ',  name: 'Suquamish Tribe',                    type: 'tribe' },
+    { key: 'SWI',  name: 'Swinomish Indian Tribal Community',  type: 'tribe' },
+    { key: 'TUL',  name: 'Tulalip Tribes',                     type: 'tribe' },
+    { key: 'USK',  name: 'Upper Skagit Indian Tribe',          type: 'tribe' },
+    { key: 'YN',   name: 'Yakama Nation',                      type: 'tribe' },
+    /* utilities */
+    { key: 'BPA',    name: 'Bonneville Power Administration', type: 'utility' },
+    { key: 'PSE',    name: 'Puget Sound Energy',              type: 'utility' },
+    { key: 'GCPUD',  name: 'Grant County PUD',                type: 'utility' },
+    { key: 'FCPUD',  name: 'Franklin County PUD',             type: 'utility' },
+    { key: 'BCPUD',  name: 'Benton County PUD',               type: 'utility' },
+    { key: 'CHPUD',  name: 'Chelan County PUD',               type: 'utility' },
+    { key: 'DCPUD',  name: 'Douglas County PUD',              type: 'utility' },
+    { key: 'CPU',    name: 'Clark Public Utilities',          type: 'utility' },
+    { key: 'SCPUD',  name: 'Snohomish County PUD',            type: 'utility' },
+    { key: 'TPU',    name: 'Tacoma Public Utilities',         type: 'utility' },
+    { key: 'AVA',    name: 'Avista Utilities',                type: 'utility' },
+    { key: 'PPCORP', name: 'Pacific Power',                   type: 'utility' }
+  ];
+
   window.MERA = {
     RAMPS: RAMPS, rampColor: rampColor, rampText: rampText, clamp: clamp,
     GRID: { cells: cells, cols: cols, rows: rows, lonMin: lonMin, latMax: latMax, D: D },
@@ -474,7 +800,8 @@
     INDICATORS: INDICATORS, DEFAULT_WEIGHTS: DEFAULT_WEIGHTS, composite: composite,
     CLUSTERS: CLUSTERS, RECOMMENDED: RECOMMENDED, GATE_COUNTS: GATE_COUNTS, STATES: STATES,
     SITES: SITES, ALERTS: ALERTS, WATCHED: WATCHED, PORTFOLIO: PORTFOLIO,
-    STAGES: STAGES, CASES: CASES, PARTY_NAMES: PARTY_NAMES, CASE_DETAIL: CASE_DETAIL,
+    STAGES: STAGES, CASES: CASES, PARTY_NAMES: PARTY_NAMES, CASE_DETAIL: CASE_DETAIL, CASE_DETAIL_MAP: CASE_DETAIL_MAP,
+    AGENCY_DIRECTORY: AGENCY_DIRECTORY,
     IMPASSES: IMPASSES, IMPASSE_UNLOCKS: IMPASSE_UNLOCKS, LITIGATION: LITIGATION, STUDIES: STUDIES,
     STATS: STATS, GRADES: GRADES, STATE_GRADE: STATE_GRADE, DATA_SOURCES: DATA_SOURCES,
     PROMISE: PROMISE, VERSION: VERSION, fbm: fbm

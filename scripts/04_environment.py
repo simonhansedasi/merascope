@@ -37,6 +37,15 @@ DARK_BG = "#1a1a2e"
 WHITE = "white"
 
 
+def _ddmmss_to_dec(v):
+    """Convert TRI fac_latitude/fac_longitude DDMMSS integer to decimal degrees."""
+    if v is None or v == 0:
+        return None
+    v = int(abs(v))
+    d = v // 10000
+    rest = v % 10000
+    return d + (rest // 100) / 60 + (rest % 100) / 3600
+
 def fetch_tri_facilities(abbr, raw):
     """Download EPA TRI industrial facilities for the state via Envirofacts REST API."""
     path = raw / "tri_facilities.csv"
@@ -50,12 +59,28 @@ def fetch_tri_facilities(abbr, raw):
         r.raise_for_status()
         data = r.json()
         if data and isinstance(data, list):
-            df = pd.DataFrame(data)
-            df["lat"] = pd.to_numeric(df.get("pref_latitude"), errors="coerce")
-            # TRI stores longitude as positive — negate to get West-hemisphere coords
-            df["lon"] = -pd.to_numeric(df.get("pref_longitude"), errors="coerce")
-            df["name"] = df.get("facility_name", "")
-            df = df[["lat", "lon", "name"]].dropna(subset=["lat", "lon"])
+            rows = []
+            for rec in data:
+                lat = rec.get("pref_latitude")
+                lon = rec.get("pref_longitude")
+                if lat is not None and lon is not None:
+                    # pref fields are decimal degrees; lon is stored positive, negate for West
+                    lat, lon = float(lat), -float(lon)
+                else:
+                    # Fall back to fac_latitude/fac_longitude (DDMMSS integers).
+                    # API sometimes swaps these fields — detect which is lat by CONUS range.
+                    a = _ddmmss_to_dec(rec.get("fac_latitude"))
+                    b = _ddmmss_to_dec(rec.get("fac_longitude"))
+                    if a is not None and 24 < a < 50:
+                        lat, lon = a, (-b if b is not None else None)
+                    elif b is not None and 24 < b < 50:
+                        lat, lon = b, (-a if a is not None else None)
+                    else:
+                        continue
+                if lat is None or lon is None:
+                    continue
+                rows.append({"lat": lat, "lon": lon, "name": rec.get("facility_name", "")})
+            df = pd.DataFrame(rows).dropna(subset=["lat", "lon"])
             if len(df) > 0:
                 df.to_csv(path, index=False)
                 print(f"  TRI API: {len(df)} facilities for {abbr}")
@@ -106,9 +131,7 @@ out geom;
             return gdf
     except Exception as e:
         print(f"  OSM rivers failed: {e}")
-    gdf = gpd.GeoDataFrame(columns=["name", "geometry"], crs=CRS)
-    gdf.to_file(path, driver="GeoJSON")
-    return gdf
+    return gpd.GeoDataFrame(columns=["name", "geometry"], crs=CRS)
 
 
 def plot_environment(cfg, state, dc_gdf, grid, processed):
@@ -178,8 +201,10 @@ def main():
         tri_coords = np.column_stack([tri_gdf.geometry.x, tri_gdf.geometry.y])
         tree = cKDTree(tri_coords)
         dist, _ = tree.query(centroids_proj, k=1)
+        grid["tri_dist_m"] = dist.round(1)
         grid["contamination_score"] = dist / dist.max()
     else:
+        grid["tri_dist_m"] = np.nan
         grid["contamination_score"] = 1.0
     print(f"  contamination_score: {grid['contamination_score'].min():.3f} - {grid['contamination_score'].max():.3f}")
 
@@ -191,9 +216,11 @@ def main():
         dists_riv = np.array([rivers_union.distance(
             gpd.GeoSeries([pt], crs=crs_proj).iloc[0]
         ) for pt in grid_proj.geometry.centroid])
+        grid["river_dist_m"] = dists_riv.round(1)
         grid["waterway_score"] = dists_riv / dists_riv.max()
     else:
         print("  No river data; waterway_score=1.0 (neutral)")
+        grid["river_dist_m"] = np.nan
         grid["waterway_score"] = 1.0
     print(f"  waterway_score: {grid['waterway_score'].min():.3f} - {grid['waterway_score'].max():.3f}")
 

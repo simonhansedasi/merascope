@@ -10,6 +10,7 @@ Usage:
 """
 
 import argparse
+import json
 import sys
 import time
 import warnings
@@ -68,7 +69,9 @@ def fetch_seismic(state_gdf, raw):
 def fetch_flood(state_gdf, raw):
     path = raw / "sfha.geojson"
     if path.exists():
-        return gpd.read_file(path)
+        with open(path) as f:
+            data = json.load(f)
+        return gpd.GeoDataFrame.from_features(data.get("features", []), crs=CRS)
     nfhl_url = ("https://hazards.fema.gov/arcgis/rest/services/"
                 "public/NFHL/MapServer/28/query")
     bounds = state_gdf.total_bounds
@@ -95,7 +98,7 @@ def fetch_flood(state_gdf, raw):
                 print(f"  Tile {i},{j} skipped: {e}")
     if all_features:
         sfha = gpd.GeoDataFrame.from_features(all_features, crs=CRS)
-        sfha = sfha[sfha.geometry.is_valid].dissolve().reset_index(drop=True)
+        sfha = sfha[sfha.geometry.is_valid].reset_index(drop=True)
         sfha.to_file(path, driver="GeoJSON")
         print(f"  Saved {len(sfha)} SFHA polygon(s)")
         return sfha
@@ -171,6 +174,7 @@ def main():
     tgt = np.column_stack([[p.y for p in centroids], [p.x for p in centroids]])
     src = seismic_df[["lat", "lon"]].values
     pgam_interp = idw_k(src, seismic_df["pgam"].values, tgt)
+    grid["seismic_pga_g"] = pgam_interp.round(4)
     pmax = np.percentile(pgam_interp, 99)
     grid["seismic_score"] = 1.0 - (pgam_interp / pmax).clip(0, 1)
     print(f"  seismic_score: {grid['seismic_score'].min():.3f} - {grid['seismic_score'].max():.3f}")
@@ -178,10 +182,10 @@ def main():
     print("Flood zones (flood_score)...")
     sfha = fetch_flood(state, raw)
     if sfha is not None and len(sfha) > 0:
-        sfha_union = sfha.geometry.buffer(0).unary_union
-        grid["flood_score"] = grid.geometry.centroid.apply(
-            lambda pt: 0.0 if sfha_union.contains(pt) else 1.0
-        )
+        centroids = gpd.GeoDataFrame(geometry=grid.geometry.centroid, crs=grid.crs)
+        in_sfha = gpd.sjoin(centroids, sfha[["geometry"]], how="inner", predicate="within")
+        grid["flood_score"] = 1.0
+        grid.loc[in_sfha.index.unique(), "flood_score"] = 0.0
     else:
         grid["flood_score"] = 1.0
     n_flooded = (grid["flood_score"] == 0.0).sum()

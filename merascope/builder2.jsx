@@ -114,7 +114,7 @@ function SiteProfile({ id }) {
                 <div className="microcopy" style={{ marginTop: 3 }}>composite · default weights</div>
               </div>
             </div>
-            <WAMap weights={window.MERA.DEFAULT_WEIGHTS} markers={false} recommended={false} highlight={site} pins={[site]} />
+            <WAMap weights={window.MERA.DEFAULT_WEIGHTS} markers={false} highlight={site} pins={[site]} />
           </div>
           <div className="card" style={{ marginTop: 14, padding: '0 16px 18px' }}>
             <div className="tabs" style={{ margin: '0 -16px 16px', padding: '0 16px' }}>
@@ -146,95 +146,623 @@ function SiteProfile({ id }) {
   );
 }
 
-function WatchlistPage() {
-  const M = window.MERA;
-  const loading = useFakeLoad(650);
+var CRM_STATUSES = [
+  { k: 'researching',  label: 'Researching',   bg: '#1e2040', color: '#7b8bb2' },
+  { k: 'contacted',    label: 'Contacted',      bg: '#3d2e00', color: '#c89a00' },
+  { k: 'in_diligence', label: 'In diligence',   bg: '#0d2340', color: '#4a9edd' },
+  { k: 'negotiating',  label: 'Negotiating',    bg: '#0d2b1a', color: '#3ecf6a' },
+  { k: 'dead',         label: 'Dead',           bg: '#2b0d0d', color: '#c0392b' },
+];
+var EVENT_TYPES = ['Call', 'Email', 'Meeting', 'Site visit', 'Note'];
+
+function CrmStatusBadge({ status }) {
+  var s = CRM_STATUSES.find(function(x) { return x.k === status; }) || CRM_STATUSES[0];
   return (
-    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '22px 24px 50px' }} data-screen-label="Builder — Watchlist">
-      <BuilderSubNav active="watchlist" />
-      <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <div style={{ flex: '1 1 480px' }}>
-          <h3 style={{ fontSize: 17, marginBottom: 10 }}>Change alerts</h3>
-          {loading ? <div style={{ display: 'grid', gap: 9 }}><div className="shimmer" style={{ height: 64 }}></div><div className="shimmer" style={{ height: 64 }}></div><div className="shimmer" style={{ height: 64 }}></div></div> : (
-            <div style={{ display: 'grid', gap: 9 }}>
-              {M.ALERTS.map(a => (
-                <div key={a.title} className="card" style={{ padding: '12px 15px', display: 'flex', gap: 12 }}>
-                  <span className={'chip chip-' + a.tone} style={{ alignSelf: 'flex-start', minWidth: 26, justifyContent: 'center' }}>{a.icon}</span>
-                  <div style={{ flex: 1 }}>
-                    <b style={{ fontSize: 14 }}>{a.title}</b>
-                    <div style={{ fontSize: 13, color: 'var(--slate)', marginTop: 2 }}>{a.detail}</div>
-                  </div>
-                  <span className="microcopy" style={{ whiteSpace: 'nowrap' }}>{a.age}</span>
-                </div>
-              ))}
+    <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 8, background: s.bg, color: s.color, whiteSpace: 'nowrap' }}>
+      {s.label}
+    </span>
+  );
+}
+
+function CrmPanel({ fid, cell, geo }) {
+  var [crm, setCrm] = React.useState(function() { return window.getCrm ? window.getCrm(fid) : { status: 'researching', contacts: [], events: [], notes: '' }; });
+
+  var setStatus = function(k) {
+    window.setCrmStatus && window.setCrmStatus(fid, k);
+    setCrm(function(c) { return Object.assign({}, c, { status: k }); });
+  };
+  var saveNotes = function(notes) {
+    window.setCrmNotes && window.setCrmNotes(fid, notes);
+    setCrm(function(c) { return Object.assign({}, c, { notes: notes }); });
+  };
+
+  /* contact form */
+  var [showContactForm, setShowContactForm] = React.useState(false);
+  var [contactDraft, setContactDraft] = React.useState({ name: '', title: '', org: '', email: '', phone: '' });
+  var submitContact = function() {
+    if (!contactDraft.name.trim()) return;
+    var updated = window.addCrmContact && window.addCrmContact(fid, contactDraft);
+    if (updated) setCrm(function(c) { return Object.assign({}, c, { contacts: updated.contacts }); });
+    setContactDraft({ name: '', title: '', org: '', email: '', phone: '' });
+    setShowContactForm(false);
+  };
+
+  /* event form */
+  var [showEventForm, setShowEventForm] = React.useState(false);
+  var [eventDraft, setEventDraft] = React.useState({ type: 'Call', date: new Date().toISOString().slice(0, 10), summary: '' });
+  var submitEvent = function() {
+    if (!eventDraft.summary.trim()) return;
+    var updated = window.addCrmEvent && window.addCrmEvent(fid, eventDraft);
+    if (updated) setCrm(function(c) { return Object.assign({}, c, { events: updated.events }); });
+    setEventDraft({ type: 'Call', date: new Date().toISOString().slice(0, 10), summary: '' });
+    setShowEventForm(false);
+  };
+
+  var removeContact = function(contactId) {
+    window.removeCrmContact && window.removeCrmContact(fid, contactId);
+    setCrm(function(c) { return Object.assign({}, c, { contacts: c.contacts.filter(function(x) { return x.id !== contactId; }) }); });
+  };
+  var removeEvent = function(evId) {
+    window.removeCrmEvent && window.removeCrmEvent(fid, evId);
+    setCrm(function(c) { return Object.assign({}, c, { events: c.events.filter(function(x) { return x.id !== evId; }) }); });
+  };
+
+  var label = window.cellLabel ? window.cellLabel(cell.properties) : (cell.properties._state || '');
+  var coords = cell.lat != null ? cell.lat.toFixed(3) + 'N, ' + Math.abs(cell.lon).toFixed(3) + 'W' : null;
+
+  return (
+    <div style={{ display: 'grid', gap: 18 }}>
+      {/* header */}
+      <div className="card" style={{ padding: '14px 18px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 17 }}>{label}</div>
+            {geo && geo.display
+              ? <div style={{ fontSize: 13, color: 'var(--slate)', marginTop: 2 }}>{geo.display}</div>
+              : coords && <div className="microcopy" style={{ fontFamily: 'monospace', fontSize: 11 }}>{coords}</div>}
+          </div>
+          <div>
+            <div className="microcopy" style={{ marginBottom: 5 }}>Status</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {CRM_STATUSES.map(function(s) {
+                var active = crm.status === s.k;
+                return (
+                  <button key={s.k} onClick={function() { setStatus(s.k); }}
+                    style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 8, cursor: 'pointer', border: 'none',
+                      background: active ? s.bg : 'var(--surface)', color: active ? s.color : 'var(--slate)',
+                      outline: active ? ('2px solid ' + s.color) : '1px solid var(--line)', outlineOffset: active ? 1 : 0 }}>
+                    {s.label}
+                  </button>
+                );
+              })}
             </div>
-          )}
+          </div>
         </div>
-        <div style={{ flex: '1 1 380px' }}>
-          <h3 style={{ fontSize: 17, marginBottom: 10 }}>Watched sites</h3>
-          <div style={{ display: 'grid', gap: 9 }}>
-            {M.WATCHED.map(id => {
-              const s = M.SITES.find(x => x.id === id);
-              return s && (
-                <div key={id} className="card" style={{ padding: 11, display: 'flex', gap: 10, alignItems: 'center', cursor: 'pointer' }} onClick={() => { location.hash = '#/builder/site/' + id; }}>
-                  <SiteThumb site={s} w={62} h={46} />
-                  <div style={{ minWidth: 0 }}>
-                    <b style={{ fontSize: 13.5, display: 'block' }}>{s.title}</b>
-                    <span className="microcopy">{s.cell}</span>
+      </div>
+
+      {/* contacts */}
+      <div className="card" style={{ padding: '14px 18px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <div style={{ fontWeight: 700, fontSize: 14 }}>Contacts</div>
+          <button className="btn btn-quiet btn-sm" onClick={function() { setShowContactForm(!showContactForm); }}>
+            {showContactForm ? 'Cancel' : '+ Add contact'}
+          </button>
+        </div>
+
+        {showContactForm && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12, padding: '12px 14px', background: 'var(--sand)', borderRadius: 8 }}>
+            {[['name', 'Name *'], ['title', 'Title'], ['org', 'Organization'], ['email', 'Email'], ['phone', 'Phone']].map(function(pair) {
+              return (
+                <input key={pair[0]} placeholder={pair[1]} value={contactDraft[pair[0]]}
+                  onChange={function(e) { var v = e.target.value; setContactDraft(function(d) { var n = Object.assign({}, d); n[pair[0]] = v; return n; }); }}
+                  style={{ gridColumn: pair[0] === 'name' ? 'span 2' : undefined, padding: '6px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--surface)', color: 'inherit', fontSize: 13 }} />
+              );
+            })}
+            <button className="btn btn-primary btn-sm" style={{ gridColumn: 'span 2' }} onClick={submitContact}>Save contact</button>
+          </div>
+        )}
+
+        {crm.contacts.length === 0 && !showContactForm && (
+          <div className="microcopy" style={{ padding: '8px 0' }}>No contacts yet. Add someone from planning, utilities, or legal.</div>
+        )}
+        <div style={{ display: 'grid', gap: 8 }}>
+          {crm.contacts.map(function(c) {
+            return (
+              <div key={c.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '8px 10px', borderRadius: 8, background: 'var(--sand)' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 650, fontSize: 13.5 }}>{c.name}</div>
+                  {(c.title || c.org) && <div style={{ fontSize: 12, color: 'var(--slate)' }}>{[c.title, c.org].filter(Boolean).join(' · ')}</div>}
+                  <div style={{ display: 'flex', gap: 10, marginTop: 3, flexWrap: 'wrap' }}>
+                    {c.email && <a href={'mailto:' + c.email} style={{ fontSize: 12, color: 'var(--basalt)' }}>{c.email}</a>}
+                    {c.phone && <span style={{ fontSize: 12, color: 'var(--slate)' }}>{c.phone}</span>}
                   </div>
-                  <ScoreBadge value={s.composite} size={13} decimals={2} style={{ marginLeft: 'auto' }} />
+                </div>
+                <button onClick={function() { removeContact(c.id); }} style={{ background: 'none', border: 'none', color: 'var(--slate)', cursor: 'pointer', fontSize: 14, padding: '0 4px' }}>x</button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* activity log */}
+      <div className="card" style={{ padding: '14px 18px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <div style={{ fontWeight: 700, fontSize: 14 }}>Activity log</div>
+          <button className="btn btn-quiet btn-sm" onClick={function() { setShowEventForm(!showEventForm); }}>
+            {showEventForm ? 'Cancel' : '+ Log activity'}
+          </button>
+        </div>
+
+        {showEventForm && (
+          <div style={{ display: 'grid', gap: 8, marginBottom: 12, padding: '12px 14px', background: 'var(--sand)', borderRadius: 8 }}>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <select value={eventDraft.type}
+                onChange={function(e) { var v = e.target.value; setEventDraft(function(d) { return Object.assign({}, d, { type: v }); }); }}
+                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--surface)', color: 'inherit', fontSize: 13 }}>
+                {EVENT_TYPES.map(function(t) { return <option key={t}>{t}</option>; })}
+              </select>
+              <input type="date" value={eventDraft.date}
+                onChange={function(e) { var v = e.target.value; setEventDraft(function(d) { return Object.assign({}, d, { date: v }); }); }}
+                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--surface)', color: 'inherit', fontSize: 13, flex: 1 }} />
+            </div>
+            <textarea placeholder="What happened? Who was involved? What are the next steps?" value={eventDraft.summary} rows={3}
+              onChange={function(e) { var v = e.target.value; setEventDraft(function(d) { return Object.assign({}, d, { summary: v }); }); }}
+              style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--surface)', color: 'inherit', fontSize: 13, resize: 'vertical', fontFamily: 'inherit' }} />
+            <button className="btn btn-primary btn-sm" onClick={submitEvent}>Save</button>
+          </div>
+        )}
+
+        {crm.events.length === 0 && !showEventForm && (
+          <div className="microcopy" style={{ padding: '8px 0' }}>No activity logged yet.</div>
+        )}
+        <div style={{ display: 'grid', gap: 6 }}>
+          {crm.events.map(function(ev) {
+            return (
+              <div key={ev.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '8px 10px', borderRadius: 8, background: 'var(--sand)', borderLeft: '3px solid var(--line)' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 3 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--basalt)', textTransform: 'uppercase', letterSpacing: '.06em' }}>{ev.type}</span>
+                    <span className="microcopy">{ev.date}</span>
+                  </div>
+                  <div style={{ fontSize: 13, lineHeight: 1.5 }}>{ev.summary}</div>
+                </div>
+                <button onClick={function() { removeEvent(ev.id); }} style={{ background: 'none', border: 'none', color: 'var(--slate)', cursor: 'pointer', fontSize: 14, padding: '0 4px', flexShrink: 0 }}>x</button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* notes */}
+      <div className="card" style={{ padding: '14px 18px' }}>
+        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>Notes</div>
+        <textarea
+          defaultValue={crm.notes}
+          placeholder="Site notes, open questions, context for the team..."
+          rows={5}
+          onBlur={function(e) { saveNotes(e.target.value); }}
+          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--sand)', color: 'inherit', fontSize: 13, resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+        <div className="microcopy" style={{ marginTop: 4 }}>Auto-saves on blur.</div>
+      </div>
+    </div>
+  );
+}
+
+function StatusPage() {
+  var savedCells = window.getSavedCells ? window.getSavedCells() : [];
+  var allCrm = window.getAllCrm ? window.getAllCrm() : {};
+  var [selectedFid, setSelectedFid] = React.useState(savedCells.length ? savedCells[0].fid : null);
+  var [geos, setGeos] = React.useState(function() {
+    var out = {};
+    savedCells.forEach(function(c) {
+      if (window.getCachedMunicipality) out[c.fid] = window.getCachedMunicipality(c.fid);
+    });
+    return out;
+  });
+
+  React.useEffect(function() {
+    savedCells.forEach(function(c) {
+      if (geos[c.fid] || c.lat == null) return;
+      window.fetchMunicipality && window.fetchMunicipality(c.fid, c.lat, c.lon).then(function(r) {
+        if (r) setGeos(function(g) { var n = Object.assign({}, g); n[c.fid] = r; return n; });
+      });
+    });
+  }, []);
+
+  var selectedCell = savedCells.find(function(c) { return c.fid === selectedFid; }) || null;
+
+  return (
+    <div style={{ maxWidth: 1280, margin: '0 auto', padding: '22px 24px 50px' }} data-screen-label="Builder — Status">
+      <BuilderSubNav active="status" />
+      {savedCells.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '80px 24px', color: 'var(--slate)' }}>
+          <div style={{ fontSize: 52, lineHeight: 1 }}>&#9711;</div>
+          <h3 style={{ fontSize: 18, marginTop: 12 }}>No saved sites yet.</h3>
+          <p className="microcopy" style={{ maxWidth: 360, margin: '8px auto 20px', fontSize: 13.5, lineHeight: 1.6 }}>
+            Save cells from the Explorer workspace to start tracking site progress.
+          </p>
+          <a className="btn btn-primary" href="#/builder">Open Workspace</a>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+          {/* left: cell list */}
+          <div style={{ width: 260, flexShrink: 0, display: 'grid', gap: 8, maxHeight: '80vh', overflowY: 'auto', paddingRight: 4 }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <a className="btn btn-ghost btn-sm"
+                href={'/api/export/status?session_id=' + (window.MERA_SESSION || '')}
+                download="merascope_status.csv"
+                title="Export activity log to CSV">
+                Export CSV
+              </a>
+            </div>
+            {savedCells.map(function(cell) {
+              var crm = allCrm[cell.fid] || { status: 'researching', events: [] };
+              var lastEv = crm.events && crm.events[0];
+              var cellLbl = window.cellLabel ? window.cellLabel(cell.properties) : (cell.properties._state || '');
+              var geo = geos[cell.fid];
+              var active = cell.fid === selectedFid;
+              return (
+                <div key={cell.fid} className="card" onClick={function() { setSelectedFid(cell.fid); }}
+                  style={{ padding: '10px 13px', cursor: 'pointer',
+                    boxShadow: active ? '0 0 0 2px var(--basalt)' : undefined,
+                    borderColor: active ? 'var(--basalt)' : undefined }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 4 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13.5, minWidth: 0 }}>{cellLbl}</div>
+                    <CrmStatusBadge status={crm.status} />
+                  </div>
+                  {geo && geo.display
+                    ? <div style={{ fontSize: 11.5, color: 'var(--slate)' }}>{geo.display}</div>
+                    : <div className="microcopy">{cell.properties._state || ''}</div>}
+                  {lastEv && (
+                    <div style={{ fontSize: 11, color: 'var(--slate)', marginTop: 5, borderTop: '1px solid var(--line-soft)', paddingTop: 5 }}>
+                      <span style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: 10, letterSpacing: '.05em', marginRight: 5 }}>{lastEv.type}</span>
+                      {lastEv.date} — {lastEv.summary.slice(0, 60)}{lastEv.summary.length > 60 ? '...' : ''}
+                    </div>
+                  )}
                 </div>
               );
             })}
           </div>
+
+          {/* right: CRM panel */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {selectedCell
+              ? <CrmPanel key={selectedFid} fid={selectedFid} cell={selectedCell} geo={geos[selectedFid] || null} />
+              : <div style={{ textAlign: 'center', padding: '60px 24px', color: 'var(--slate)' }}>Select a site on the left.</div>}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
+}
+
+/* ── Portfolio Screening helpers ── */
+function parsePortfolioCSV(text) {
+  var lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return null;
+  var headers = lines[0].split(',').map(function(h) { return h.trim().replace(/^["']+|["']+$/g, ''); });
+  var rows = [];
+  for (var i = 1; i < lines.length; i++) {
+    var line = lines[i].trim();
+    if (!line) continue;
+    var vals = line.split(',').map(function(v) { return v.trim().replace(/^["']+|["']+$/g, ''); });
+    var row = {};
+    headers.forEach(function(h, j) { row[h] = vals[j] != null ? vals[j] : ''; });
+    rows.push(row);
+  }
+  return { headers: headers, rows: rows };
+}
+
+function autoDetectPortfolioCols(headers) {
+  var lc = headers.map(function(h) { return h.toLowerCase(); });
+  var find = function(candidates) {
+    for (var i = 0; i < candidates.length; i++) {
+      var idx = lc.indexOf(candidates[i]);
+      if (idx !== -1) return headers[idx];
+    }
+    return '';
+  };
+  return {
+    nameCol: find(['name','label','site','candidate','project','id','site_name']),
+    latCol:  find(['lat','latitude','y','lat_dd']),
+    lonCol:  find(['lon','lng','longitude','long','x','lon_dd']),
+  };
+}
+
+function screenPortfolioRows(rows, colMap, threshold) {
+  var M   = window.MERA;
+  var pi  = window.propsToInd;
+  var clf = window.cellLabel;
+  var fnc = window.findNearestCell;
+  var out = [];
+  rows.forEach(function(row, idx) {
+    var name = (colMap.nameCol && row[colMap.nameCol]) ? row[colMap.nameCol] : ('Site ' + (idx + 1));
+    var lat  = parseFloat(row[colMap.latCol]);
+    var lon  = parseFloat(row[colMap.lonCol]);
+    if (isNaN(lat) || isNaN(lon)) {
+      out.push({ name: name, error: 'Invalid coordinates' });
+      return;
+    }
+    var match = fnc ? fnc(lat, lon) : null;
+    if (!match || !match.feature) {
+      out.push({ name: name, lat: lat, lon: lon, error: 'No cell found' });
+      return;
+    }
+    var feat = match.feature;
+    var p    = feat.properties;
+    var natComp   = (pi && M) ? M.composite(pi(p, true),  M.DEFAULT_WEIGHTS) : null;
+    var stateComp = (pi && M) ? M.composite(pi(p, false), M.DEFAULT_WEIGHTS) : null;
+    var flat  = p.flat_frac      != null ? p.flat_frac      : 0;
+    var prot  = p.protected_frac != null ? p.protected_frac : 1;
+    var flood = p.flood_score    != null ? p.flood_score    : 0;
+    var terrainOk   = flat  >= 0.03;
+    var protectedOk = prot  <= 0.25;
+    var floodOk     = flood  > 0;
+    var gatesOk     = protectedOk && floodOk;
+    var scoreOk     = natComp != null && natComp >= threshold;
+    var reasons     = [];
+    if (!protectedOk)            reasons.push('Protected: ' + (prot*100).toFixed(0) + '% (need <=25%)');
+    if (!floodOk)                reasons.push('Flood: SFHA overlap');
+    if (gatesOk && !scoreOk)     reasons.push('Score ' + (natComp||0).toFixed(3) + ' below threshold ' + threshold.toFixed(2));
+    out.push({
+      name: name, lat: lat, lon: lon, feature: feat,
+      label: clf ? clf(p) : (p._state || ''),
+      distKm: match.distDeg * 111,
+      natComp: natComp, stateComp: stateComp,
+      terrainOk: terrainOk, protectedOk: protectedOk, floodOk: floodOk,
+      pass: gatesOk && scoreOk, reasons: reasons,
+    });
+  });
+  return out;
 }
 
 function PortfolioPage() {
-  const M = window.MERA;
-  const { ramp } = React.useContext(MeraCtx);
-  const [killOnly, setKillOnly] = React.useState(false);
-  const rows = killOnly ? M.PORTFOLIO.filter(r => r.fail) : M.PORTFOLIO;
-  const failCount = M.PORTFOLIO.filter(r => r.fail).length;
+  var M   = window.MERA;
+  var ctx = React.useContext(MeraCtx);
+  var ramp = ctx ? ctx.ramp : null;
+
+  var [stage,     setStage]     = React.useState('upload');
+  var [parsed,    setParsed]    = React.useState(null);
+  var [colMap,    setColMap]    = React.useState({ nameCol: '', latCol: '', lonCol: '' });
+  var [threshold, setThreshold] = React.useState(0.50);
+  var [results,   setResults]   = React.useState([]);
+  var [killOnly,  setKillOnly]  = React.useState(false);
+  var [err,       setErr]       = React.useState(null);
+
+  var handleFile = function(file) {
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var p = parsePortfolioCSV(e.target.result);
+      if (!p || !p.rows.length) {
+        setErr('Could not parse file. Make sure it is a CSV with headers in the first row.');
+        return;
+      }
+      setParsed(p);
+      setColMap(autoDetectPortfolioCols(p.headers));
+      setStage('mapping');
+      setErr(null);
+    };
+    reader.readAsText(file);
+  };
+
+  var runScreening = function() {
+    if (!colMap.latCol || !colMap.lonCol) { setErr('Select latitude and longitude columns.'); return; }
+    setStage('running');
+    window.loadGridCache().then(function() {
+      var res = screenPortfolioRows(parsed.rows, colMap, threshold);
+      setResults(res);
+      setStage('results');
+      var passCount = res.filter(function(r) { return r.pass; }).length;
+      window.serverLog && window.serverLog('portfolio_run', null, {
+        total: res.length, pass: passCount, fail: res.length - passCount, threshold: threshold
+      });
+    }).catch(function(e) {
+      setErr('Error loading grid: ' + (e && e.message ? e.message : String(e)));
+      setStage('mapping');
+    });
+  };
+
+  var exportResults = function() {
+    var hdr  = ['name','cell','lat_input','lon_input','dist_km','nat_composite','state_composite','protected','flood','result','failure_reasons'];
+    var body = results.map(function(r) {
+      return [
+        r.name, r.label || '',
+        r.lat != null ? r.lat : '', r.lon != null ? r.lon : '',
+        r.distKm != null ? r.distKm.toFixed(1) : '',
+        r.natComp   != null ? r.natComp.toFixed(4)   : '',
+        r.stateComp != null ? r.stateComp.toFixed(4) : '',
+        r.protectedOk != null ? (r.protectedOk ? 'PASS' : 'FAIL') : '',
+        r.floodOk     != null ? (r.floodOk     ? 'PASS' : 'FAIL') : '',
+        r.error ? 'ERROR' : (r.pass ? 'PASS' : 'FAIL'),
+        r.error || (r.reasons && r.reasons.join('; ')) || ''
+      ].map(function(v) { return '"' + String(v).replace(/"/g, '""') + '"'; }).join(',');
+    });
+    var csv = [hdr.join(',')].concat(body).join('\n');
+    var a   = document.createElement('a');
+    a.href  = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+    a.download = 'merascope_portfolio.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  var setColVal = function(key, val) {
+    setColMap(function(m) { var n = Object.assign({}, m); n[key] = val; return n; });
+  };
+
+  var displayRows = killOnly ? results.filter(function(r) { return !r.pass; }) : results;
+  var passCount   = results.filter(function(r) { return r.pass; }).length;
+  var failCount   = results.length - passCount;
+
+  var GatePill = function(ok) {
+    return ok
+      ? React.createElement('span', { style: { fontSize: 11, fontWeight: 700, color: 'var(--lo-tx)' } }, 'PASS')
+      : React.createElement('span', { style: { fontSize: 11, fontWeight: 700, color: 'var(--hi-tx)' } }, 'FAIL');
+  };
+
   return (
-    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '22px 24px 50px' }} data-screen-label="Builder — Portfolio screening">
+    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '22px 24px 50px' }} data-screen-label="Builder -- Portfolio screening">
       <BuilderSubNav active="portfolio" />
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
+
+      {stage === 'upload' && (
         <div>
-          <h3 style={{ fontSize: 17 }}>Portfolio screening — Skyline Infrastructure Partners</h3>
-          <p className="microcopy" style={{ margin: '2px 0 0' }}><span className="score-serif">{M.PORTFOLIO.length}</span> candidates scored in bulk · <span className="score-serif">{failCount}</span> fail pre-siting screens</p>
-        </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 13.5, fontWeight: 650 }}>
-            <input type="checkbox" checked={killOnly} onChange={e => setKillOnly(e.target.checked)} /> Kill-list only
+          <div style={{ maxWidth: 560, marginBottom: 24 }}>
+            <h3 style={{ fontSize: 17, marginBottom: 6 }}>Portfolio screening</h3>
+            <p style={{ fontSize: 14, lineHeight: 1.6, color: 'var(--slate)', margin: 0 }}>
+              Upload a CSV of candidate sites. Merascope will match each coordinate to the nearest grid cell, apply all hard gates, and score it against the national dataset.
+            </p>
+          </div>
+          {err && <div style={{ padding: '10px 14px', background: '#fde8e8', color: '#c0392b', borderRadius: 8, fontSize: 13, marginBottom: 14 }}>{err}</div>}
+          <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, padding: '44px 24px', border: '2px dashed var(--line)', borderRadius: 14, cursor: 'pointer', textAlign: 'center', maxWidth: 460 }}>
+            <div style={{ fontSize: 42, lineHeight: 1 }}>+</div>
+            <div style={{ fontSize: 15, fontWeight: 650 }}>Upload CSV</div>
+            <div className="microcopy" style={{ maxWidth: 320 }}>First row must be headers. Needs at least latitude and longitude columns. A name column becomes the site label.</div>
+            <div className="microcopy" style={{ marginTop: 2 }}>Recognized column names: <code>lat</code>, <code>latitude</code>, <code>lon</code>, <code>lng</code>, <code>longitude</code>, <code>name</code></div>
+            <input type="file" accept=".csv,text/csv" style={{ display: 'none' }} onChange={function(e) { handleFile(e.target.files[0]); }} />
           </label>
-          <button className="btn btn-ghost btn-sm">Upload CSV</button>
         </div>
-      </div>
-      <div className="card" style={{ overflow: 'auto' }}>
-        <table className="mtable">
-          <thead><tr><th>Candidate</th><th>Cell</th><th>Composite</th><th>Screen</th><th>Why</th></tr></thead>
-          <tbody>
-            {rows.map(r => (
-              <tr key={r.name} style={{ opacity: r.fail && !killOnly ? 0.96 : 1 }}>
-                <td style={{ fontWeight: 650 }}>{r.name}</td>
-                <td className="microcopy">{r.cell}</td>
-                <td>{r.composite > 0
-                  ? <span className="score-badge" style={{ background: M.rampColor(r.composite, ramp), color: M.rampText(r.composite, ramp), fontSize: 13.5 }}>{r.composite.toFixed(3)}</span>
-                  : <Chip tone="gate">gated</Chip>}</td>
-                <td>{r.fail ? <Chip tone="hi">FAIL</Chip> : <Chip tone="lo">PASS</Chip>}</td>
-                <td style={{ fontSize: 13, color: r.fail ? 'var(--hi-tx)' : 'var(--slate)', maxWidth: 380 }}>{r.why || '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="microcopy" style={{ marginTop: 10 }}>Screens are the public gates plus your filters — the same scores everyone sees, applied before capital is.</p>
+      )}
+
+      {stage === 'mapping' && parsed && (
+        <div style={{ maxWidth: 580 }}>
+          <h3 style={{ fontSize: 17, marginBottom: 4 }}>Column mapping</h3>
+          <p className="microcopy" style={{ marginBottom: 18 }}>
+            Found <span className="score-serif">{parsed.rows.length}</span> rows across <span className="score-serif">{parsed.headers.length}</span> columns.
+          </p>
+          {err && <div style={{ padding: '10px 14px', background: '#fde8e8', color: '#c0392b', borderRadius: 8, fontSize: 13, marginBottom: 14 }}>{err}</div>}
+
+          {[['nameCol','Site name (optional)'],['latCol','Latitude *'],['lonCol','Longitude *']].map(function(pair) {
+            return (
+              <div key={pair[0]} style={{ marginBottom: 12 }}>
+                <label style={{ fontSize: 13, fontWeight: 650, display: 'block', marginBottom: 4 }}>{pair[1]}</label>
+                <select value={colMap[pair[0]]} onChange={function(e) { setColVal(pair[0], e.target.value); }}
+                  style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--surface)', color: 'inherit', fontSize: 13 }}>
+                  <option value="">{pair[0] === 'nameCol' ? '-- use row number --' : '-- select --'}</option>
+                  {parsed.headers.map(function(h) { return <option key={h} value={h}>{h}</option>; })}
+                </select>
+              </div>
+            );
+          })}
+
+          <div style={{ marginBottom: 18 }}>
+            <label style={{ fontSize: 13, fontWeight: 650, display: 'block', marginBottom: 4 }}>
+              Minimum composite score to PASS: <span className="score-serif">{threshold.toFixed(2)}</span>
+            </label>
+            <input type="range" min="0" max="1" step="0.05" value={threshold}
+              onChange={function(e) { setThreshold(parseFloat(e.target.value)); }}
+              style={{ width: '100%' }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--slate)', marginTop: 3 }}>
+              <span>0.00 (any)</span><span>0.50 (default)</span><span>1.00 (max)</span>
+            </div>
+          </div>
+
+          <div className="card" style={{ overflow: 'auto', marginBottom: 18, maxHeight: 190 }}>
+            <table className="mtable">
+              <thead><tr>{parsed.headers.map(function(h) { return <th key={h}>{h}</th>; })}</tr></thead>
+              <tbody>
+                {parsed.rows.slice(0, 5).map(function(row, i) {
+                  return <tr key={i}>{parsed.headers.map(function(h) { return <td key={h} style={{ fontSize: 12 }}>{row[h]}</td>; })}</tr>;
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button className="btn btn-primary" onClick={runScreening}>Run screening</button>
+            <button className="btn btn-quiet" onClick={function() { setStage('upload'); setParsed(null); setErr(null); }}>Back</button>
+          </div>
+        </div>
+      )}
+
+      {stage === 'running' && (
+        <div style={{ textAlign: 'center', padding: '80px 24px', color: 'var(--slate)' }}>
+          <div className="shimmer" style={{ height: 4, borderRadius: 2, maxWidth: 320, margin: '0 auto 20px' }} />
+          <div style={{ fontSize: 15 }}>Loading grid and scoring {parsed ? parsed.rows.length : ''} candidates...</div>
+          <div className="microcopy" style={{ marginTop: 6 }}>The first run loads all 48 states into memory. Subsequent runs are instant.</div>
+        </div>
+      )}
+
+      {stage === 'results' && (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
+            <div>
+              <h3 style={{ fontSize: 17, margin: 0 }}>Screening results</h3>
+              <p className="microcopy" style={{ margin: '4px 0 0' }}>
+                <span className="score-serif">{results.length}</span> candidates &middot;
+                <span className="score-serif" style={{ color: 'var(--lo-tx)', margin: '0 3px' }}>{passCount}</span> pass &middot;
+                <span className="score-serif" style={{ color: 'var(--hi-tx)', margin: '0 3px' }}>{failCount}</span> fail &middot;
+                threshold {threshold.toFixed(2)}
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 13, fontWeight: 650 }}>
+                <input type="checkbox" checked={killOnly} onChange={function(e) { setKillOnly(e.target.checked); }} /> Failures only
+              </label>
+              <button className="btn btn-quiet btn-sm" onClick={exportResults}>Export CSV</button>
+              <button className="btn btn-ghost btn-sm" onClick={function() { setStage('upload'); setParsed(null); setResults([]); setErr(null); }}>New upload</button>
+            </div>
+          </div>
+
+          <div className="card" style={{ overflow: 'auto' }}>
+            <table className="mtable">
+              <thead>
+                <tr>
+                  <th style={{ minWidth: 140 }}>Name</th>
+                  <th style={{ minWidth: 130 }}>Cell</th>
+                  <th style={{ minWidth: 72 }}>Dist.</th>
+                  <th style={{ minWidth: 90 }}>National</th>
+                  <th style={{ minWidth: 90 }}>In-state</th>
+                  <th>Protected</th>
+                  <th>Flood</th>
+                  <th style={{ minWidth: 68 }}>Result</th>
+                  <th style={{ minWidth: 220 }}>Why</th>
+                </tr>
+              </thead>
+              <tbody>
+                {displayRows.map(function(r, i) {
+                  if (r.error) {
+                    return (
+                      <tr key={i}>
+                        <td style={{ fontWeight: 650 }}>{r.name}</td>
+                        <td colSpan={8} style={{ fontSize: 12, color: '#c0392b' }}>{r.error}</td>
+                      </tr>
+                    );
+                  }
+                  var poorMatch = r.distKm > 25;
+                  return (
+                    <tr key={i}>
+                      <td style={{ fontWeight: 650 }}>{r.name}</td>
+                      <td style={{ fontSize: 12 }}>{r.label}</td>
+                      <td style={{ fontSize: 12, color: poorMatch ? '#c0392b' : 'var(--slate)', whiteSpace: 'nowrap' }}>
+                        {r.distKm.toFixed(1)} km{poorMatch ? ' !' : ''}
+                      </td>
+                      <td>{r.natComp != null && M
+                        ? <span className="score-badge" style={{ background: M.rampColor(r.natComp, ramp), color: M.rampText(r.natComp, ramp), fontSize: 12 }}>{r.natComp.toFixed(3)}</span>
+                        : <span className="microcopy">--</span>}</td>
+                      <td>{r.stateComp != null && M
+                        ? <span className="score-badge" style={{ background: M.rampColor(r.stateComp, ramp), color: M.rampText(r.stateComp, ramp), fontSize: 12 }}>{r.stateComp.toFixed(3)}</span>
+                        : <span className="microcopy">--</span>}</td>
+                      <td>{GatePill(r.protectedOk)}</td>
+                      <td>{GatePill(r.floodOk)}</td>
+                      <td>{r.pass ? <Chip tone="lo">PASS</Chip> : <Chip tone="hi">FAIL</Chip>}</td>
+                      <td style={{ fontSize: 12, color: 'var(--slate)', maxWidth: 260 }}>
+                        {r.reasons && r.reasons.length ? r.reasons.join(' | ') : '--'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="microcopy" style={{ marginTop: 10 }}>
+            Dist. = km from your coordinate to the nearest cell centroid. Values above 25 km (!) may indicate a point outside the covered grid (coast, border, reservation).
+            Hard gates: Protected land and Flood only. Rugged terrain is penalized in the composite score but does not block a PASS.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
 
-Object.assign(window, { SiteProfile, WatchlistPage, PortfolioPage });
+Object.assign(window, { SiteProfile, StatusPage, PortfolioPage });

@@ -74,55 +74,65 @@ def load_tile(path):
     return data
 
 
-def build_dem(lat_tiles, lon_tiles, tile_dir):
-    rows = []
+def score_cells_tiled(grid, lat_tiles, lon_tiles, tile_dir):
+    """Process one SRTM tile at a time to avoid OOM on large states.
+    Each cell is scored from the tile containing its centroid."""
+    flat_fracs   = np.zeros(len(grid), dtype=np.float32)
+    slope_means  = np.full(len(grid), np.nan, dtype=np.float32)
+    centroids  = grid.geometry.centroid
+    cell_lats  = np.array([pt.y for pt in centroids])
+    cell_lons  = np.array([pt.x for pt in centroids])
+
     for lat in lat_tiles:
-        cols = []
         for lon in lon_tiles:
+            t_south, t_north = float(lat), float(lat + 1)
+            t_west,  t_east  = float(-lon), float(-(lon - 1))
+
+            in_tile = np.where(
+                (cell_lats >= t_south) & (cell_lats < t_north) &
+                (cell_lons >= t_west)  & (cell_lons < t_east)
+            )[0]
+            if len(in_tile) == 0:
+                continue
+
             try:
-                tile = load_tile(download_tile(lat, lon, tile_dir))
+                path      = download_tile(lat, lon, tile_dir)
+                tile_data = load_tile(path)
             except Exception as e:
-                print(f"    Tile N{lat:02d}W{lon:03d} failed ({e}); filled with NaN")
-                tile = np.full((TILE_SIZE, TILE_SIZE), np.nan, dtype=np.float32)
-            cols.append(tile[:-1, :-1])  # drop edge overlap
-        rows.append(np.hstack(cols))
-    return np.vstack(rows)
+                print(f"    N{lat:02d}W{lon:03d} failed ({e}); {len(in_tile)} cells default 0")
+                continue
 
+            tile_ds = tile_data[::DOWNSAMPLE, ::DOWNSAMPLE]
+            del tile_data
 
-def compute_slope(dem, lat_tiles, lon_tiles):
-    north = float(max(lat_tiles) + 1)
-    west = float(-max(lon_tiles))
-    res = DOWNSAMPLE / 3600.0  # degrees per pixel after downsampling
+            lat_1d = np.linspace(t_north, t_south, tile_ds.shape[0])
+            lon_1d = np.linspace(t_west,  t_east,  tile_ds.shape[1])
+            dy_m   = (t_north - t_south) / tile_ds.shape[0] * 110540.0
+            dx_m   = (t_east  - t_west)  / tile_ds.shape[1] * np.cos(np.radians(lat_1d[:, np.newaxis])) * 111320.0
 
-    if DOWNSAMPLE > 1:
-        dem = dem[::DOWNSAMPLE, ::DOWNSAMPLE]
+            filled = np.where(np.isnan(tile_ds),
+                              np.nanmedian(tile_ds) if not np.all(np.isnan(tile_ds)) else 0.0,
+                              tile_ds)
+            dz_dy, dz_dx = np.gradient(filled)
+            slope = np.degrees(np.arctan(np.sqrt((dz_dx / dx_m) ** 2 + (dz_dy / dy_m) ** 2)))
+            slope[np.isnan(tile_ds)] = np.nan
+            del tile_ds, filled, dz_dy, dz_dx
 
-    lat_1d = north - np.arange(dem.shape[0]) * res
-    lon_1d = west + np.arange(dem.shape[1]) * res
+            for pos, gi in enumerate(in_tile):
+                minx, miny, maxx, maxy = grid.iloc[gi].geometry.bounds
+                r0 = max(0, int(np.searchsorted(-lat_1d, -maxy)))
+                r1 = min(slope.shape[0], int(np.searchsorted(-lat_1d, -miny)) + 1)
+                c0 = max(0, int(np.searchsorted(lon_1d, minx)))
+                c1 = min(slope.shape[1], int(np.searchsorted(lon_1d, maxx)) + 1)
+                patch = slope[r0:r1, c0:c1]
+                valid = patch[~np.isnan(patch)]
+                flat_fracs[gi]  = float(np.mean(valid < SLOPE_THRESHOLD)) if len(valid) > 0 else 0.0
+                slope_means[gi] = float(np.mean(valid)) if len(valid) > 0 else np.nan
 
-    dy_m = res * 110540.0
-    dx_m = res * np.cos(np.radians(lat_1d[:, np.newaxis])) * 111320.0
-    dem_filled = np.where(np.isnan(dem), np.nanmedian(dem), dem)
-    dz_dy, dz_dx = np.gradient(dem_filled)
-    slope_deg = np.degrees(np.arctan(np.sqrt((dz_dx / dx_m) ** 2 + (dz_dy / dy_m) ** 2)))
-    slope_deg[np.isnan(dem)] = np.nan
-    return slope_deg, lat_1d, lon_1d
+            print(f"  N{lat:02d}W{lon:03d}: scored {len(in_tile)} cells")
+            del slope
 
-
-def compute_flat_fracs(grid, slope_deg, lat_1d, lon_1d):
-    flat_fracs = []
-    for _, cell in grid.iterrows():
-        minx, miny, maxx, maxy = cell.geometry.bounds
-        r0 = int(np.searchsorted(-lat_1d, -maxy))
-        r1 = int(np.searchsorted(-lat_1d, -miny)) + 1
-        c0 = int(np.searchsorted(lon_1d, minx))
-        c1 = int(np.searchsorted(lon_1d, maxx)) + 1
-        r0, r1 = max(0, r0), min(slope_deg.shape[0], r1)
-        c0, c1 = max(0, c0), min(slope_deg.shape[1], c1)
-        patch = slope_deg[r0:r1, c0:c1]
-        valid = patch[~np.isnan(patch)]
-        flat_fracs.append(float(np.mean(valid < SLOPE_THRESHOLD)) if len(valid) > 0 else 0.0)
-    return flat_fracs
+    return flat_fracs.tolist(), slope_means.tolist()
 
 
 def plot_terrain(cfg, state, dc_gdf, grid, buildable, processed):
@@ -195,17 +205,10 @@ def main():
     lat_tiles, lon_tiles = srtm_tile_range(cfg["bbox"])
     print(f"SRTM tiles: {len(lat_tiles)} lat x {len(lon_tiles)} lon = {len(lat_tiles)*len(lon_tiles)} tiles")
 
-    print("Building DEM...")
-    dem = build_dem(lat_tiles, lon_tiles, tile_dir)
-    print(f"  DEM shape: {dem.shape} raw ({DOWNSAMPLE}x downsample -> ~{DOWNSAMPLE*30}m/px)")
-
-    print("Computing slope...")
-    slope_deg, lat_1d, lon_1d = compute_slope(dem, lat_tiles, lon_tiles)
-    print(f"  Slope range: {np.nanmin(slope_deg):.1f} - {np.nanmax(slope_deg):.1f} deg")
-
-    print("Computing flat_frac per cell...")
-    flat_fracs = compute_flat_fracs(grid, slope_deg, lat_1d, lon_1d)
+    print(f"Processing tiles one at a time (~{DOWNSAMPLE*30}m resolution)...")
+    flat_fracs, slope_means = score_cells_tiled(grid, lat_tiles, lon_tiles, tile_dir)
     grid["flat_frac"] = flat_fracs
+    grid["slope_mean_deg"] = slope_means
     print(f"  flat_frac: {grid.flat_frac.min():.3f} - {grid.flat_frac.max():.3f}")
 
     buildable = grid["flat_frac"] >= FLAT_GATE
@@ -217,7 +220,7 @@ def main():
     grid["slope_score"] = (grid["flat_frac"] / p95).clip(0, 1)
     print(f"  Gate: {n_gated} cells gated ({n_gated/len(grid):.1%}); p95={p95:.3f}")
 
-    grid_out = grid.drop(columns=["flat_frac"], errors="ignore")
+    grid_out = grid
     grid_out.to_file(grid_path, driver="GeoJSON")
     print(f"\nSaved grid to {grid_path.name}")
 

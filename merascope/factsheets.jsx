@@ -33,7 +33,7 @@ function SheetShell({ title, kicker, children, seed }) {
       <div style={{ marginTop: 16 }}>{children}</div>
       <div style={{ position: 'absolute', left: 58, right: 58, bottom: 38, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 14, borderTop: '1px solid var(--line)', paddingTop: 12 }}>
         <div style={{ fontSize: 9.5, color: 'var(--slate)', maxWidth: 520, lineHeight: 1.5 }}>
-          Methodology: 9 indicators normalized 0–1, 2 hard buildability gates, 0.15° grid. {M.DATA_SOURCES}. All scoring code reproducible.
+          Methodology: 16 indicators normalized 0-1, 2 hard gates (protected land {'>'} 25%, FEMA flood zone), 0.15 deg grid (~14 km). Sources: OSM (ODbL) · Census ACS · PRISM Climate Group · USGS NWIS + ASCE 7-22 · FEMA NFHL · EPA TRI · SSURGO SDM · IHFC 2024 GHFDB · SRTM1 · EIA Form 860. {M.VERSION}. All scoring code reproducible.
           <div style={{ marginTop: 4, fontWeight: 700, color: 'var(--evergreen)' }}>◈ Same Score Promise — identical methodology, weights, and sources for every reader of this page.</div>
         </div>
         <div style={{ textAlign: 'center' }}>
@@ -49,161 +49,139 @@ function SheetH({ children }) {
   return <div style={{ fontSize: 11, letterSpacing: '.1em', textTransform: 'uppercase', fontWeight: 750, color: 'var(--slate)', borderBottom: '1px solid var(--line)', paddingBottom: 4, marginBottom: 9 }}>{children}</div>;
 }
 
-/* ── 4a. State fact sheet ── */
-function FactSheetState() {
+function FactSheetDynamic({ stateCode }) {
+  const [gradeData, setGradeData] = React.useState(null);
+  const [rawFeats, setRawFeats] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    if (!stateCode) return;
+    let attempts = 0;
+
+    function tryCompute() {
+      if (window.computeStateGrades && window.getStateFeatures) {
+        const result = window.computeStateGrades(stateCode);
+        if (result) {
+          setGradeData(result);
+          setRawFeats(window.getStateFeatures(stateCode));
+          setLoading(false);
+          return;
+        }
+      }
+      if (attempts >= 20) { setLoading(false); return; }
+      attempts++;
+      setTimeout(tryCompute, 500);
+    }
+
+    if (!window.getStateFeatures || !window.getStateFeatures(stateCode).length) {
+      (window.loadGridCache ? window.loadGridCache() : Promise.reject(new Error('loadGridCache not available')))
+        .then(() => tryCompute())
+        .catch(() => { setLoading(false); });
+    } else {
+      tryCompute();
+    }
+  }, [stateCode]);
+
+  if (loading) return (
+    <div style={{ textAlign: 'center', padding: '60px 24px', color: 'var(--slate)' }}>
+      Loading {window.STATE_NAMES ? window.STATE_NAMES[stateCode] : stateCode} data — computing national rankings across all 48 states...
+    </div>
+  );
+  if (!gradeData) return (
+    <div style={{ textAlign: 'center', padding: '60px 24px', color: 'var(--slate)' }}>
+      Could not load data for {stateCode}. <a href="#/explorer">Open the Explorer</a> first.
+    </div>
+  );
+
   const M = window.MERA;
+  const { stateGrade, stateName, overallRank, grades } = gradeData;
+  const n = grades[0] ? grades[0].n : 48;
+
+  /* Raw physical stats from GeoJSON features */
+  const props = rawFeats.map(f => f.properties);
+  const med = col => {
+    const vals = props.map(p => p[col]).filter(v => v != null && !isNaN(v)).sort((a, b) => a - b);
+    if (!vals.length) return null;
+    const m = Math.floor(vals.length / 2);
+    return vals.length % 2 ? vals[m] : (vals[m - 1] + vals[m]) / 2;
+  };
+  const totalCells = props.length;
+  const protectedGated = props.filter(p => p.protected_score === 0).length;
+  const floodGated = props.filter(p => p.flood_score === 0).length;
+  const viable = props.filter(p => p.protected_score !== 0 && p.flood_score !== 0).length;
+  const medPrecip = med('ann_precip_mm');
+  const medAquifer = med('aquifer_depth_ft');
+  const medKsat = med('ksat_mean_ums');
+  const maxSeismic = props.length ? Math.max(...props.map(p => p.seismic_pga_g || 0).filter(v => !isNaN(v))) : null;
+  const medTxDist = med('tx_dist_m');
+  const hasRaw = props.length > 0;
+
   return (
-    <SheetShell kicker="State fact sheet" title="Washington — data center siting posture" seed={3}>
-      <div style={{ display: 'grid', gridTemplateColumns: '215px 1fr', gap: 26 }}>
+    <SheetShell kicker="State fact sheet" title={`${stateName} — data center siting posture`} seed={stateCode.charCodeAt(0) + stateCode.charCodeAt(1)}>
+      <div style={{ display: 'grid', gridTemplateColumns: '185px 1fr', gap: 22 }}>
+
+        {/* Left: grade block + category ranking list + grid stats */}
         <div>
-          <div style={{ textAlign: 'center', background: 'var(--mist)', borderRadius: 10, padding: '18px 12px 14px' }}>
-            <div className="score-serif" style={{ fontSize: 74, lineHeight: 1, color: 'var(--basalt)' }}>{M.STATE_GRADE}</div>
-            <div style={{ fontSize: 11, color: 'var(--slate)', marginTop: 4 }}>composite grade</div>
+          <div style={{ textAlign: 'center', background: 'var(--mist)', borderRadius: 10, padding: '16px 12px 12px' }}>
+            <div className="score-serif" style={{ fontSize: 68, lineHeight: 1, color: 'var(--basalt)' }}>{stateGrade}</div>
+            <div style={{ fontSize: 10, color: 'var(--slate)', marginTop: 3 }}>composite grade</div>
+            <div style={{ fontSize: 10, color: 'var(--slate)', marginTop: 1 }}>{'#' + (overallRank + 1) + ' of ' + n + ' states'}</div>
+            <div style={{ fontSize: 9, color: 'var(--slate)', marginTop: 8, lineHeight: 1.5, borderTop: '1px solid var(--line-soft)', paddingTop: 7, textAlign: 'left' }}>
+              Grade reflects equal weighting across 5 categories. A state may score well overall while ranking poorly on a specific dimension (e.g. water). Use the Explorer to apply weights matching your priorities.
+            </div>
           </div>
-          <div style={{ marginTop: 12 }}>
-            {M.GRADES.map(g => (
-              <div key={g.k} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 2px', borderBottom: '1px solid var(--line-soft)', fontSize: 12 }}>
-                <span>{g.k}</span><span className="score-serif" style={{ fontSize: 14 }}>{g.g}</span>
+          <div style={{ marginTop: 10 }}>
+            {grades.map(g => (
+              <div key={g.k} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 2px', borderBottom: '1px solid var(--line-soft)' }}>
+                <span style={{ fontSize: 11, color: 'var(--slate)' }}>{g.k}</span>
+                <span style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
+                  <span style={{ fontSize: 10, color: 'var(--slate)' }}>{'#' + (g.rank + 1)}</span>
+                  <span className="score-serif" style={{ fontSize: 13 }}>{g.g}</span>
+                </span>
               </div>
             ))}
           </div>
-          <div style={{ marginTop: 14 }}>
-            <WAMap weights={M.DEFAULT_WEIGHTS} interactive={false} markers={true} recommended={false} />
-            <div style={{ fontSize: 9, color: 'var(--slate)', marginTop: 3 }}>Composite suitability at public default weights.</div>
-          </div>
-        </div>
-        <div>
-          <SheetH>The numbers</SheetH>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 18px', fontSize: 12.5 }}>
-            <div className="kv"><span>Grid cells scored</span><b className="score-serif">974</b></div>
-            <div className="kv"><span>Viable after hard gates</span><b className="score-serif">850</b></div>
-            <div className="kv"><span>Terrain-gated</span><b className="score-serif">61</b></div>
-            <div className="kv"><span>Protected-land-gated</span><b className="score-serif">82</b></div>
-            <div className="kv"><span>Existing campuses tracked</span><b className="score-serif">5</b></div>
-            <div className="kv"><span>Proposed campuses tracked</span><b className="score-serif">4</b></div>
-          </div>
-          <div style={{ marginTop: 16 }}>
-            <SheetH>Active legislation</SheetH>
-            <div style={{ display: 'grid', gap: 7, fontSize: 12 }}>
-              {[['WA HB — data center water reporting', 'Hearing scheduled · comment closes Jun 30, 2026'],
-                ['Moratorium impact study (Office of the Governor)', 'Statutory deadline Sep 1, 2026'],
-                ['Grant PUD rate case 26-UE-0388', 'Large-load tariff class · comment window open']].map(([t, d]) => (
-                <div key={t} style={{ display: 'flex', gap: 9 }}>
-                  <span style={{ color: 'var(--basalt)', fontWeight: 700 }}>·</span>
-                  <span><b style={{ fontWeight: 650 }}>{t}</b><span style={{ color: 'var(--slate)' }}> — {d}</span></span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div style={{ marginTop: 16 }}>
-            <SheetH>Finding of record</SheetH>
-            <p style={{ fontSize: 12.5, lineHeight: 1.6, margin: 0 }}>
-              Washington pairs elite grid access (A−) with the worst water posture of any indicator (D). The state’s largest proposed campuses — Wallula Gap (water <span className="score-serif">0.000</span>), Horn Rapids, West Richland — cluster in the driest scored cells, three of them Hanford-adjacent (contamination distance <span className="score-serif">0.014</span>–<span className="score-serif">0.25</span>). The highest-scoring unclaimed cells sit west and south, where no application is pending.
-            </p>
-          </div>
-        </div>
-      </div>
-    </SheetShell>
-  );
-}
-
-/* ── 4b. Company fact sheet ── */
-function FactSheetCompany() {
-  const hist = [2, 4, 7, 9, 5, 3, 1]; /* fleet siting-quality distribution */
-  const bands = ['0.3', '0.4', '0.5', '0.6', '0.7', '0.8', '0.9'];
-  return (
-    <SheetShell kicker="Company fact sheet" title="Hyperion Compute — fleet siting record" seed={11}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 26 }}>
-        <div>
-          <SheetH>Fleet-wide siting quality</SheetH>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 5, height: 110, padding: '0 6px' }}>
-            {hist.map((h, i) => (
-              <div key={i} style={{ flex: 1, textAlign: 'center' }}>
-                <div style={{ height: h * 10, background: i < 3 ? 'var(--basalt)' : 'var(--evergreen)', borderRadius: '3px 3px 0 0' }}></div>
-                <div style={{ fontSize: 9, color: 'var(--slate)', marginTop: 3 }} className="score-serif">{bands[i]}</div>
+          {hasRaw && (
+            <div style={{ marginTop: 10 }}>
+              <SheetH>Grid</SheetH>
+              <div style={{ display: 'grid', gap: 2, fontSize: 11.5 }}>
+                <div className="kv"><span>Total cells</span><b className="score-serif">{totalCells.toLocaleString()}</b></div>
+                <div className="kv"><span>Viable</span><b className="score-serif">{viable.toLocaleString()}</b></div>
+                <div className="kv"><span>Protected-gated</span><b className="score-serif">{protectedGated}</b></div>
+                <div className="kv"><span>In flood zone</span><b className="score-serif">{floodGated}</b></div>
               </div>
-            ))}
-          </div>
-          <div style={{ fontSize: 10.5, color: 'var(--slate)', marginTop: 4 }}>31 operating + proposed sites, by composite band. Orange = below 0.6.</div>
-          <div style={{ marginTop: 16 }}>
-            <SheetH>Exposure</SheetH>
-            <div className="kv" style={{ fontSize: 12.5 }}><span>% of fleet in water-stressed cells</span><b className="score-serif" style={{ color: 'var(--basalt)' }}>42%</b></div>
-            <div className="kv" style={{ fontSize: 12.5 }}><span>Median composite, operating fleet</span><b className="score-serif">0.63</b></div>
-            <div className="kv" style={{ fontSize: 12.5 }}><span>Median composite, 2025–26 proposals</span><b className="score-serif" style={{ color: 'var(--basalt)' }}>0.55</b></div>
-          </div>
-        </div>
-        <div>
-          <SheetH>Claims vs. scores</SheetH>
-          <div className="callout" style={{ padding: '12px 14px', fontSize: 12.5, lineHeight: 1.6 }}>
-            <b>Claimed:</b> “7× water efficiency across the fleet.”<br />
-            <b>Observed:</b> the newest 3 proposals sit in the state’s driest cells (water <span className="score-serif">0.000</span>–<span className="score-serif">0.35</span>). Efficiency multiplies the denominator; the aquifer sets the numerator.
-          </div>
-          <div style={{ marginTop: 16 }}>
-            <SheetH>Commitments</SheetH>
-            <div style={{ display: 'grid', gap: 6, fontSize: 12.5 }}>
-              {[['Closed-loop cooling at all new builds', 'kept', 'lo'], ['Public water telemetry, Quincy', 'kept', 'lo'],
-                ['Heat-reuse offtake, Malaga', 'pending', 'med'], ['3:4 replenishment, Wallula', 'pending', 'med']].map(([t, s, tone]) => (
-                <div key={t} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
-                  <span>{t}</span><Chip tone={tone}>{s}</Chip>
-                </div>
-              ))}
             </div>
-            <div style={{ marginTop: 10, fontSize: 12.5 }}>Tally: <b className="score-serif">2</b> kept · <b className="score-serif">2</b> pending · <b className="score-serif">0</b> broken</div>
-          </div>
+          )}
         </div>
-      </div>
-    </SheetShell>
-  );
-}
 
-/* ── 4c. Site fact sheet ── */
-function FactSheetSite() {
-  const M = window.MERA;
-  const site = M.SITES[0]; /* Kittitas */
-  const cell = M.cellAt(site.lat, site.lon);
-  return (
-    <SheetShell kicker="Site fact sheet" title={site.title + ' — ' + site.cell} seed={5}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 26 }}>
+        {/* Right: findings + physical profile */}
         <div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 8 }}>
-            <span className="score-serif" style={{ fontSize: 44, color: 'var(--evergreen)' }}>{site.composite.toFixed(2)}</span>
-            <span style={{ fontSize: 11, color: 'var(--slate)' }}>composite · public default weights</span>
-          </div>
-          <SheetH>All indicators</SheetH>
-          <div style={{ display: 'grid', gap: 5 }}>
-            {cell && M.INDICATORS.map(m => <BarRow key={m.k} label={m.label} value={cell.ind[m.k]} width={150} />)}
-          </div>
-          <div style={{ marginTop: 14 }}>
-            <SheetH>Water rights</SheetH>
-            <p style={{ fontSize: 12.5, margin: 0, lineHeight: 1.55 }}>Status: <b>{site.waterRights}</b> — municipal district holds unallocated industrial rights; drought-year curtailment risk modeled as low. Closed-loop design basis ~0.12 L/kWh.</p>
-          </div>
-        </div>
-        <div>
-          <SheetH>Hazard panel</SheetH>
-          <div style={{ display: 'grid', gap: 4, fontSize: 12.5 }}>
-            <div className="kv"><span>Seismic PGA (10%/50 yr)</span><b className="score-serif">0.18g</b></div>
-            <div className="kv"><span>SFHA flood overlap</span><b>None</b></div>
-            <div className="kv"><span>Wildfire interface</span><b>Moderate (wind-driven)</b></div>
-            <div className="kv"><span>Insurance posture</span><b>Moderate (wind)</b></div>
-          </div>
-          <div style={{ marginTop: 14 }}>
-            <SheetH>Community burden context</SheetH>
-            <p style={{ fontSize: 12.5, margin: 0, lineHeight: 1.55 }}>ZCTA {site.zcta}, pop <span className="score-serif">{site.pop.toLocaleString()}</span>. EJ burden indicator <span className="score-serif">0.74</span> — above the state median; no prior contested hearings in this county.</p>
-          </div>
-          <div style={{ marginTop: 14 }}>
-            <SheetH>Docket condition status</SheetH>
-            <p style={{ fontSize: 12.5, margin: 0 }}>No active case file. Pre-application conference available.</p>
-          </div>
-          <div style={{ marginTop: 14 }}>
-            <SheetH>What would change this score</SheetH>
-            <div style={{ display: 'grid', gap: 5, fontSize: 12.5 }}>
-              {['A 230→345 kV interconnection commitment letter would lift Grid 0.88 → 0.93.',
-                'Executed water-rights transfer would lift Water 0.71 → 0.79 and the composite past 0.84.',
-                'A wildfire-hardened design basis would move insurance posture to Low and clear two flags.'].map(t => (
-                <div key={t} style={{ display: 'flex', gap: 8 }}><span style={{ color: 'var(--basalt)', fontWeight: 700 }}>·</span><span>{t}</span></div>
-              ))}
+          <SheetH>Category findings</SheetH>
+          {grades.map(g => (
+            <div key={g.k} style={{ marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 2 }}>
+                <span style={{ fontWeight: 700, fontSize: 12.5 }}>{g.k}</span>
+                <span style={{ fontSize: 11, color: 'var(--slate)' }}>{'— ' + g.g + ', #' + (g.rank + 1) + ' of ' + g.n}</span>
+              </div>
+              <div style={{ fontSize: 11.5, lineHeight: 1.5, color: 'var(--basalt)' }}>{g.why}</div>
             </div>
-          </div>
+          ))}
+
+          {hasRaw && (
+            <React.Fragment>
+              <SheetH>Physical profile — state medians</SheetH>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3px 16px', fontSize: 12 }}>
+                <div className="kv"><span>Annual precipitation</span><b className="score-serif">{medPrecip != null ? Math.round(medPrecip) + ' mm' : 'n/a'}</b></div>
+                <div className="kv"><span>Depth to water table</span><b className="score-serif">{medAquifer != null ? Math.round(medAquifer) + ' ft' : 'n/a'}</b></div>
+                <div className="kv"><span>Hydraulic conductivity</span><b className="score-serif">{medKsat != null ? medKsat.toFixed(1) + ' um/s' : 'n/a'}</b></div>
+                <div className="kv"><span>Max seismic PGA</span><b className="score-serif">{maxSeismic ? maxSeismic.toFixed(3) + ' g' : 'n/a'}</b></div>
+                <div className="kv"><span>Median HV tx distance</span><b className="score-serif">{medTxDist != null ? (medTxDist / 1000).toFixed(1) + ' km' : 'n/a'}</b></div>
+              </div>
+              <div style={{ fontSize: 9.5, color: 'var(--slate)', marginTop: 5, lineHeight: 1.5 }}>
+                Precip: PRISM Climate Group 30-yr normals (1991-2020). Water table: USGS NWIS param 72019. K-sat: SSURGO chorizon thickness-weighted mean. Seismic: USGS ASCE 7-22 PGAm (Risk Cat II, Site Class C). Tx: OSM + EIA Form 860 distance to nearest HV line or substation.
+              </div>
+            </React.Fragment>
+          )}
         </div>
       </div>
     </SheetShell>
@@ -211,25 +189,45 @@ function FactSheetSite() {
 }
 
 function FactSheetsPage({ which }) {
-  const tabs = [['state', 'State — Washington'], ['company', 'Company — Hyperion Compute'], ['site', 'Site — Kittitas Corridor']];
-  const active = which || 'state';
+  const STATE_NAMES = window.STATE_NAMES || {};
+  const initCode = which && which.length === 2 && STATE_NAMES[which.toUpperCase()] ? which.toUpperCase() : null;
+  const [selectedState, setSelectedState] = React.useState(initCode);
+
+  function handleSelect(st) {
+    setSelectedState(st || null);
+    location.hash = st ? '#/factsheets/' + st : '#/factsheets';
+  }
+
+  const stateName = selectedState ? (STATE_NAMES[selectedState] || selectedState) : null;
+
   return (
-    <div data-screen-label="Fact sheets">
-      <div style={{ maxWidth: 980, margin: '0 auto', padding: '24px 24px 0' }}>
-        <PageHead eyebrow="Fact sheets — print-grade, QR-coded, version-stamped" title="Same numbers on every page"
-          sub="One page each, US Letter. Built to be handed across the table at a hearing."
-          right={<button className="btn btn-ghost btn-sm" onClick={() => window.print()}>Print / Save as PDF</button>} />
-        <div className="tabs">
-          {tabs.map(([k, label]) => (
-            <button key={k} className={active === k ? 'on' : ''} onClick={() => { location.hash = '#/factsheets/' + k; }}>{label}</button>
-          ))}
+    <div data-screen-label={stateName ? 'Fact sheet — ' + stateName : 'Fact sheets'}>
+      <div style={{ maxWidth: 980, margin: '0 auto', padding: '30px 24px 0' }}>
+        <PageHead eyebrow="Fact sheets — print-grade, version-stamped"
+          title={stateName ? stateName + ' — data center siting posture' : 'State fact sheets'}
+          sub="16-indicator profile, national rankings, physical measurements. Select a state to load its fact sheet."
+          right={selectedState
+            ? <button className="btn btn-ghost btn-sm" onClick={() => window.print()}>Print / Save as PDF</button>
+            : null} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+          <StateSelector selectedState={selectedState} onChange={handleSelect} />
+          {selectedState && (
+            <span className="microcopy">Loading ranks all 48 states — takes a few seconds on first open.</span>
+          )}
         </div>
       </div>
-      <div className="sheet-wrap" style={{ marginTop: 0 }}>
-        {active === 'state' ? <FactSheetState /> : active === 'company' ? <FactSheetCompany /> : <FactSheetSite />}
-      </div>
+      {selectedState ? (
+        <div className="sheet-wrap" style={{ marginTop: 0 }}>
+          <FactSheetDynamic stateCode={selectedState} />
+        </div>
+      ) : (
+        <div style={{ textAlign: 'center', padding: '80px 24px', color: 'var(--slate)', fontSize: 15 }}>
+          Select a state above to load its fact sheet.
+          <div className="microcopy" style={{ marginTop: 8 }}>Company and site formats available in paid tiers.</div>
+        </div>
+      )}
     </div>
   );
 }
 
-Object.assign(window, { FactSheetsPage, FactSheetState, FactSheetCompany, FactSheetSite, QRPlaceholder });
+Object.assign(window, { FactSheetsPage, QRPlaceholder });

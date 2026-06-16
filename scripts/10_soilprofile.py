@@ -68,10 +68,21 @@ W_CLAY  = 0.25
 
 # ── SDM helpers ────────────────────────────────────────────────────────────────
 
-def sdm_query(q, timeout=240):
-    r = requests.post(SDM_URL, headers=SDM_HDR, json={"query": q, "FORMAT": "JSON"}, timeout=timeout)
-    r.raise_for_status()
-    return requests.models.Response.json(r).get("Table", [])
+def sdm_query(q, timeout=240, retries=4):
+    for attempt in range(retries):
+        try:
+            r = requests.post(SDM_URL, headers=SDM_HDR, json={"query": q, "FORMAT": "JSON"}, timeout=timeout)
+            r.raise_for_status()
+            if not r.text.strip():
+                raise ValueError("Empty response from SDM")
+            return r.json().get("Table", [])
+        except Exception as e:
+            if attempt < retries - 1:
+                wait = 2 ** attempt
+                print(f"  SDM attempt {attempt+1} failed ({e}); retrying in {wait}s")
+                time.sleep(wait)
+            else:
+                raise
 
 
 def fetch_chorizon(state_abbr, cache_path):
@@ -83,21 +94,35 @@ def fetch_chorizon(state_abbr, cache_path):
 
     abbr = state_abbr.upper()
     print(f"  Querying SDM chorizon (0-150cm) for {abbr}...")
-    q = f"""SELECT ch.mukey, ch.hzdept_r, ch.hzdepb_r,
-               ch.caco3_r, ch.ksat_r, ch.claytotal_r
-        FROM chorizon ch
-        INNER JOIN mapunit mu ON ch.mukey = mu.mukey
-        INNER JOIN legend l ON mu.lkey = l.lkey
-        WHERE l.areasymbol LIKE '{abbr}%'
-          AND ch.hzdept_r IS NOT NULL
-          AND ch.hzdepb_r IS NOT NULL
-          AND ch.hzdept_r < 150
-        ORDER BY ch.mukey, ch.hzdept_r"""
 
-    rows = sdm_query(q, timeout=300)
-    print(f"  Got {len(rows)} horizon rows")
+    # Get area symbols first — single state query exceeds 100K row limit
+    sym_rows = sdm_query(f"SELECT areasymbol FROM legend WHERE areasymbol LIKE '{abbr}%' ORDER BY areasymbol")
+    symbols = [r[0] for r in sym_rows]
+    print(f"  {len(symbols)} area symbols — querying one at a time")
 
-    df = pd.DataFrame(rows, columns=["mukey", "hzdept_r", "hzdepb_r", "caco3_r", "ksat_r", "claytotal_r"])
+    all_rows = []
+    for sym in symbols:
+        q = f"""SELECT mu.mukey, ch.hzdept_r, ch.hzdepb_r,
+                   ch.caco3_r, ch.ksat_r, ch.claytotal_r
+            FROM chorizon ch
+            INNER JOIN component co ON ch.cokey = co.cokey
+            INNER JOIN mapunit mu ON co.mukey = mu.mukey
+            INNER JOIN legend l ON mu.lkey = l.lkey
+            WHERE l.areasymbol = '{sym}'
+              AND ch.hzdept_r IS NOT NULL
+              AND ch.hzdepb_r IS NOT NULL
+              AND ch.hzdept_r < 150
+            ORDER BY mu.mukey, ch.hzdept_r"""
+        try:
+            rows = sdm_query(q, timeout=60)
+            all_rows.extend(rows)
+            print(f"  {sym}: {len(rows)} rows (total {len(all_rows)})")
+        except Exception as e:
+            print(f"  {sym}: skipped ({e})")
+        time.sleep(0.15)
+
+    print(f"  Got {len(all_rows)} total horizon rows")
+    df = pd.DataFrame(all_rows, columns=["mukey", "hzdept_r", "hzdepb_r", "caco3_r", "ksat_r", "claytotal_r"])
     for col in ["hzdept_r", "hzdepb_r", "caco3_r", "ksat_r", "claytotal_r"]:
         df[col] = pd.to_numeric(df[col], errors="coerce")
     df.to_csv(cache_path, index=False)
@@ -331,6 +356,8 @@ def main():
     # Also IDW the K-sat sub-score for the plot
     ksat_interp = idw_k(src_pts, df["ksat_score"].values, tgt_pts, k=IDW_K, power=IDW_POWER)
     grid["ksat_score"] = np.clip(ksat_interp, 0, 1).round(4)
+    ksat_raw_interp = idw_k(src_pts, df["wmean_ksat"].values, tgt_pts, k=IDW_K, power=IDW_POWER)
+    grid["ksat_mean_ums"] = ksat_raw_interp.round(4)
 
     print(f"  Final grid range: {grid.soil_profile_score.min():.3f} - "
           f"{grid.soil_profile_score.max():.3f}  "

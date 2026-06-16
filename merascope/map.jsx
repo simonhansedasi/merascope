@@ -1,6 +1,110 @@
-/* ── Merascope map engine: WA choropleth + weight sliders ── */
+/* ── Merascope map engine: multi-state choropleth (Leaflet) + weight sliders ── */
 
-const CELL_PX = 15;
+const STATE_NAMES = {
+  AL:'Alabama', AR:'Arkansas', AZ:'Arizona', CA:'California', CO:'Colorado',
+  CT:'Connecticut', DE:'Delaware', FL:'Florida', GA:'Georgia', IA:'Iowa',
+  ID:'Idaho', IL:'Illinois', IN:'Indiana', KS:'Kansas', KY:'Kentucky',
+  LA:'Louisiana', MA:'Massachusetts', MD:'Maryland', ME:'Maine', MI:'Michigan',
+  MN:'Minnesota', MO:'Missouri', MS:'Mississippi', MT:'Montana', NC:'North Carolina',
+  ND:'North Dakota', NE:'Nebraska', NH:'New Hampshire', NJ:'New Jersey', NM:'New Mexico',
+  NV:'Nevada', NY:'New York', OH:'Ohio', OK:'Oklahoma', OR:'Oregon', PA:'Pennsylvania',
+  RI:'Rhode Island', SC:'South Carolina', SD:'South Dakota', TN:'Tennessee', TX:'Texas',
+  UT:'Utah', VA:'Virginia', VT:'Vermont', WA:'Washington', WI:'Wisconsin',
+  WV:'West Virginia', WY:'Wyoming',
+};
+
+const CELL_PX = 15; // kept for sitelab.jsx compat
+
+const GRID_URLS = [
+  'data/WA/grid_scores.geojson',
+  'data/OR/grid_scores.geojson',
+  'data/TX/grid_scores.geojson',
+  'data/CA/grid_scores.geojson',
+  'data/NV/grid_scores.geojson',
+  'data/UT/grid_scores.geojson',
+  'data/ID/grid_scores.geojson',
+  'data/MT/grid_scores.geojson',
+  'data/AZ/grid_scores.geojson',
+  'data/CO/grid_scores.geojson',
+  'data/WY/grid_scores.geojson',
+  'data/NM/grid_scores.geojson',
+  'data/ND/grid_scores.geojson',
+  'data/SD/grid_scores.geojson',
+  'data/NE/grid_scores.geojson',
+  'data/KS/grid_scores.geojson',
+  'data/OK/grid_scores.geojson',
+  'data/MN/grid_scores.geojson',
+  'data/IA/grid_scores.geojson',
+  'data/MO/grid_scores.geojson',
+  'data/AR/grid_scores.geojson',
+  'data/LA/grid_scores.geojson',
+  'data/MI/grid_scores.geojson',
+  'data/WI/grid_scores.geojson',
+  'data/IL/grid_scores.geojson',
+  'data/IN/grid_scores.geojson',
+  'data/KY/grid_scores.geojson',
+  'data/TN/grid_scores.geojson',
+  'data/MS/grid_scores.geojson',
+  'data/GA/grid_scores.geojson',
+  'data/OH/grid_scores.geojson',
+  'data/AL/grid_scores.geojson',
+  'data/FL/grid_scores.geojson',
+  'data/SC/grid_scores.geojson',
+  'data/NC/grid_scores.geojson',
+  'data/VA/grid_scores.geojson',
+  'data/WV/grid_scores.geojson',
+  'data/PA/grid_scores.geojson',
+  'data/NY/grid_scores.geojson',
+  'data/NJ/grid_scores.geojson',
+  'data/CT/grid_scores.geojson',
+  'data/RI/grid_scores.geojson',
+  'data/MA/grid_scores.geojson',
+  'data/VT/grid_scores.geojson',
+  'data/NH/grid_scores.geojson',
+  'data/ME/grid_scores.geojson',
+  'data/DE/grid_scores.geojson',
+  'data/MD/grid_scores.geojson',
+];
+let _gridCache = null;
+let _gridCachePromise = null;
+
+function loadGridCache() {
+  if (_gridCache) return Promise.resolve(_gridCache);
+  if (_gridCachePromise) return _gridCachePromise;
+  let fid = 0;
+  _gridCachePromise = Promise.all(GRID_URLS.map(url =>
+    fetch(url).then(r => r.json()).then(d => {
+      const st = url.split('/')[1];
+      d.features.forEach(f => { f.properties._state = st; f.properties._fid = fid++; });
+      return d;
+    })
+  )).then(datasets => {
+    const combined = { type: 'FeatureCollection', features: datasets.flatMap(d => d.features) };
+    _gridCache = combined;
+    _gridCachePromise = null;
+    return combined;
+  });
+  return _gridCachePromise;
+}
+
+function propsToInd(p, nat = false) {
+  const s = nat ? '_nat' : '';
+  return {
+    transmission:  p[`tx_score${s}`]            || 0,
+    water:         p[`water_score${s}`]          || 0,
+    community:     p[`ej_score${s}`]             || 0,
+    seismic:       p[`seismic_score${s}`]        || 0,
+    flood:         p[`flood_score${s}`]          || 0,
+    contamination: p[`contamination_score${s}`]  || 0,
+    waterway:      p[`waterway_score${s}`]       || 0,
+    geothermal:    p[`geothermal_score${s}`]     || 0,
+    flatness:      p[`flatness_score${s}`]       || 0,
+    aquifer:       p[`aquifer_score${s}`]        || 0,
+    soil:          p[`soil_score${s}`]           || 0,
+    slope:         p[`slope_score${s}`]          || 0,
+  };
+}
+
 
 function normalizeWeights(w, k, val) {
   const M = window.MERA;
@@ -15,68 +119,192 @@ function normalizeWeights(w, k, val) {
   return nw;
 }
 
-/* ── the WA suitability map ── */
-function WAMap({ weights, stateData = null, interactive = true, markers = true, recommended = true, pins = null, onPinClick = null, dimmed = false, highlight = null, style }) {
+/* ── Leaflet multi-state suitability map ── */
+function WAMap({ weights, selectedState = null, selectedCells = null, onCellToggle = null, stateData = null, interactive = true, markers = true, pins = null, onPinClick = null, dimmed = false, highlight = null, style }) {
   const M = window.MERA;
   const { ramp } = React.useContext(MeraCtx);
-  const S = stateData || { GRID: M.GRID, CLUSTERS: M.CLUSTERS, RECOMMENDED: M.RECOMMENDED, isWA: true, key: 'WA' };
-  const { cells, cols, rows, lonMin, latMax, D } = S.GRID;
-  const W = cols * CELL_PX, H = rows * CELL_PX;
+  const containerRef = React.useRef(null);
+  const mapRef = React.useRef(null);
+  const gridLayerRef = React.useRef(null);
+  const clusterLayerRef = React.useRef(null);
+  const pinLayerRef = React.useRef(null);
+  const weightsRef = React.useRef(weights);
+  const rampRef = React.useRef(ramp);
   const [hover, setHover] = React.useState(null);
-  const wrapRef = React.useRef(null);
+  const [mousePos, setMousePos] = React.useState({ x: 0, y: 0 });
 
-  const X = lon => (lon - lonMin) / D * CELL_PX;
-  const Y = lat => (latMax - lat) / D * CELL_PX;
+  const selectedStateRef = React.useRef(selectedState);
+  const selectedCellsRef = React.useRef(selectedCells);
+  const onCellToggleRef = React.useRef(onCellToggle);
+  selectedCellsRef.current = selectedCells;
+  onCellToggleRef.current = onCellToggle;
+  weightsRef.current = weights;
+  rampRef.current = ramp;
+  selectedStateRef.current = selectedState;
 
-  const rects = React.useMemo(() => cells.map(cell => {
-    const fill = cell.gate ? 'var(--gate)' : M.rampColor(M.composite(cell.ind, weights), ramp);
-    return <rect key={cell.id} x={cell.c * CELL_PX + 0.75} y={cell.r * CELL_PX + 0.75} width={CELL_PX - 1.5} height={CELL_PX - 1.5} rx="2" fill={fill} style={{ transition: 'fill .3s ease' }} />;
-  }), [weights, ramp, S.key]);
-
-  const gateGlyphs = React.useMemo(() => cells.filter(c => c.gate).map(cell => (
-    <g key={'g' + cell.id} transform={`translate(${cell.c * CELL_PX + CELL_PX / 2},${cell.r * CELL_PX + CELL_PX / 2})`} opacity="0.55">
-      {cell.gate === 'terrain'
-        ? <path d="M-3.5 2.5 L0 -3 L3.5 2.5 Z" fill="none" stroke="#999" strokeWidth="1" />
-        : <path d="M0 -3.2 L3 -1.8 V0.6 C3 2.4 1.6 3.4 0 3.8 C-1.6 3.4 -3 2.4 -3 0.6 V-1.8 Z" fill="none" stroke="#999" strokeWidth="1" />}
-    </g>
-  )), [S.key]);
-
-  function handleMove(e) {
-    if (!interactive) return;
-    const svg = e.currentTarget;
-    const box = svg.getBoundingClientRect();
-    const sx = (e.clientX - box.left) / box.width * W;
-    const sy = (e.clientY - box.top) / box.height * H;
-    const c = Math.floor(sx / CELL_PX), r = Math.floor(sy / CELL_PX);
-    const cell = cells.find(x => x.r === r && x.c === c);
-    if (!cell) { setHover(null); return; }
-    const wb = wrapRef.current.getBoundingClientRect();
-    setHover({ cell, px: e.clientX - wb.left, py: e.clientY - wb.top });
+  function cellStyle(p, w, r) {
+    const sel = selectedStateRef.current;
+    const nat = !sel;
+    if (sel && p._state !== sel) return { fillOpacity: 0, color: 'transparent', weight: 0, interactive: false };
+    const isSelected = selectedCellsRef.current && selectedCellsRef.current.has(p._fid);
+    if (p.protected_score === 0) return { fillColor: '#0d2b1a', fillOpacity: 0.88, color: isSelected ? '#fff' : 'transparent', weight: isSelected ? 2 : 0 };
+    const fill = M.rampColor(M.composite(propsToInd(p, nat), w), r);
+    if (isSelected) return { fillColor: fill, fillOpacity: 0.95, color: '#ffffff', weight: 2.5 };
+    return { fillColor: fill, fillOpacity: 0.72, color: 'transparent', weight: 0 };
   }
 
-  const tooltip = hover && (() => {
-    const cell = hover.cell;
-    const score = M.composite(cell.ind, weights);
-    const cl = cell.cluster ? { name: cell.cluster } : (S.isWA ? M.nearestCluster(cell.lat, cell.lon) : null);
-    const flipX = hover.px > (wrapRef.current ? wrapRef.current.clientWidth - 260 : 600);
-    const flipY = hover.py > (wrapRef.current ? wrapRef.current.clientHeight - 260 : 300);
+  function applyColors(w, r) {
+    if (!gridLayerRef.current) return;
+    gridLayerRef.current.eachLayer(lyr => lyr.setStyle(cellStyle(lyr.feature.properties, w, r)));
+  }
+
+  function applyMarkers() {
+    if (!clusterLayerRef.current) return;
+    clusterLayerRef.current.clearLayers();
+    if (!markers) return;
+    M.CLUSTERS.forEach(cl => {
+      const fill = cl.status === 'existing' ? '#e0e0f0' : 'none';
+      const stroke = cl.status === 'existing' ? '#e0e0f0' : '#888';
+      const icon = L.divIcon({
+        className: '',
+        html: `<svg width="16" height="16" viewBox="0 0 16 16" style="display:block"><rect x="3.5" y="3.5" width="9" height="9" transform="rotate(45 8 8)" fill="${fill}" stroke="${stroke}" stroke-width="1.8"/></svg>`,
+        iconSize: [16, 16],
+        iconAnchor: [8, 8],
+      });
+      L.marker([cl.lat, cl.lon], { icon, interactive: false }).addTo(clusterLayerRef.current);
+    });
+  }
+
+  function applyPins(w, r) {
+    if (!pinLayerRef.current) return;
+    pinLayerRef.current.clearLayers();
+    if (!pins) return;
+    pins.forEach(site => {
+      const m = L.circleMarker([site.lat, site.lon], {
+        radius: 9, color: '#fff', weight: 2,
+        fillColor: M.rampColor(site.composite, r), fillOpacity: 0.9,
+      });
+      if (onPinClick) m.on('click', () => onPinClick(site));
+      m.addTo(pinLayerRef.current);
+    });
+  }
+
+  // init Leaflet once
+  React.useEffect(() => {
+    if (!containerRef.current || mapRef.current) return;
+
+    const map = L.map(containerRef.current, {
+      center: [38.0, -112.0],
+      zoom: 5,
+      zoomControl: interactive,
+      dragging: interactive,
+      scrollWheelZoom: interactive,
+      doubleClickZoom: interactive,
+      boxZoom: false,
+      keyboard: false,
+      attributionControl: false,
+      touchZoom: interactive,
+    });
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 14,
+      subdomains: 'abcd',
+    }).addTo(map);
+
+    clusterLayerRef.current = L.layerGroup().addTo(map);
+    pinLayerRef.current     = L.layerGroup().addTo(map);
+    mapRef.current = map;
+
+    let cancelled = false;
+    const load = loadGridCache();
+
+    load.then(data => {
+      if (cancelled) return;
+      const layer = L.geoJSON(data, {
+        style: feat => cellStyle(feat.properties, weightsRef.current, rampRef.current),
+        onEachFeature: interactive ? (feat, lyr) => {
+          lyr.on('mouseover', () => setHover(feat.properties));
+          lyr.on('mouseout',  () => setHover(null));
+          lyr.on('click', () => {
+            if (onCellToggleRef.current) onCellToggleRef.current(feat.properties._fid, feat.properties);
+          });
+        } : undefined,
+      }).addTo(map);
+      gridLayerRef.current = layer;
+      applyColors(weightsRef.current, rampRef.current);
+      applyMarkers();
+    });
+
+    if (interactive) {
+      const el = containerRef.current;
+      const track = e => {
+        const rect = el.getBoundingClientRect();
+        setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+      };
+      el.addEventListener('mousemove', track);
+      return () => {
+        cancelled = true;
+        el.removeEventListener('mousemove', track);
+        map.remove();
+        mapRef.current = null;
+        gridLayerRef.current = null;
+      };
+    }
+
+    return () => {
+      cancelled = true;
+      map.remove();
+      mapRef.current = null;
+      gridLayerRef.current = null;
+    };
+  }, []);
+
+  React.useEffect(() => { applyColors(weights, ramp); }, [weights, ramp]);
+  React.useEffect(() => { applyColors(weightsRef.current, rampRef.current); }, [selectedCells]);
+  React.useEffect(() => { applyPins(weights, ramp);   }, [pins, ramp]);
+  React.useEffect(() => { applyMarkers();              }, [markers]);
+
+  React.useEffect(() => {
+    applyColors(weightsRef.current, rampRef.current);
+    if (!mapRef.current) return;
+    if (!selectedState) {
+      mapRef.current.setView([38.0, -97.0], 4);
+    } else if (_gridCache) {
+      const feats = _gridCache.features.filter(f => f.properties._state === selectedState);
+      if (feats.length > 0) {
+        const bounds = L.geoJSON({ type: 'FeatureCollection', features: feats }).getBounds();
+        mapRef.current.fitBounds(bounds, { padding: [24, 24] });
+      }
+    }
+  }, [selectedState]);
+
+  const tooltip = hover && interactive && (() => {
+    const p = hover;
+    const isGated = p.protected_score === 0;
+    const ind = propsToInd(p);
+    const score = M.composite(ind, weights);
+    const cw = containerRef.current ? containerRef.current.clientWidth  : 800;
+    const ch = containerRef.current ? containerRef.current.clientHeight : 480;
+    const flipX = mousePos.x > cw - 260;
+    const flipY = mousePos.y > ch - 270;
     return (
-      <div style={{ position: 'absolute', left: flipX ? hover.px - 252 : hover.px + 14, top: flipY ? hover.py - 248 : hover.py + 12, width: 238, background: '#fff', border: '1px solid var(--line)', borderRadius: 10, boxShadow: '0 8px 24px rgba(26,26,26,.18)', padding: '11px 13px', zIndex: 40, pointerEvents: 'none' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 2 }}>
-          <span className="microcopy">{Math.abs(cell.lat).toFixed(2)}N / {Math.abs(cell.lon).toFixed(2)}W</span>
-          {cl && <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--basalt)' }}>{cl.name}</span>}
+      <div style={{ position: 'absolute', left: flipX ? mousePos.x - 252 : mousePos.x + 14, top: flipY ? mousePos.y - 248 : mousePos.y + 12, width: 238, background: 'var(--mist)', border: '1px solid var(--line)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.55)', padding: '11px 13px', zIndex: 40, pointerEvents: 'none' }}>
+        <div style={{ marginBottom: 4 }}>
+          <span className="microcopy">{p.cell_id || ''}</span>
         </div>
-        {cell.gate ? (
+        {isGated ? (
           <div>
-            <div className="score-serif" style={{ fontSize: 26, color: 'var(--gate)' }}>gated</div>
-            <div style={{ fontSize: 12.5, color: 'var(--slate)' }}>{cell.gate === 'terrain' ? 'Hard gate: terrain — less than 3% of cell is flat.' : 'Hard gate: protected or sovereign land exceeds 25% of cell.'} Gates apply regardless of weights.</div>
+            <div className="score-serif" style={{ fontSize: 26, color: 'var(--slate)' }}>gated</div>
+            <div style={{ fontSize: 12.5, color: 'var(--slate)', marginTop: 4 }}>
+              Hard gate: protected or sovereign land exceeds 25%. Gate applies regardless of weights.
+            </div>
           </div>
         ) : (
           <div>
-            <div className="score-serif" style={{ fontSize: 30, lineHeight: 1.1, color: M.rampColor(score, ramp) === 'rgb(241,196,15)' ? 'var(--ink)' : M.rampColor(score, ramp) }}>{score.toFixed(3)}</div>
+            <div className="score-serif" style={{ fontSize: 30, lineHeight: 1.1, color: M.rampColor(score, ramp) }}>{score.toFixed(3)}</div>
             <div className="microcopy" style={{ marginBottom: 6 }}>composite suitability</div>
             <div style={{ display: 'grid', gap: 3 }}>
-              {M.INDICATORS.map(m => <BarRow key={m.k} label={m.label.replace(' proximity', '').replace(' availability', '').replace(' opportunity', '').replace(' sensitivity', '').replace(' distance', '').replace(' safety', ' safety')} value={cell.ind[m.k]} width={92} />)}
+              {M.INDICATORS.map(m => <BarRow key={m.k} label={m.label.replace(' proximity', '').replace(' availability', '').replace(' opportunity', '').replace(' sensitivity', '').replace(' distance', '')} value={ind[m.k]} width={92} />)}
             </div>
           </div>
         )}
@@ -85,34 +313,15 @@ function WAMap({ weights, stateData = null, interactive = true, markers = true, 
   })();
 
   return (
-    <div ref={wrapRef} style={{ position: 'relative', ...style }}>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', display: 'block', opacity: dimmed ? 0.85 : 1 }} onMouseMove={handleMove} onMouseLeave={() => setHover(null)} role="img" aria-label="Washington State suitability map">
-        {rects}
-        {gateGlyphs}
-        {highlight && S.isWA && (() => { const cell = M.cellAt(highlight.lat, highlight.lon); return cell ? <rect x={cell.c * CELL_PX - 1} y={cell.r * CELL_PX - 1} width={CELL_PX + 2} height={CELL_PX + 2} rx="3" fill="none" stroke="var(--basalt)" strokeWidth="2.5" /> : null; })()}
-        {markers && S.CLUSTERS.map(cl => (
-          <g key={cl.name} transform={`translate(${X(cl.lon)},${Y(cl.lat)})`}>
-            <rect x="-4.2" y="-4.2" width="8.4" height="8.4" transform="rotate(45)" fill={cl.status === 'existing' ? '#fff' : 'none'} stroke={cl.status === 'existing' ? '#1A1A1A' : '#fff'} strokeWidth="1.8" />
-          </g>
-        ))}
-        {markers && recommended && S.RECOMMENDED.map(rc => (
-          <circle key={rc.label} cx={X(rc.lon)} cy={Y(rc.lat)} r="8.5" fill="none" stroke="var(--cyan)" strokeWidth="2.4" />
-        ))}
-        {pins && pins.map(site => (
-          <g key={site.id} transform={`translate(${X(site.lon)},${Y(site.lat)})`} style={{ cursor: 'pointer' }} onClick={() => onPinClick && onPinClick(site)}>
-            <line x1="0" y1="0" x2="0" y2="-10" stroke="var(--ink)" strokeWidth="1.6" />
-            <circle cx="0" cy="-14" r="7.5" fill={M.rampColor(site.composite, ramp)} stroke="#fff" strokeWidth="2" />
-            <circle cx="0" cy="-14" r="2.4" fill="#fff" />
-          </g>
-        ))}
-      </svg>
+    <div style={{ position: 'relative', opacity: dimmed ? 0.85 : 1, ...style }}>
+      <div ref={containerRef} style={{ width: '100%', height: 480, isolation: 'isolate' }} />
       {tooltip}
     </div>
   );
 }
 
 /* ── legend ── */
-function MapLegend({ showMarkers = true }) {
+function MapLegend() {
   const M = window.MERA;
   const { ramp } = React.useContext(MeraCtx);
   const grad = `linear-gradient(to right, ${M.RAMPS[ramp].join(',')})`;
@@ -124,50 +333,43 @@ function MapLegend({ showMarkers = true }) {
         <span className="score-serif">1.0</span>
         <span>suitability</span>
       </span>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ width: 13, height: 13, borderRadius: 3, background: 'var(--gate)', display: 'inline-block' }}></span> hard-gated
-        <svg width="11" height="11" viewBox="0 0 10 10"><path d="M1 8.5 L5 1.5 L9 8.5 Z" fill="none" stroke="#666" strokeWidth="1.2" /></svg> terrain ·
-        <svg width="11" height="11" viewBox="0 0 10 10"><path d="M5 0.8 L8.6 2.4 V5 C8.6 7.2 6.9 8.5 5 9.2 C3.1 8.5 1.4 7.2 1.4 5 V2.4 Z" fill="none" stroke="#666" strokeWidth="1.2" /></svg> protected
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+        <span style={{ width: 13, height: 13, borderRadius: 3, background: '#0d2b1a', display: 'inline-block', border: '1px solid var(--line)' }}></span>
+        protected land
       </span>
-      {showMarkers && (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><svg width="12" height="12" viewBox="0 0 12 12"><rect x="2.4" y="2.4" width="7.2" height="7.2" transform="rotate(45 6 6)" fill="#fff" stroke="#1A1A1A" strokeWidth="1.4" /></svg> existing</span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><svg width="12" height="12" viewBox="0 0 12 12"><rect x="2.4" y="2.4" width="7.2" height="7.2" transform="rotate(45 6 6)" fill="none" stroke="#888" strokeWidth="1.4" /></svg> proposed</span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.4" fill="none" stroke="var(--cyan)" strokeWidth="1.8" /></svg> recommended ≥ 0.75</span>
-        </span>
-      )}
     </div>
   );
 }
 
-/* ── weight slider panel — the signature interaction ── */
+/* ── weight slider panel ── */
 function WeightPanel({ weights, setWeights, dock = false }) {
   const M = window.MERA;
   const [collapsed, setCollapsed] = React.useState(false);
   const [shareUrl, setShareUrl] = React.useState(null);
   const isDefault = M.INDICATORS.every(m => Math.abs(weights[m.k] - m.def) < 0.5);
+  const totalW = M.INDICATORS.reduce((s, m) => s + (weights[m.k] || 0), 0) || 1;
 
   function share() {
     const q = M.INDICATORS.map(m => Math.round(weights[m.k])).join(',');
     const url = location.origin + location.pathname + '#/explorer?w=' + q;
     setShareUrl(url);
-    try { navigator.clipboard.writeText(url); } catch (e) { /* iframe clipboard may be blocked */ }
+    try { navigator.clipboard.writeText(url); } catch (e) { /* */ }
   }
 
   return (
-    <div className={dock ? 'weight-dock' : ''} style={{ background: '#fff', border: '1px solid var(--line)', borderRadius: 12, width: dock ? undefined : 318, flexShrink: 0, overflow: 'hidden' }}>
-      <button onClick={() => setCollapsed(!collapsed)} style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--mist)', border: 'none', borderBottom: collapsed ? 'none' : '1px solid var(--line-soft)', padding: '11px 15px', fontSize: 13.5, fontWeight: 700, color: 'var(--evergreen)' }}>
+    <div className={dock ? 'weight-dock' : ''} style={{ background: 'var(--mist)', border: '1px solid var(--line)', borderRadius: 12, width: dock ? undefined : 318, flexShrink: 0, overflow: 'hidden' }}>
+      <button onClick={() => setCollapsed(!collapsed)} style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--sand)', border: 'none', borderBottom: collapsed ? 'none' : '1px solid var(--line-soft)', padding: '11px 15px', fontSize: 13.5, fontWeight: 700, color: 'var(--evergreen)' }}>
         <span style={{ display: 'inline-flex', gap: 7, alignItems: 'center' }}><Icon name="plumb" color="var(--evergreen)" /> Weight the indicators</span>
         <span style={{ color: 'var(--slate)', fontWeight: 400 }}>{collapsed ? '▴' : '▾'}</span>
       </button>
       {!collapsed && (
         <div style={{ padding: '12px 15px 14px' }}>
-          <p className="microcopy" style={{ margin: '0 0 8px' }}>Nine indicators, auto-normalized to 100%. The map recolors as you drag — same math for every user.</p>
+          <p className="microcopy" style={{ margin: '0 0 8px' }}>12 indicators, equal weight by default. Percentages show each indicator's share of the total. The map recolors as you drag.</p>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 11 }}>
             {[['Default', null],
               ['Builder lens', { transmission: 50, water: 20, community: 10, seismic: 5, flood: 5, contamination: 5, flatness: 5 }],
               ['Steward lens', { water: 40, community: 25, waterway: 15, contamination: 10, transmission: 10 }],
-              ['Net benefit', { geothermal: 25, water: 25, transmission: 20, community: 15, flatness: 15 }]].map(([name, o]) => (
+              ['Net benefit',  { geothermal: 25, water: 25, transmission: 20, community: 15, flatness: 15 }]].map(([name, o]) => (
               <button key={name} className="btn btn-quiet btn-xs" onClick={() => {
                 if (!o) { setWeights({ ...M.DEFAULT_WEIGHTS }); return; }
                 const w = {}; M.INDICATORS.forEach(m => { w[m.k] = o[m.k] || 0; });
@@ -180,10 +382,10 @@ function WeightPanel({ weights, setWeights, dock = false }) {
               <div key={m.k}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 2 }}>
                   <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', color: 'var(--ink)', fontWeight: 600 }}><Icon name={m.icon} color="var(--slate)" size={13} /> {m.label}</span>
-                  <span className="score-serif" style={{ color: weights[m.k] > 0.5 ? 'var(--basalt)' : 'var(--slate)', fontWeight: 600 }}>{Math.round(weights[m.k])}%</span>
+                  <span className="score-serif" style={{ color: weights[m.k] > 0.5 ? 'var(--basalt)' : 'var(--slate)', fontWeight: 600 }}>{Math.round(weights[m.k] / totalW * 100)}%</span>
                 </div>
                 <input className="mslider" type="range" min="0" max="100" step="1" value={Math.round(weights[m.k])} aria-label={m.label}
-                  onChange={e => setWeights(normalizeWeights(weights, m.k, +e.target.value))} />
+                  onChange={e => setWeights(prev => ({ ...prev, [m.k]: +e.target.value }))} />
               </div>
             ))}
           </div>
@@ -192,7 +394,7 @@ function WeightPanel({ weights, setWeights, dock = false }) {
               <span style={{ marginTop: 1 }}><Icon name="lock" color="var(--slate)" /></span>
               <div>
                 <b style={{ fontWeight: 700 }}>Hard gates are not sliders.</b><br />
-                Terrain gate: <span className="score-serif">61</span> cells excluded. Protected-land gate: <span className="score-serif">82</span> cells excluded. Gates apply regardless of weights.
+                Protected land and flood zone gates exclude cells regardless of weights.
               </div>
             </div>
           </div>
@@ -202,7 +404,7 @@ function WeightPanel({ weights, setWeights, dock = false }) {
           </div>
           {shareUrl && (
             <div style={{ marginTop: 8 }}>
-              <input readOnly value={shareUrl} onFocus={e => e.target.select()} style={{ width: '100%', fontSize: 11.5, padding: '5px 8px', border: '1px solid var(--line)', borderRadius: 6, color: 'var(--slate)', fontFamily: 'monospace' }} />
+              <input readOnly value={shareUrl} onFocus={e => e.target.select()} style={{ width: '100%', fontSize: 11.5, padding: '5px 8px', border: '1px solid var(--line)', borderRadius: 6, color: 'var(--slate)', fontFamily: 'monospace', background: 'var(--sand)' }} />
               <span className="microcopy">Copied to clipboard — anyone opening this link sees your weights.</span>
             </div>
           )}
@@ -225,10 +427,70 @@ function SiteThumb({ site, w = 116, h = 80 }) {
   return (
     <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ borderRadius: 7, display: 'block', flexShrink: 0 }} aria-hidden="true">
       {tiles}
-      <polygon points={`${w * 0.28},${h * 0.3} ${w * 0.72},${h * 0.22} ${w * 0.8},${h * 0.68} ${w * 0.38},${h * 0.78}`} fill="rgba(180,95,29,0.14)" stroke="var(--basalt)" strokeWidth="1.6" strokeDasharray="4 2.5" />
-      <circle cx={w * 0.54} cy={h * 0.5} r="3.2" fill="var(--basalt)" stroke="#fff" strokeWidth="1.2" />
+      <polygon points={`${w * 0.28},${h * 0.3} ${w * 0.72},${h * 0.22} ${w * 0.8},${h * 0.68} ${w * 0.38},${h * 0.78}`} fill="rgba(212,112,31,0.14)" stroke="var(--basalt)" strokeWidth="1.6" strokeDasharray="4 2.5" />
+      <circle cx={w * 0.54} cy={h * 0.5} r="3.2" fill="var(--basalt)" stroke="#0f0f1a" strokeWidth="1.2" />
     </svg>
   );
 }
 
-Object.assign(window, { WAMap, MapLegend, WeightPanel, SiteThumb, normalizeWeights, CELL_PX });
+/* ── national / state selector ── */
+function StateSelector({ selectedState, onChange, style }) {
+  const states = Object.keys(STATE_NAMES).sort();
+  return (
+    <select
+      value={selectedState || ''}
+      onChange={e => onChange(e.target.value || null)}
+      style={{ background: 'var(--mist)', border: '1px solid var(--line)', borderRadius: 7, color: 'var(--ink)', fontSize: 13, padding: '6px 10px', cursor: 'pointer', ...style }}
+    >
+      <option value=''>National — all states</option>
+      {states.map(st => (
+        <option key={st} value={st}>{STATE_NAMES[st]}</option>
+      ))}
+    </select>
+  );
+}
+
+function getStateFeatures(st) {
+  if (!_gridCache) return [];
+  return _gridCache.features.filter(f => f.properties._state === st);
+}
+
+function getFeaturesById(fids) {
+  if (!_gridCache) return [];
+  const s = fids instanceof Set ? fids : new Set(fids);
+  return _gridCache.features.filter(f => s.has(f.properties._fid));
+}
+
+var _centroids = null;
+function findNearestCell(lat, lon) {
+  if (!_gridCache) return null;
+  if (!_centroids) {
+    _centroids = _gridCache.features.map(function(f) {
+      var c = f.geometry.coordinates[0];
+      var cLat = c.reduce(function(s,p){return s+p[1];},0)/c.length;
+      var cLon = c.reduce(function(s,p){return s+p[0];},0)/c.length;
+      return { lat: cLat, lon: cLon, fid: f.properties._fid };
+    });
+  }
+  var best = null, bestD = Infinity;
+  for (var i = 0; i < _centroids.length; i++) {
+    var ct = _centroids[i];
+    var d = (lat - ct.lat)*(lat - ct.lat) + (lon - ct.lon)*(lon - ct.lon);
+    if (d < bestD) { bestD = d; best = ct; }
+  }
+  if (!best) return null;
+  var feat = _gridCache.features.find(function(f) { return f.properties._fid === best.fid; });
+  return { feature: feat, distDeg: Math.sqrt(bestD) };
+}
+
+function computeCellRank(composite, stateCode) {
+  if (!_gridCache) return null;
+  const M = window.MERA;
+  const stateFeats = _gridCache.features.filter(f => f.properties._state === stateCode);
+  if (!stateFeats.length) return null;
+  const scores = stateFeats.map(f => M.composite(propsToInd(f.properties, false), M.DEFAULT_WEIGHTS)).sort((a, b) => b - a);
+  const rank = scores.findIndex(s => s <= composite) + 1;
+  return { rank: rank > 0 ? rank : scores.length, total: scores.length };
+}
+
+Object.assign(window, { WAMap, MapLegend, WeightPanel, SiteThumb, StateSelector, normalizeWeights, CELL_PX, getStateFeatures, getFeaturesById, computeCellRank, findNearestCell, STATE_NAMES, propsToInd, loadGridCache });

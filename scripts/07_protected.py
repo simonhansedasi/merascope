@@ -14,6 +14,7 @@ Usage:
 
 import argparse
 import sys
+import time
 import warnings
 from pathlib import Path
 
@@ -50,14 +51,24 @@ def fetch_federal_lands(bbox_str, cache_path):
     features = []
     offset = 0
     while True:
-        r = requests.get(FED_LANDS_URL, params={
-            "where": f"Agency IN ({AGENCIES})",
-            "geometry": bbox_str, "geometryType": "esriGeometryEnvelope",
-            "spatialRel": "esriSpatialRelIntersects", "inSR": "4326",
-            "outFields": "Agency,unit_name", "returnGeometry": "true",
-            "f": "geojson", "resultRecordCount": 1000, "resultOffset": offset,
-        }, timeout=120)
-        r.raise_for_status()
+        for attempt in range(4):
+            try:
+                r = requests.get(FED_LANDS_URL, params={
+                    "where": f"Agency IN ({AGENCIES})",
+                    "geometry": bbox_str, "geometryType": "esriGeometryEnvelope",
+                    "spatialRel": "esriSpatialRelIntersects", "inSR": "4326",
+                    "outFields": "Agency,unit_name", "returnGeometry": "true",
+                    "f": "geojson", "resultRecordCount": 1000, "resultOffset": offset,
+                }, timeout=120)
+                r.raise_for_status()
+                break
+            except Exception as e:
+                if attempt < 3:
+                    print(f"    Federal lands attempt {attempt+1} failed ({e}); retrying...")
+                    time.sleep(2 ** attempt)
+                else:
+                    print(f"    Federal lands failed after 4 attempts; returning empty")
+                    return gpd.GeoDataFrame(columns=["Agency", "unit_name", "source", "geometry"], crs=CRS)
         batch = r.json().get("features", [])
         features.extend(batch)
         print(f"    {len(features)} federal land features...")
@@ -67,7 +78,8 @@ def fetch_federal_lands(bbox_str, cache_path):
     gdf = gpd.GeoDataFrame.from_features(features, crs=CRS)
     gdf = gdf[gdf.geometry.notna() & gdf.geometry.is_valid]
     gdf["source"] = "Esri Federal Lands"
-    gdf.to_file(cache_path, driver="GeoJSON")
+    if len(gdf) > 0:
+        gdf.to_file(cache_path, driver="GeoJSON")
     print(f"    Saved {len(gdf)} federal land polygons")
     return gdf
 
@@ -78,12 +90,22 @@ def fetch_tribal_lands(bbox_str, cache_path):
         if 'source' not in gdf.columns:
             gdf["source"] = "TIGER AIANNH"
         return gdf
-    r = requests.get(TIGER_URL, params={
-        "geometry": bbox_str, "geometryType": "esriGeometryEnvelope",
-        "spatialRel": "esriSpatialRelIntersects", "inSR": "4326",
-        "outFields": "NAME,AIANNHNS", "returnGeometry": "true", "f": "geojson",
-    }, timeout=60)
-    r.raise_for_status()
+    for attempt in range(4):
+        try:
+            r = requests.get(TIGER_URL, params={
+                "geometry": bbox_str, "geometryType": "esriGeometryEnvelope",
+                "spatialRel": "esriSpatialRelIntersects", "inSR": "4326",
+                "outFields": "NAME,AIANNHNS", "returnGeometry": "true", "f": "geojson",
+            }, timeout=60)
+            r.raise_for_status()
+            break
+        except Exception as e:
+            if attempt < 3:
+                print(f"    Tribal lands attempt {attempt+1} failed ({e}); retrying...")
+                time.sleep(2 ** attempt)
+            else:
+                print(f"    Tribal lands failed after 4 attempts; returning empty")
+                return gpd.GeoDataFrame(columns=["NAME", "source", "geometry"], crs=CRS)
     feats = r.json().get("features", [])
     if feats:
         gdf = gpd.GeoDataFrame.from_features(feats, crs=CRS)
@@ -91,7 +113,8 @@ def fetch_tribal_lands(bbox_str, cache_path):
     else:
         gdf = gpd.GeoDataFrame(columns=["NAME", "geometry"], crs=CRS)
     gdf["source"] = "TIGER AIANNH"
-    gdf.to_file(cache_path, driver="GeoJSON")
+    if len(gdf) > 0:
+        gdf.to_file(cache_path, driver="GeoJSON")
     print(f"    Saved {len(gdf)} tribal land polygons")
     return gdf
 
@@ -198,7 +221,7 @@ def main():
     n_gated = gated.sum()
     print(f"  {n_gated} cells gated ({n_gated/len(grid):.1%}); {(~gated).sum()} clear")
 
-    grid_out = grid.drop(columns=["protected_frac"], errors="ignore")
+    grid_out = grid
     grid_out.to_file(grid_path, driver="GeoJSON")
     print(f"\nSaved grid to {grid_path.name}")
 

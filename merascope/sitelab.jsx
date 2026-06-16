@@ -125,7 +125,7 @@ function SiteLabPage() {
             )}
           </svg>
           {hover && (
-            <div style={{ position: 'absolute', left: Math.min(hover.px + 16, (wrapRef.current ? wrapRef.current.clientWidth - 130 : 600)), top: hover.py - 14, background: '#fff', border: '1px solid var(--line)', borderRadius: 8, boxShadow: '0 4px 14px rgba(26,26,26,.18)', padding: '5px 11px', pointerEvents: 'none', zIndex: 30 }}>
+            <div style={{ position: 'absolute', left: Math.min(hover.px + 16, (wrapRef.current ? wrapRef.current.clientWidth - 130 : 600)), top: hover.py - 14, background: 'var(--mist)', border: '1px solid var(--line)', borderRadius: 8, boxShadow: '0 4px 14px rgba(0,0,0,.4)', padding: '5px 11px', pointerEvents: 'none', zIndex: 30 }}>
               {hover.valid
                 ? <span className="score-serif" style={{ fontSize: 17, color: M.rampColor(hover.score, ramp) }}>{hover.score.toFixed(3)}</span>
                 : <span style={{ fontSize: 12.5, fontWeight: 650, color: '#C0392B' }}>gated / off-map</span>}
@@ -148,7 +148,7 @@ function SiteLabPage() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 7, marginTop: 9 }}>
               {SL_PRESETS.map(p => (
                 <button key={p.name} onClick={() => { setPreset(p); setPlaced(null); }}
-                  style={{ border: '1.5px solid ' + (preset.name === p.name ? 'var(--basalt)' : 'var(--line)'), background: preset.name === p.name ? 'var(--sand)' : '#fff', borderRadius: 8, padding: '9px 6px', textAlign: 'center' }}>
+                  style={{ border: '1.5px solid ' + (preset.name === p.name ? 'var(--basalt)' : 'var(--line)'), background: preset.name === p.name ? 'var(--sand)' : 'var(--mist)', borderRadius: 8, padding: '9px 6px', textAlign: 'center' }}>
                   <span style={{ display: 'block', fontWeight: 700, fontSize: 13 }}>{p.name}</span>
                   <span className="microcopy" style={{ fontSize: 10.5 }}>{p.desc}</span>
                 </button>
@@ -186,7 +186,7 @@ function SiteLabPage() {
                 ) : (
                   <div style={{ display: 'grid', gap: 8, marginTop: 9 }}>
                     {suggestions.map((s, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 9, background: '#fff', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 11px' }}>
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 9, background: 'var(--sand)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 11px' }}>
                         <span style={{ width: 19, height: 19, borderRadius: '50%', background: 'var(--cyan)', color: '#fff', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</span>
                         <span style={{ fontSize: 13 }}><span className="score-serif" style={{ fontWeight: 700 }}>{s.s.toFixed(3)}</span> <span style={{ color: 'var(--lo-tx)', fontWeight: 650 }}>(+{(s.s - placedScore).toFixed(2)})</span> · {s.km} km {s.dir}</span>
                         <button className="btn btn-ghost btn-xs" style={{ marginLeft: 'auto' }} onClick={() => moveTo(s)}>Move here</button>

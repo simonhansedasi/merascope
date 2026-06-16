@@ -43,7 +43,7 @@ function TrackerPopup() {
   const dW = useCountUp(totWater, 300), dC = useCountUp(totCO2, 300), dR = useCountUp(totReq, 300);
 
   return (
-    <div style={{ width: 348, background: '#fff', border: '1px solid var(--line)', borderRadius: 14, boxShadow: '0 14px 44px rgba(26,26,26,.20)', overflow: 'hidden' }}>
+    <div style={{ width: 348, background: 'var(--mist)', border: '1px solid var(--line)', borderRadius: 14, boxShadow: '0 14px 44px rgba(0,0,0,.5)', overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '11px 15px', background: 'var(--evergreen)', color: '#fff' }}>
         <Glyph size={20} tone="#fff" accent="var(--basalt)" />
         <b style={{ fontSize: 13.5, letterSpacing: '.03em' }}>Token Tracker</b>

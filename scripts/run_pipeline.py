@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
 """
-run_pipeline.py — Master script: runs all 7 siting analysis scripts in sequence.
+run_pipeline.py — Master script: runs all 10 siting analysis scripts in sequence.
 
 Usage:
   python run_pipeline.py WA
-  python run_pipeline.py OR --deploy       # run then show rsync reminder for DO deploy
   python run_pipeline.py TX --start 03     # resume from script 03 onward
   python run_pipeline.py CA --only 06 07   # run only specific scripts
 
-Output: data/{STATE}/grid_scores.geojson (all 10 score columns)
+IMPORTANT: call this script with the GrapeExpectations conda Python directly.
+Do NOT use conda run (output buffering bug). Example:
+  /home/simonhans/anaconda3/envs/GrapeExpectations/bin/python3 -u scripts/run_pipeline.py WA
+
+Output: data/{STATE}/grid_scores.geojson (16 score columns + raw physical values)
+
+Note: delete SRTM tiles after step 06 to free disk:
+  rm -rf data/{STATE}/raw/srtm_tiles/
 """
 
 import argparse
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -20,13 +25,16 @@ from pathlib import Path
 SCRIPTS_DIR = Path(__file__).parent
 
 PIPELINE = [
-    ("01", "01_basemap.py",    "State boundary, OSM data centers + transmission, EIA plants"),
-    ("02", "02_indicators.py", "Fishnet grid + tx_score, water_score, ej_score"),
-    ("03", "03_risk.py",       "seismic_score, flood_score"),
-    ("04", "04_environment.py","contamination_score, waterway_score"),
-    ("05", "05_geothermal.py", "geothermal_score"),
-    ("06", "06_terrain.py",    "flatness_score (SRTM1 hard gate)"),
-    ("07", "07_protected.py",  "protected_score (federal + tribal hard gate)"),
+    ("01", "01_basemap.py",      "State boundary, OSM data centers + transmission, EIA plants"),
+    ("02", "02_indicators.py",   "Fishnet grid + tx_score, water_score (PRISM), ej_score, pop_exposure_score"),
+    ("03", "03_risk.py",         "seismic_score, flood_score"),
+    ("04", "04_environment.py",  "contamination_score, waterway_score"),
+    ("05", "05_geothermal.py",   "geothermal_score (IHFC heat flow)"),
+    ("06", "06_terrain.py",      "flatness_score, slope_score (SRTM1 tiled; delete tiles after)"),
+    ("07", "07_protected.py",    "protected_score (federal + tribal hard gate)"),
+    ("08", "08_aquifer.py",      "aquifer_score (USGS NWIS depth to water)"),
+    ("09", "09_soil.py",         "soil_score (SSURGO hydrologic group)"),
+    ("10", "10_soilprofile.py",  "soil_profile_score, ksat_score (SSURGO horizons)"),
 ]
 
 
@@ -52,7 +60,7 @@ Examples:
     )
     parser.add_argument("state", help="Two-letter state abbreviation (e.g. WA, OR, TX)")
     parser.add_argument("--deploy", action="store_true",
-                        help="Copy grid_scores.geojson to static/ after completion")
+                        help="Print rsync reminder after completion")
     parser.add_argument("--start", metavar="NN", default="01",
                         help="Start from this step number (e.g. 03 to resume)")
     parser.add_argument("--only", nargs="+", metavar="NN",
@@ -86,18 +94,22 @@ Examples:
             print("Pipeline halted. Fix the error and re-run with --start", step_id)
             sys.exit(rc)
 
-    # Deploy reminder: Flask reads from data/{STATE}/ directly; rsync to DO to publish
     if args.deploy:
         project_root = SCRIPTS_DIR.parent
-        print(f"\nDeploy reminder — rsync data/{state_abbr}/ to DO:")
-        print(f"  rsync -av --exclude='srtm_tiles' {project_root}/data/{state_abbr}/ "
-              f"root@<DO_IP>:/path/to/datacenter_siting/data/{state_abbr}/")
-        print("  Then restart: ssh root@<DO_IP> 'systemctl restart datacenters'")
+        print(f"\nDeploy reminder — rsync data/{state_abbr}/ to server:")
+        print(f"  rsync -av --exclude='srtm_tiles/' {project_root}/data/{state_abbr}/ "
+              f"root@<SERVER>:/path/to/merascope/data/{state_abbr}/")
+        print(f"\nAlso add to merascope/map.jsx GRID_URLS:")
+        print(f"  'data/{state_abbr}/grid_scores.geojson',")
 
     print(f"\n{'='*60}")
     print(f"  Pipeline complete for {state_abbr}.")
     grid_path_display = SCRIPTS_DIR.parent / "data" / state_abbr / "grid_scores.geojson"
     print(f"  Output: {grid_path_display}")
+    print(f"\n  Remember: delete SRTM tiles if not already done:")
+    print(f"  rm -rf data/{state_abbr}/raw/srtm_tiles/")
+    print(f"\n  Add to merascope/map.jsx GRID_URLS:")
+    print(f"  'data/{state_abbr}/grid_scores.geojson',")
     print(f"{'='*60}\n")
 
 
