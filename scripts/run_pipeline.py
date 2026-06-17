@@ -115,16 +115,16 @@ Examples:
         print(f"\nDeploy reminder — rsync data/{state_abbr}/ to server:")
         print(f"  rsync -av --exclude='srtm_tiles/' {project_root}/data/{state_abbr}/ "
               f"root@<SERVER>:/path/to/merascope/data/{state_abbr}/")
-        print(f"\nAlso add to merascope/map.jsx GRID_URLS:")
+        print("\nAlso add to merascope/map.jsx GRID_URLS:")
         print(f"  'data/{state_abbr}/grid_scores.geojson',")
 
     print(f"\n{'='*60}")
     print(f"  Pipeline complete for {state_abbr}.")
     grid_path_display = SCRIPTS_DIR.parent / "data" / state_abbr / "grid_scores.geojson"
     print(f"  Output: {grid_path_display}")
-    print(f"\n  Remember: delete SRTM tiles if not already done:")
+    print("\n  Remember: delete SRTM tiles if not already done:")
     print(f"  rm -rf data/{state_abbr}/raw/srtm_tiles/")
-    print(f"\n  Add to merascope/map.jsx GRID_URLS:")
+    print("\n  Add to merascope/map.jsx GRID_URLS:")
     print(f"  'data/{state_abbr}/grid_scores.geojson',")
     print(f"{'='*60}\n")
 
