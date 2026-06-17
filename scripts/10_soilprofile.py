@@ -22,11 +22,11 @@ Rationale: Tom's observation — soil column flags (lime, fast permeability, no 
 determine whether a datacenter spill reaches groundwater. High score = clean column.
 
 Usage:
-  conda activate GrapeExpectations
+  conda activate merascope
   python 10_soilprofile.py WA
 
   With ZCTA subdir:
-  DC_SUBDIR=zcta conda run -n GrapeExpectations python scripts/10_soilprofile.py WA
+  DC_SUBDIR=zcta conda run -n merascope python scripts/10_soilprofile.py WA
 """
 
 import argparse

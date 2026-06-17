@@ -11,26 +11,31 @@ fishnet grid on 16 indicators (plus raw physical values), and writes
 
 ### 1. Python environment
 
-The active environment is `GrapeExpectations` (Python 3.7, geopandas 0.10.x). Use its
+The active environment is `merascope` (Python 3.7, geopandas 0.10.x). Use its
 absolute Python path directly — **do not use `conda run`** (buffering bug causes output to
 appear only after the script exits, making long steps silent):
 
 ```bash
 # Good
-/home/simonhans/anaconda3/envs/GrapeExpectations/bin/python3 -u scripts/02_indicators.py WA
+/home/simonhans/anaconda3/envs/merascope/bin/python3 -u scripts/02_indicators.py WA
 
 # Bad — output buffered until exit
-conda run -n GrapeExpectations python scripts/02_indicators.py WA
+conda run -n merascope python scripts/02_indicators.py WA
 ```
 
 Set a shell variable for convenience:
 
 ```bash
-PYTHON=/home/simonhans/anaconda3/envs/GrapeExpectations/bin/python3
+PYTHON=/home/simonhans/anaconda3/envs/merascope/bin/python3
 ```
 
-Note: `environment.yml` in the repo is a stale copy from the predecessor project
-(`datacenter_siting`). Do not try to recreate the env from it.
+To create the environment on a new machine, use `setup_env.sh` rather than `conda env create` directly:
+
+```bash
+bash setup_env.sh
+```
+
+`conda env create -f environment.yml` fails on conda <= 4.8.x due to a bug in the conflict resolver (`TypeError: sequence item 0: expected str instance, Channel found` in `match_spec.py`). This was fixed in conda 4.9.0. The setup script works around this by cloning an existing working environment when available. If no clone source exists and you are on conda <= 4.8.x, upgrade first: `conda update -n base conda`.
 
 ### 2. Census API key (required for step 02)
 

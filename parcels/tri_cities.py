@@ -23,7 +23,7 @@ Output:
   data/WA/parcels/tri_cities_web.geojson       — all viable, simplified for map
 
 Usage:
-  conda activate GrapeExpectations
+  conda activate merascope
   python parcels/tri_cities.py
 """
 

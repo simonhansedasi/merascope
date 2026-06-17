@@ -9,7 +9,7 @@ columns (state scores are unchanged).
 Binary gates (flood_score, protected_score) stay binary — not re-ranked.
 
 Usage:
-  /home/simonhans/anaconda3/envs/GrapeExpectations/bin/python3 -u scripts/normalize_national.py
+  /home/simonhans/anaconda3/envs/merascope/bin/python3 -u scripts/normalize_national.py
 """
 
 import json

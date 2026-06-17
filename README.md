@@ -15,7 +15,7 @@ Same Score Promise: methodology is public and identical for all users. No party 
 
 ```bash
 # Activate the pipeline environment (Python 3.7, geopandas 0.10.x)
-conda activate GrapeExpectations
+conda activate merascope
 
 # Run a single state end-to-end
 python -u scripts/run_pipeline.py WA

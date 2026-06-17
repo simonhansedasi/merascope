@@ -10,7 +10,7 @@ Raw data (precip cache, transmission, state boundary) is shared with the fishnet
 If the fishnet pipeline has already run for this state, step 02 is the only cold fetch.
 
 Usage:
-  conda activate GrapeExpectations
+  conda activate merascope
   python zcta/run_zcta_study.py WA
   python zcta/run_zcta_study.py WA --start 03   # resume after step 02
 """

@@ -1,4 +1,8 @@
 name: merascope
+# NOTE: conda env create -f environment.yml fails on conda <= 4.8.x due to a bug
+# in the conflict resolver (TypeError in match_spec.py). conda >= 4.9.0 fixes it.
+# Use setup_env.sh instead, which clones a working environment when available,
+# or upgrade conda first: conda update -n base conda
 channels:
   - conda-forge
   - defaults

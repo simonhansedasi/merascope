@@ -7,9 +7,9 @@ Usage:
   python run_pipeline.py TX --start 03     # resume from script 03 onward
   python run_pipeline.py CA --only 06 07   # run only specific scripts
 
-IMPORTANT: call this script with the GrapeExpectations conda Python directly.
+IMPORTANT: call this script with the merascope conda Python directly.
 Do NOT use conda run (output buffering bug). Example:
-  /home/simonhans/anaconda3/envs/GrapeExpectations/bin/python3 -u scripts/run_pipeline.py WA
+  /home/simonhans/anaconda3/envs/merascope/bin/python3 -u scripts/run_pipeline.py WA
 
 Output: data/{STATE}/grid_scores.geojson (16 score columns + raw physical values)
 

@@ -20,7 +20,7 @@ Output:
   data/WA/parcels/grant_county_top50.csv         — top 50 by composite score
 
 Usage:
-  conda activate GrapeExpectations
+  conda activate merascope
   python parcels/grant_county.py
 """
 
