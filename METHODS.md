@@ -134,12 +134,28 @@ All indicator scores are 0–1. Composite suitability = user-weighted sum:
 S = Σ wᵢ × scoreᵢ,   Σ wᵢ = 1
 ```
 
-Default preset weights are defined for three stakeholder profiles:
-- **Developer** — emphasizes grid access, water, flatness
-- **Agency/Permitter** — emphasizes EJ, flood safety, contamination, protected lands
-- **Community** — derived from live public survey (Borda count aggregation)
+Three preset weight profiles are available in the Explorer weight panel alongside the default equal-weight baseline. Unspecified indicators receive weight 0 under a preset; percentages are normalized shares of the total weight assigned.
 
-Hard-gated cells (flatness_score = 0 or protected_score = 0) are excluded from top-site rankings regardless of composite score.
+| Indicator | Default | Builder lens | Steward lens | Net benefit |
+|---|---|---|---|---|
+| Transmission proximity | 8.3% | 50% | 10% | 20% |
+| Water availability | 8.3% | 20% | 40% | 25% |
+| Community burden | 8.3% | 10% | 25% | 15% |
+| Seismic safety | 8.3% | 5% | 0% | 0% |
+| Flood safety | 8.3% | 5% | 0% | 0% |
+| Contamination distance | 8.3% | 5% | 10% | 0% |
+| Waterway sensitivity | 8.3% | 0% | 15% | 0% |
+| Geothermal opportunity | 8.3% | 0% | 0% | 25% |
+| Terrain flatness | 8.3% | 5% | 0% | 15% |
+| Aquifer depth | 8.3% | 0% | 0% | 0% |
+| Soil suitability | 8.3% | 0% | 0% | 0% |
+| Slope suitability | 8.3% | 0% | 0% | 0% |
+
+Preset rationale: Builder lens prioritizes transmission and water access — the cost-driving physical constraints for a developer. Steward lens emphasizes community burden, waterway sensitivity, and contamination distance — the indicators most likely to trigger regulatory scrutiny or mitigation conditions. Net benefit weights geothermal opportunity and water availability alongside transmission and flatness, reflecting a co-benefit framing where heat reuse and low water consumption are positive externalities rather than neutral.
+
+These values are defined in `merascope/map.jsx` (WeightPanel component) and applied client-side via normalized weighted sum. Any user can inspect or modify them through the weight sliders; presets are convenience starting points, not locked configurations.
+
+Hard-gated cells (protected_score = 0 or flood_score = 0) receive composite = 0 regardless of weight configuration.
 
 ---
 
@@ -154,7 +170,7 @@ w_raw(k) = mean_borda(k) / (1 + stdev_borda(k))
 w(k) = w_raw(k) / Σ w_raw
 ```
 
-Variance discounting reduces the influence of indicators with high disagreement among respondents — an operationalization of the principle that unanimously prioritized concerns should dominate contested ones (Borda, 1781).
+The base rank-to-points conversion follows de Borda (1781). Variance discounting — dividing by `(1 + stdev_borda(k))` before normalizing — is an in-house methodological choice not found in the original formulation; it reduces the influence of contested indicators on the premise that unanimous priorities should carry more weight than those with high respondent disagreement.
 
 One response per IP address; ZIP code entry cross-referenced against study area ZCTAs to confirm residency. IP addresses stored as SHA-256 hashes.
 

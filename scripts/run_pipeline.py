@@ -94,6 +94,22 @@ Examples:
             print("Pipeline halted. Fix the error and re-run with --start", step_id)
             sys.exit(rc)
 
+    # Always retrofit raw physical-value columns after a full run.
+    # patch_raws.py is idempotent: it skips columns already present.
+    # Skip only when the user ran a partial subset (--only or --start > 01).
+    is_full_run = not args.only and args.start == "01"
+    if is_full_run:
+        print(f"\n{'─'*60}")
+        print(f"  Post-processing: patch_raws.py {state_abbr}")
+        print(f"{'─'*60}")
+        rc = subprocess.run(
+            [sys.executable, str(SCRIPTS_DIR / "patch_raws.py"), state_abbr],
+            check=False,
+        ).returncode
+        if rc != 0:
+            print(f"\nWARNING: patch_raws.py exited with code {rc}.")
+            print("Raw physical-value columns may be incomplete.")
+
     if args.deploy:
         project_root = SCRIPTS_DIR.parent
         print(f"\nDeploy reminder — rsync data/{state_abbr}/ to server:")

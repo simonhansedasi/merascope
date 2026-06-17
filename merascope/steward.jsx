@@ -52,14 +52,86 @@ function CaseCard({ k }) {
 function DocketPage() {
   const M = window.MERA;
   const loading = useFakeLoad(700);
+  const [dynamicCases, setDynamicCases] = React.useState([]);
+  const [showNewCase, setShowNewCase] = React.useState(false);
+  const [newDraft, setNewDraft] = React.useState({ site: '', applicant: '', score: 0.5 });
+  const [stageOverrides, setStageOverrides] = React.useState({});
+
+  React.useEffect(() => {
+    fetch('/api/cases').then(r => r.json()).then(rows => {
+      setDynamicCases(rows.map(c => ({
+        id: c.case_id, site: c.site, applicant: c.applicant,
+        score: c.score, stage: c.stage || 'Application',
+        dot: '#888', days: c.days || 0, parties: [], resolution: null
+      })));
+    });
+    const detailIds = Object.keys(M.CASE_DETAIL_MAP || {});
+    Promise.all(detailIds.map(cid =>
+      fetch('/api/case/' + cid + '/stage').then(r => r.json()).then(s => [cid, s])
+    )).then(pairs => {
+      const map = {};
+      pairs.forEach(function(p) { if (p[1]) map[p[0]] = p[1]; });
+      setStageOverrides(map);
+    });
+  }, []);
+
+  const createCase = () => {
+    if (!newDraft.site.trim() || !newDraft.applicant.trim()) return;
+    fetch('/api/cases', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newDraft)
+    }).then(r => r.json()).then(res => {
+      if (!res.ok) return;
+      setDynamicCases(prev => [...prev, {
+        id: res.case_id, site: newDraft.site, applicant: newDraft.applicant,
+        score: newDraft.score, stage: 'Application', dot: '#888', days: 0, parties: [], resolution: null
+      }]);
+      setNewDraft({ site: '', applicant: '', score: 0.5 });
+      setShowNewCase(false);
+    });
+  };
+
+  const allCases = [
+    ...M.CASES.map(c => stageOverrides[c.id] ? Object.assign({}, c, { stage: stageOverrides[c.id] }) : c),
+    ...dynamicCases
+  ];
+
   return (
     <div style={{ maxWidth: 1340, margin: '0 auto', padding: '22px 24px 50px' }} data-screen-label="Steward — Docket">
+      {showNewCase && (
+        <div onClick={() => setShowNewCase(false)}
+          style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 800, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: 'var(--mist)', borderRadius: 12, padding: '22px 24px', width: 420, maxWidth: '100%', boxShadow: '0 8px 40px rgba(0,0,0,0.5)', border: '1px solid var(--line)' }}>
+            <b style={{ fontSize: 16 }}>New case file</b>
+            <div style={{ display: 'grid', gap: 10, marginTop: 16 }}>
+              <input placeholder="Site name" value={newDraft.site}
+                onChange={e => setNewDraft(d => Object.assign({}, d, { site: e.target.value }))}
+                style={{ padding: '8px 11px', borderRadius: 7, border: '1px solid var(--line)', background: 'var(--sand)', color: 'inherit', fontSize: 13, fontFamily: 'inherit' }} />
+              <input placeholder="Applicant" value={newDraft.applicant}
+                onChange={e => setNewDraft(d => Object.assign({}, d, { applicant: e.target.value }))}
+                style={{ padding: '8px 11px', borderRadius: 7, border: '1px solid var(--line)', background: 'var(--sand)', color: 'inherit', fontSize: 13, fontFamily: 'inherit' }} />
+              <div>
+                <div style={{ fontSize: 12, color: 'var(--slate)', marginBottom: 4 }}>Site composite score: <span className="score-serif">{newDraft.score.toFixed(3)}</span></div>
+                <input type="range" min="0" max="1" step="0.001" value={newDraft.score}
+                  onChange={e => setNewDraft(d => Object.assign({}, d, { score: parseFloat(e.target.value) }))}
+                  style={{ width: '100%' }} />
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                <button className="btn btn-primary btn-sm" onClick={createCase}>Create case</button>
+                <button className="btn btn-quiet btn-sm" onClick={() => setShowNewCase(false)}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <StewardSubNav active="docket" />
-      <PageHead title="The Docket" sub={<span><span className="score-serif">{M.CASES.length}</span> active case files · Dept. of Ecology — reviewer view · all findings versioned on one evidence base.</span>}
-        right={<React.Fragment><button className="btn btn-ghost btn-sm">New case file</button><PromiseBadge /></React.Fragment>} />
+      <PageHead title="The Docket" sub={<span><span className="score-serif">{allCases.length}</span> active case files · Dept. of Ecology — reviewer view · all findings versioned on one evidence base.</span>}
+        right={<React.Fragment><button className="btn btn-ghost btn-sm" onClick={() => setShowNewCase(true)}>New case file</button><PromiseBadge /></React.Fragment>} />
       <div className="kanban">
         {M.STAGES.map(stage => {
-          const cards = M.CASES.filter(c => c.stage === stage);
+          const cards = allCases.filter(c => c.stage === stage);
           return (
             <div key={stage} className="kcol">
               <h4>{stage} <span className="score-serif" style={{ color: 'var(--slate)' }}>{cards.length}</span></h4>
@@ -75,14 +147,15 @@ function DocketPage() {
 }
 
 /* ── full case file ── */
-function StageStepper({ current }) {
+function StageStepper({ current, onStageClick }) {
   const M = window.MERA;
   const idx = M.STAGES.indexOf(current);
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 0, flexWrap: 'wrap', margin: '10px 0 2px' }}>
       {M.STAGES.map((s, i) => (
         <React.Fragment key={s}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 700, color: i === idx ? 'var(--basalt)' : i < idx ? 'var(--evergreen)' : 'var(--slate)', whiteSpace: 'nowrap' }}>
+          <span onClick={() => onStageClick && onStageClick(s)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 700, color: i === idx ? 'var(--basalt)' : i < idx ? 'var(--evergreen)' : 'var(--slate)', whiteSpace: 'nowrap', cursor: onStageClick ? 'pointer' : 'default' }}>
             <span style={{ width: 9, height: 9, borderRadius: '50%', background: i === idx ? 'var(--basalt)' : i < idx ? 'var(--evergreen)' : 'var(--line)', display: 'inline-block' }}></span>
             {s}
           </span>
@@ -110,41 +183,137 @@ function CaseFilePage({ id }) {
     return found ? found.name : partyKey;
   })();
 
-  const [conditions, setConditions] = React.useState(C.conditions);
+  const [conditions, setConditions] = React.useState([]);
   const [showForm, setShowForm] = React.useState(false);
   const [draft, setDraft] = React.useState({ text: '', type: 'Water' });
   const [toast, setToast] = React.useState(null);
   const [showInvite, setShowInvite] = React.useState(false);
   const [dirSearch, setDirSearch] = React.useState('');
   const [dirType, setDirType] = React.useState('all');
-  const [sessionInvited, setSessionInvited] = React.useState([]);
-
-  React.useEffect(() => {
-    setConditions(C.conditions);
-    setShowForm(false);
-    setDraft({ text: '', type: 'Water' });
-  }, [id]);
+  const [serverInvited, setServerInvited] = React.useState([]);
+  const [serverDocs, setServerDocs] = React.useState([]);
+  const [deadline, setDeadline] = React.useState(null);
+  const fileInputRef = React.useRef(null);
+  const [caseStage, setCaseStage] = React.useState(C.stage);
+  const [serverRebuttals, setServerRebuttals] = React.useState([]);
 
   const notify = msg => { setToast(msg); };
+
+  const refreshDocs = () =>
+    fetch('/api/case/' + id + '/docs').then(r => r.json()).then(setServerDocs);
+
+  const uploadDoc = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append('file', file);
+    fetch('/api/case/' + id + '/docs', { method: 'POST', body: fd })
+      .then(r => r.json())
+      .then(() => { refreshDocs(); notify('Document uploaded'); });
+    e.target.value = '';
+  };
+
+  const setRebuttalDeadline = due => {
+    fetch('/api/case/' + id + '/deadline', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ due_date: due, cycle: deadline ? deadline.cycle : 1, max_cycles: 3 })
+    }).then(() =>
+      fetch('/api/case/' + id + '/deadline').then(r => r.json()).then(d => { if (d) setDeadline(d); })
+    );
+  };
+
+  const advanceStage = stage => {
+    fetch('/api/case/' + id + '/stage', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stage })
+    });
+    setCaseStage(stage);
+    notify('Stage updated to ' + stage);
+  };
+
+  React.useEffect(() => {
+    setShowForm(false);
+    setDraft({ text: '', type: 'Water' });
+    setServerInvited([]);
+    setServerDocs([]);
+    setDeadline(null);
+    setCaseStage(C.stage);
+    setServerRebuttals([]);
+
+    fetch('/api/case/' + id + '/conditions')
+      .then(r => r.json())
+      .then(list => {
+        if (list.length === 0 && C.conditions.length > 0) {
+          return Promise.all(C.conditions.map(c =>
+            fetch('/api/case/' + id + '/conditions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                text: c.text, by: c.by, type: c.type, status: c.status,
+                submitted_by_role: c.submittedByRole || 'lead',
+                pending_approval: c.pendingApproval ? 1 : 0
+              })
+            }).then(r => r.json())
+          )).then(results =>
+            C.conditions.map((c, i) => Object.assign({}, c, { id: results[i].id, pendingApproval: !!c.pendingApproval }))
+          );
+        }
+        return list.map(r => Object.assign({}, r, { pendingApproval: !!r.pending_approval }));
+      })
+      .then(setConditions);
+
+    fetch('/api/case/' + id + '/invites').then(r => r.json()).then(setServerInvited);
+    fetch('/api/case/' + id + '/docs').then(r => r.json()).then(setServerDocs);
+    fetch('/api/case/' + id + '/deadline').then(r => r.json()).then(d => { if (d) setDeadline(d); });
+    fetch('/api/case/' + id + '/stage').then(r => r.json()).then(s => { if (s) setCaseStage(s); });
+    fetch('/api/case/' + id + '/rebuttals').then(r => r.json()).then(setServerRebuttals);
+  }, [id]);
 
   const submitCondition = () => {
     if (!draft.text.trim()) return;
     const by = isCoParty ? (partyName || 'Co-party') : 'Dept. of Ecology';
-    const newCond = { text: draft.text.trim(), by, type: draft.type, status: 'Proposed', submittedByRole: isCoParty ? 'co-party' : 'lead', pendingApproval: isCoParty };
-    setConditions(prev => [...prev, newCond]);
-    setDraft({ text: '', type: 'Water' });
-    setShowForm(false);
-    notify(isCoParty ? 'Sent to lead agency for review' : 'Co-parties notified');
+    const payload = {
+      text: draft.text.trim(), by, type: draft.type, status: 'Proposed',
+      submitted_by_role: isCoParty ? 'co-party' : 'lead',
+      pending_approval: isCoParty ? 1 : 0
+    };
+    fetch('/api/case/' + id + '/conditions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(r => r.json()).then(res => {
+      setConditions(prev => [...prev, Object.assign({}, payload, { id: res.id, pendingApproval: isCoParty })]);
+      setDraft({ text: '', type: 'Water' });
+      setShowForm(false);
+      notify(isCoParty ? 'Sent to lead agency for review' : 'Co-parties notified');
+    });
   };
 
-  const approvePending = (idx) => {
-    setConditions(prev => prev.map((c, i) => i === idx ? Object.assign({}, c, { pendingApproval: false, status: 'Proposed' }) : c));
+  const approvePending = (condId) => {
+    fetch('/api/case/' + id + '/conditions/' + condId, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ approve: true })
+    });
+    setConditions(prev => prev.map(c => c.id === condId ? Object.assign({}, c, { pendingApproval: false, status: 'Proposed' }) : c));
     notify('Condition approved — co-parties notified');
   };
 
-  const rejectPending = (idx) => {
-    setConditions(prev => prev.filter((_, i) => i !== idx));
+  const rejectPending = (condId) => {
+    fetch('/api/case/' + id + '/conditions/' + condId, { method: 'DELETE' });
+    setConditions(prev => prev.filter(c => c.id !== condId));
     notify('Condition returned to co-party');
+  };
+
+  const changeStatus = (condId, status) => {
+    fetch('/api/case/' + id + '/conditions/' + condId, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    });
+    setConditions(prev => prev.map(c => c.id === condId ? Object.assign({}, c, { status }) : c));
   };
 
   const exportConditions = () => {
@@ -179,10 +348,15 @@ function CaseFilePage({ id }) {
 
   const TYPE_TONE = { state: 'lo', county: 'slate', tribe: 'med', utility: 'mist', federal: 'hi' };
   const TYPE_LABEL = { state: 'State', county: 'County', tribe: 'Tribe', utility: 'Utility', federal: 'Federal' };
-  const isInvited = key => (C.invitedParties || []).includes(key) || sessionInvited.includes(key);
+  const isInvited = key => (C.invitedParties || []).includes(key) || serverInvited.includes(key);
   const inviteFromDir = agency => {
     if (isInvited(agency.key)) return;
-    setSessionInvited(prev => [...prev, agency.key]);
+    fetch('/api/case/' + id + '/invite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agency_key: agency.key })
+    });
+    setServerInvited(prev => [...prev, agency.key]);
     notify('Invite sent to ' + agency.name);
   };
   const dirQ = dirSearch.trim().toLowerCase();
@@ -196,12 +370,26 @@ function CaseFilePage({ id }) {
       const d = (M.AGENCY_DIRECTORY || []).find(a => a.key === k);
       return d ? d.name : (M.PARTY_NAMES[k] || k);
     }),
-    ...sessionInvited.map(k => {
+    ...serverInvited.map(k => {
       const d = (M.AGENCY_DIRECTORY || []).find(a => a.key === k);
       return d ? d.name : k;
     })
   ];
-  const coParties = C.coParties || [];
+  const allInvited = [...new Set([...(C.invitedParties || []), ...serverInvited])];
+  const coParties = allInvited.length > 0
+    ? allInvited.map(key => {
+        const agency = (M.AGENCY_DIRECTORY || []).find(a => a.key === key);
+        const name = agency ? agency.name : (M.PARTY_NAMES[key] || key);
+        const theirConds = conditions.filter(c => c.by === name);
+        const pending = theirConds.filter(c => c.pendingApproval).length;
+        const total = theirConds.length;
+        let status, tone;
+        if (pending > 0) { status = pending + ' condition' + (pending > 1 ? 's' : '') + ' pending approval'; tone = 'med'; }
+        else if (total > 0) { status = total + ' condition' + (total > 1 ? 's' : '') + ' proposed'; tone = 'lo'; }
+        else { status = 'Invited'; tone = 'slate'; }
+        return [name, status, tone];
+      })
+    : (C.coParties || []);
   const backHref = isCoParty ? '#/co-party' : '#/steward';
   const backLabel = isCoParty ? 'Back to My Cases' : 'Back to the Docket';
 
@@ -293,7 +481,7 @@ function CaseFilePage({ id }) {
             </div>
           </div>
         </div>
-        <StageStepper current={C.stage} />
+        <StageStepper current={caseStage} onStageClick={isLead ? advanceStage : null} />
       </div>
 
       <div style={{ display: 'flex', gap: 16, marginTop: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
@@ -331,21 +519,26 @@ function CaseFilePage({ id }) {
               </thead>
               <tbody>
                 {conditions.map((c, i) => (
-                  <tr key={i} style={{ background: c.pendingApproval ? 'rgba(180,95,29,0.05)' : undefined }}>
+                  <tr key={c.id || i} style={{ background: c.pendingApproval ? 'rgba(180,95,29,0.05)' : undefined }}>
                     <td style={{ fontWeight: 600, fontSize: 13.5, maxWidth: 300 }}>{c.text}</td>
                     <td style={{ fontSize: 13 }}>{c.by}</td>
                     <td><Chip tone="mist">{c.type}</Chip></td>
                     <td>
                       {c.pendingApproval
                         ? <Chip tone="med">Pending lead approval</Chip>
-                        : <Chip tone={COND_TONE[c.status] || 'slate'}>{c.status}</Chip>}
+                        : isLead
+                          ? <select value={c.status} onChange={e => changeStatus(c.id, e.target.value)}
+                              style={{ fontSize: 12.5, padding: '3px 6px', borderRadius: 5, border: '1px solid var(--line)', background: 'var(--surface)', color: 'inherit', fontFamily: 'inherit' }}>
+                              {['Proposed', 'Under review', 'Countered', 'Accepted', 'Impasse'].map(s => <option key={s}>{s}</option>)}
+                            </select>
+                          : <Chip tone={COND_TONE[c.status] || 'slate'}>{c.status}</Chip>}
                     </td>
                     {isLead && (
                       <td style={{ whiteSpace: 'nowrap' }}>
                         {c.pendingApproval && (
                           <span style={{ display: 'inline-flex', gap: 5 }}>
-                            <button className="btn btn-primary btn-xs" onClick={() => approvePending(i)}>Approve</button>
-                            <button className="btn btn-quiet btn-xs" onClick={() => rejectPending(i)}>Reject</button>
+                            <button className="btn btn-primary btn-xs" onClick={() => approvePending(c.id)}>Approve</button>
+                            <button className="btn btn-quiet btn-xs" onClick={() => rejectPending(c.id)}>Reject</button>
                           </span>
                         )}
                       </td>
@@ -382,14 +575,27 @@ function CaseFilePage({ id }) {
 
         {/* right rail */}
         <div style={{ flex: '1 1 260px', minWidth: 250, display: 'grid', gap: 12 }}>
-          {C.daysToRebuttal != null && (
+          {(deadline != null || C.daysToRebuttal != null || isLead) && (
             <div className="callout" style={{ padding: '14px 16px' }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
                 <Icon name="clock" size={17} color="var(--basalt)" />
                 <b style={{ fontSize: 13, letterSpacing: '.06em', textTransform: 'uppercase' }}>Rebuttal clock</b>
               </div>
-              <div style={{ fontSize: 14 }}>Applicant response due in <span className="score-serif" style={{ fontSize: 22, color: 'var(--basalt)' }}>{C.daysToRebuttal}</span> days</div>
-              <div className="microcopy" style={{ marginTop: 3 }}>Cycle 2 of 3 · time-boxed by rule · applicant can see this</div>
+              {(deadline != null || C.daysToRebuttal != null) ? (
+                <React.Fragment>
+                  <div style={{ fontSize: 14 }}>Applicant response due in <span className="score-serif" style={{ fontSize: 22, color: 'var(--basalt)' }}>{deadline ? deadline.days : C.daysToRebuttal}</span> days</div>
+                  <div className="microcopy" style={{ marginTop: 3 }}>Cycle {deadline ? deadline.cycle : 2} of {deadline ? deadline.max_cycles : 3} · time-boxed by rule · applicant can see this</div>
+                </React.Fragment>
+              ) : (
+                <div className="microcopy">No deadline set.</div>
+              )}
+              {isLead && (
+                <div style={{ marginTop: 8 }}>
+                  <input type="date" onChange={e => e.target.value && setRebuttalDeadline(e.target.value)}
+                    style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--sand)', color: 'inherit', fontSize: 12, fontFamily: 'inherit' }} />
+                  <div className="microcopy" style={{ marginTop: 3 }}>Set or update deadline</div>
+                </div>
+              )}
             </div>
           )}
           {coParties.length > 0 && (
@@ -409,15 +615,33 @@ function CaseFilePage({ id }) {
           <div className="card" style={{ padding: '14px 16px' }}>
             <b style={{ fontSize: 12, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--slate)' }}>Document chain</b>
             <div style={{ display: 'grid', gap: 6, marginTop: 9 }}>
-              {C.docs.map(d => (
-                <div key={d.name} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
+              {[...C.docs, ...serverDocs].map((d, i) => (
+                <div key={d.id || d.name || i} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
                   <Icon name="doc" size={14} color="var(--slate)" />
-                  <span style={{ flex: 1 }}>{d.name}</span>
+                  {d.filename
+                    ? <a href={'/api/case/' + id + '/docs/' + d.filename} target="_blank" style={{ flex: 1, color: 'inherit' }}>{d.name}</a>
+                    : <span style={{ flex: 1 }}>{d.name}</span>}
                   <span className="microcopy">{d.date}</span>
                 </div>
               ))}
             </div>
-            <button className="btn btn-quiet btn-xs" style={{ marginTop: 10, width: '100%' }} onClick={exportEvidentiary}>Export evidentiary record</button>
+            {serverRebuttals.map(r => (
+              <div key={r.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13 }}>
+                <Icon name="doc" size={14} color="var(--slate)" />
+                <span style={{ flex: 1, fontStyle: 'italic' }} title={r.text}>Applicant rebuttal</span>
+                <span className="microcopy">{r.ts ? r.ts.slice(0, 10) : ''}</span>
+              </div>
+            ))}
+            {isLead && (
+              <React.Fragment>
+                <input type="file" ref={fileInputRef} style={{ display: 'none' }} onChange={uploadDoc} />
+                <button className="btn btn-quiet btn-xs" style={{ marginTop: 8, width: '100%' }}
+                  onClick={() => fileInputRef.current && fileInputRef.current.click()}>
+                  Upload document
+                </button>
+              </React.Fragment>
+            )}
+            <button className="btn btn-quiet btn-xs" style={{ marginTop: 6, width: '100%' }} onClick={exportEvidentiary}>Export evidentiary record</button>
           </div>
         </div>
       </div>

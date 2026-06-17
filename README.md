@@ -14,15 +14,15 @@ Same Score Promise: methodology is public and identical for all users. No party 
 ## Quick start
 
 ```bash
-# Use the GrapeExpectations conda env (Python 3.7, geopandas 0.10.x)
-PYTHON=/home/simonhans/anaconda3/envs/GrapeExpectations/bin/python3
+# Activate the pipeline environment (Python 3.7, geopandas 0.10.x)
+conda activate GrapeExpectations
 
 # Run a single state end-to-end
-$PYTHON -u scripts/run_pipeline.py WA
+python -u scripts/run_pipeline.py WA
 
 # Or run steps individually
-$PYTHON -u scripts/01_basemap.py WA
-$PYTHON -u scripts/02_indicators.py WA
+python -u scripts/01_basemap.py WA
+python -u scripts/02_indicators.py WA
 # ... through 10_soilprofile.py
 ```
 
@@ -85,7 +85,7 @@ All 48 contiguous states complete (AK/HI excluded).
 | 10-raw (early) | WA OR TX CA NV UT ID MT AZ | no flat_frac/slope_mean_deg |
 | 12-raw (full) | CO WY NM ND SD NE KS OK MN IA MO AR LA MI WI IL IN KY TN MS GA OH AL FL SC NC VA WV PA NY NJ CT RI MA VT NH ME DE MD | full set |
 
-Retrofit early states with: `python scripts/patch_raws.py WA OR TX CA NV UT ID MT AZ`
+Raw columns are now added automatically by `run_pipeline.py` at the end of every full run (`patch_raws.py` is called as a post-processing step). For early states already in the dataset, run once manually: `python scripts/patch_raws.py WA OR TX CA NV UT ID MT AZ`
 
 ## Product surfaces
 

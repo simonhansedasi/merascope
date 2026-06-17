@@ -12,6 +12,17 @@ function CoDocketPage() {
   })();
 
   const myCases = M.CASES.filter(c => c.parties && c.parties.includes(partyKey));
+  const [livePending, setLivePending] = React.useState({});
+
+  React.useEffect(() => {
+    myCases.forEach(k => {
+      if (!(M.CASE_DETAIL_MAP && M.CASE_DETAIL_MAP[k.id])) return;
+      fetch('/api/case/' + k.id + '/conditions').then(r => r.json()).then(list => {
+        const count = list.filter(c => c.pending_approval).length;
+        setLivePending(prev => Object.assign({}, prev, { [k.id]: count }));
+      });
+    });
+  }, []);
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '22px 24px 50px' }} data-screen-label="Co-party — My Cases">
@@ -43,7 +54,9 @@ function CoDocketPage() {
         <div style={{ display: 'grid', gap: 12 }}>
           {myCases.map(k => {
             const C = M.CASE_DETAIL_MAP && M.CASE_DETAIL_MAP[k.id];
-            const pendingCount = C ? C.conditions.filter(c => c.pendingApproval).length : 0;
+            const pendingCount = livePending[k.id] !== undefined
+              ? livePending[k.id]
+              : (C ? C.conditions.filter(c => c.pendingApproval).length : 0);
             return (
               <div key={k.id} className="card" style={{ padding: '18px 22px', cursor: C ? 'pointer' : 'default' }}
                 onClick={() => { if (C) location.hash = '#/co-party/case/' + k.id; }}>

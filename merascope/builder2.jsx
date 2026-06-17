@@ -167,13 +167,37 @@ function CrmStatusBadge({ status }) {
 function CrmPanel({ fid, cell, geo }) {
   var [crm, setCrm] = React.useState(function() { return window.getCrm ? window.getCrm(fid) : { status: 'researching', contacts: [], events: [], notes: '' }; });
 
+  var saveToServer = function(state) {
+    fetch('/api/crm/' + fid, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(state)
+    });
+  };
+
+  React.useEffect(function() {
+    fetch('/api/crm/' + fid).then(function(r) { return r.json(); }).then(function(data) {
+      if (!data) return;
+      setCrm(data);
+      try {
+        var all = JSON.parse(localStorage.getItem('mera_crm_v1') || '{}');
+        all[fid] = data;
+        localStorage.setItem('mera_crm_v1', JSON.stringify(all));
+      } catch(e) {}
+    });
+  }, [fid]);
+
   var setStatus = function(k) {
     window.setCrmStatus && window.setCrmStatus(fid, k);
-    setCrm(function(c) { return Object.assign({}, c, { status: k }); });
+    var next = Object.assign({}, crm, { status: k });
+    setCrm(next);
+    saveToServer(next);
   };
   var saveNotes = function(notes) {
     window.setCrmNotes && window.setCrmNotes(fid, notes);
-    setCrm(function(c) { return Object.assign({}, c, { notes: notes }); });
+    var next = Object.assign({}, crm, { notes: notes });
+    setCrm(next);
+    saveToServer(next);
   };
 
   /* contact form */
@@ -182,7 +206,11 @@ function CrmPanel({ fid, cell, geo }) {
   var submitContact = function() {
     if (!contactDraft.name.trim()) return;
     var updated = window.addCrmContact && window.addCrmContact(fid, contactDraft);
-    if (updated) setCrm(function(c) { return Object.assign({}, c, { contacts: updated.contacts }); });
+    if (updated) {
+      var next = Object.assign({}, crm, { contacts: updated.contacts });
+      setCrm(next);
+      saveToServer(next);
+    }
     setContactDraft({ name: '', title: '', org: '', email: '', phone: '' });
     setShowContactForm(false);
   };
@@ -193,18 +221,26 @@ function CrmPanel({ fid, cell, geo }) {
   var submitEvent = function() {
     if (!eventDraft.summary.trim()) return;
     var updated = window.addCrmEvent && window.addCrmEvent(fid, eventDraft);
-    if (updated) setCrm(function(c) { return Object.assign({}, c, { events: updated.events }); });
+    if (updated) {
+      var next = Object.assign({}, crm, { events: updated.events });
+      setCrm(next);
+      saveToServer(next);
+    }
     setEventDraft({ type: 'Call', date: new Date().toISOString().slice(0, 10), summary: '' });
     setShowEventForm(false);
   };
 
   var removeContact = function(contactId) {
     window.removeCrmContact && window.removeCrmContact(fid, contactId);
-    setCrm(function(c) { return Object.assign({}, c, { contacts: c.contacts.filter(function(x) { return x.id !== contactId; }) }); });
+    var next = Object.assign({}, crm, { contacts: crm.contacts.filter(function(x) { return x.id !== contactId; }) });
+    setCrm(next);
+    saveToServer(next);
   };
   var removeEvent = function(evId) {
     window.removeCrmEvent && window.removeCrmEvent(fid, evId);
-    setCrm(function(c) { return Object.assign({}, c, { events: c.events.filter(function(x) { return x.id !== evId; }) }); });
+    var next = Object.assign({}, crm, { events: crm.events.filter(function(x) { return x.id !== evId; }) });
+    setCrm(next);
+    saveToServer(next);
   };
 
   var label = window.cellLabel ? window.cellLabel(cell.properties) : (cell.properties._state || '');

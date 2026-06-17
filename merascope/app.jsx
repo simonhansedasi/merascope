@@ -89,6 +89,34 @@ function App() {
   const setRole = r => { setRoleState(r); try { localStorage.setItem('mera_role', r); } catch (e) { } };
   const partyKey = (() => { try { return localStorage.getItem('mera_party_key') || ''; } catch (e) { return ''; } })();
 
+  const [tourStep, setTourStep] = React.useState(() => {
+    try { return localStorage.getItem('mera_tour_done') ? null : 0; } catch (e) { return null; }
+  });
+  const applyTourStep = step => {
+    if (step.role === 'public') setRole('public');
+    else if (step.role) setRole(step.role);
+    if (step.partyKey) { try { localStorage.setItem('mera_party_key', step.partyKey); } catch (e) { } }
+    if (step.nav) location.hash = step.nav;
+  };
+  const startTour = () => { applyTourStep(TOUR_STEPS[0]); setTourStep(1); };
+  const nextTour = () => {
+    const cur = TOUR_STEPS[tourStep - 1];
+    if (cur && cur.done) { skipTour(); return; }
+    const next = TOUR_STEPS[tourStep];
+    if (next) applyTourStep(next);
+    setTourStep(s => Math.min(s + 1, TOUR_STEPS.length));
+  };
+  const backTour = () => {
+    if (tourStep <= 1) return;
+    const prev = TOUR_STEPS[tourStep - 2];
+    if (prev) applyTourStep(prev);
+    setTourStep(s => s - 1);
+  };
+  const skipTour = () => {
+    try { localStorage.setItem('mera_tour_done', '1'); } catch (e) { }
+    setTourStep(null);
+  };
+
   React.useEffect(() => {
     document.documentElement.style.setProperty('--basalt', t.accent);
     document.documentElement.style.setProperty('--sans', FONT_MAP[t.uiFont] || FONT_MAP['Source Sans']);
@@ -135,7 +163,10 @@ function App() {
           <TweakSection label="Brand" />
           <TweakColor label="Accent (basalt)" value={t.accent} options={['#B45F1D', '#9C3E1E', '#5C6B1F', '#44546A']} onChange={v => setTweak('accent', v)} />
           <TweakSelect label="UI font" value={t.uiFont} options={['Source Sans', 'Helvetica', 'IBM Plex']} onChange={v => setTweak('uiFont', v)} />
+          <TweakSection label="Tour" />
+          <button className="btn btn-quiet btn-sm" style={{ margin: '4px 8px 8px' }} onClick={() => { try { localStorage.removeItem('mera_tour_done'); } catch (e) { } setTourStep(0); }}>Replay guided tour</button>
         </TweaksPanel>
+        <TourOverlay tourStep={tourStep} onStart={startTour} onNext={nextTour} onBack={backTour} onSkip={skipTour} />
       </AuthCtx.Provider>
     </MeraCtx.Provider>
   );

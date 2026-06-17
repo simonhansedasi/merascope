@@ -410,8 +410,26 @@ function BuilderCaseView({ id }) {
   const [toast, setToast] = React.useState(null);
   const [rebuttal, setRebuttal] = React.useState('');
   const [rebuttalSent, setRebuttalSent] = React.useState(false);
+  const [liveConditions, setLiveConditions] = React.useState(null);
+  const [liveStage, setLiveStage] = React.useState(null);
 
   const C = (M.CASE_DETAIL_MAP && M.CASE_DETAIL_MAP[caseId]) || null;
+
+  React.useEffect(() => {
+    if (!C) return;
+    setLiveConditions(null);
+    setLiveStage(null);
+    setRebuttalSent(false);
+    fetch('/api/case/' + caseId + '/conditions').then(r => r.json()).then(list => {
+      setLiveConditions(list.length > 0
+        ? list.map(r => Object.assign({}, r, { pendingApproval: !!r.pending_approval }))
+        : C.conditions.map(c => Object.assign({}, c, { pendingApproval: !!c.pendingApproval })));
+    });
+    fetch('/api/case/' + caseId + '/stage').then(r => r.json()).then(s => { if (s) setLiveStage(s); });
+    fetch('/api/case/' + caseId + '/rebuttals').then(r => r.json()).then(list => {
+      if (list.length > 0) setRebuttalSent(true);
+    });
+  }, [caseId]);
 
   const handleSearch = () => {
     setSearched(true);
@@ -420,9 +438,15 @@ function BuilderCaseView({ id }) {
 
   const sendRebuttal = () => {
     if (!rebuttal.trim()) return;
-    setRebuttalSent(true);
-    setRebuttal('');
-    setToast('Rebuttal submitted to lead agency');
+    fetch('/api/case/' + caseId + '/rebuttal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: rebuttal.trim() })
+    }).then(r => r.json()).then(() => {
+      setRebuttalSent(true);
+      setRebuttal('');
+      setToast('Rebuttal submitted to lead agency');
+    });
   };
 
   return (
@@ -468,7 +492,7 @@ function BuilderCaseView({ id }) {
               <div>
                 <div className="eyebrow">Case {C.id}</div>
                 <h2 style={{ fontSize: 22 }}>{C.title}</h2>
-                <div className="microcopy">Lead agency: {C.leadParty || 'Dept. of Ecology'} · {C.invitedParties ? C.invitedParties.length + ' co-parties invited' : ''}</div>
+                <div className="microcopy">Lead agency: {C.leadParty || 'Dept. of Ecology'} · {C.invitedParties ? C.invitedParties.length + ' co-parties invited' : ''} · Stage: <b>{liveStage || C.stage}</b></div>
               </div>
               <div style={{ textAlign: 'right' }}>
                 <span className="score-badge" style={{ background: M.rampColor(C.score, ramp), color: M.rampText(C.score, ramp), fontSize: 22, padding: '4px 13px' }}>{C.score.toFixed(3)}</span>
@@ -503,8 +527,8 @@ function BuilderCaseView({ id }) {
                 <table className="mtable">
                   <thead><tr><th>Condition</th><th>Proposed by</th><th>Type</th><th>Status</th></tr></thead>
                   <tbody>
-                    {C.conditions.map((c, i) => (
-                      <tr key={i} style={{ background: c.pendingApproval ? 'rgba(180,95,29,0.04)' : undefined }}>
+                    {(liveConditions || C.conditions).map((c, i) => (
+                      <tr key={c.id || i} style={{ background: c.pendingApproval ? 'rgba(180,95,29,0.04)' : undefined }}>
                         <td style={{ fontWeight: 600, fontSize: 13, maxWidth: 280 }}>{c.text}</td>
                         <td style={{ fontSize: 12.5 }}>{c.by}</td>
                         <td><Chip tone="mist">{c.type}</Chip></td>
@@ -519,7 +543,7 @@ function BuilderCaseView({ id }) {
                 </table>
               </div>
 
-              {C.stage === 'Rebuttal Cycle' && (
+              {(liveStage || C.stage) === 'Rebuttal Cycle' && (
                 <div style={{ marginTop: 14, padding: '14px 16px', background: 'var(--sand)', borderRadius: 10 }}>
                   <b style={{ fontSize: 13.5 }}>Rebuttal period is open</b>
                   <p className="microcopy" style={{ margin: '4px 0 10px' }}>You may file a formal rebuttal to any contested finding. This will be logged and shared with all parties.</p>

@@ -273,4 +273,106 @@ function NotifyToast({ message, onDone }) {
   );
 }
 
-Object.assign(window, { MeraCtx, AuthCtx, Glyph, AnimatedGlyph, Wordmark, Icon, useCountUp, ScoreNum, ScoreBadge, Chip, BarRow, PromiseBadge, SurfaceSwitch, DemoSwitch, PersonaBadge, TopNav, FooterMain, PageHead, useFakeLoad, NotifyToast });
+var TOUR_STEPS = [
+  {
+    title: 'Welcome to Merascope',
+    body: 'Site suitability intelligence and permitting coordination for data centers. Three roles: Builder (applicant), Steward (lead regulatory agency), and Co-party (invited agencies: tribes, counties, utilities, AG). All three surfaces show identical scores. This tour takes about 3 minutes.',
+    action: null, nav: null, role: null
+  },
+  {
+    title: 'Explorer — suitability map',
+    body: 'Washington State is loaded. Each cell shows a composite score across 16 physical indicators. Use the weight sliders to shift what matters most — scores update live. Click any cell to see its full indicator breakdown. Save cells to your workspace with the star button.',
+    action: 'Try adjusting a weight slider, then click a cell.',
+    nav: '#/explorer', role: null
+  },
+  {
+    title: 'Builder — application transparency',
+    body: 'Applicants look up their assigned case ID to see a read-only view of their regulatory review — every condition proposed, every finding versioned, the rebuttal clock, and the full document chain. Same numbers the agency sees. This is case 26-0142.',
+    action: 'Review the findings and conditions table.',
+    nav: '#/builder/case/26-0142', role: 'builder'
+  },
+  {
+    title: 'Steward — The Docket',
+    body: 'Lead agency view. You are now logged in as Dept. of Ecology. The kanban shows all active case files by stage. New case files can be created from the top right. Cases advance when you click the stage labels in the case file.',
+    action: 'Click the "26-0142" card to enter the case.',
+    nav: '#/steward', role: 'steward'
+  },
+  {
+    title: 'Case file — conditions and coordination',
+    body: 'Versioned findings, a live conditions table with inline status editing, a rebuttal clock with a date picker, document upload, and a co-party tracker derived from invited agencies. Click any stage label to advance the case. "Invite co-parties" opens a searchable directory of 95 pre-registered WA agencies.',
+    action: 'Try changing a condition status or clicking a stage label.',
+    nav: '#/steward/case/26-0142', role: 'steward'
+  },
+  {
+    title: 'Co-party view — CTUIR',
+    body: 'You are now logged in as CTUIR, a tribal co-party on this case. The docket shows only cases where CTUIR is invited. Open case 26-0142 and propose a condition — it lands in the lead agency queue as "Pending lead approval." Switch back to steward to approve it.',
+    action: 'Open the case and use "Propose condition."',
+    nav: '#/co-party', role: 'co-party', partyKey: 'CT'
+  },
+  {
+    title: 'Tour complete',
+    body: "That's the full loop. Builder sees the process transparently. Co-parties propose conditions. Steward coordinates, negotiates, and advances the case through permitting stages. All three surfaces show the same score. No party gets a friendlier number.",
+    action: null, nav: null, role: null, done: true
+  }
+];
+
+function TourOverlay({ tourStep, onStart, onNext, onBack, onSkip }) {
+  if (tourStep === null) return null;
+
+  if (tourStep === 0) {
+    return (
+      <div style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <div style={{ background: 'var(--sand)', borderRadius: 14, padding: '32px 36px', maxWidth: 480, width: '100%', boxShadow: '0 12px 60px rgba(0,0,0,0.6)', border: '1px solid var(--line)', textAlign: 'center' }}>
+          <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'var(--mist)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
+            <Icon name="rings" size={26} color="var(--basalt)" />
+          </div>
+          <h2 style={{ fontSize: 22, marginBottom: 10 }}>Welcome to Merascope</h2>
+          <p style={{ color: 'var(--slate)', fontSize: 14.5, lineHeight: 1.65, marginBottom: 26 }}>A guided 3-minute tour walks through all three surfaces — Builder, Steward, and Co-party — and the conditions negotiation loop that connects them.</p>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+            <button className="btn btn-primary" onClick={onStart}>Take the tour</button>
+            <button className="btn btn-quiet" onClick={onSkip}>Explore on my own</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const step = TOUR_STEPS[tourStep - 1];
+  if (!step) return null;
+  const total = TOUR_STEPS.length;
+  const isFirst = tourStep === 1;
+  const isLast = !!step.done;
+
+  return (
+    <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 1100, width: 520, maxWidth: 'calc(100vw - 32px)' }}>
+      <div style={{ background: 'var(--sand)', borderRadius: 12, boxShadow: '0 8px 40px rgba(0,0,0,0.55)', border: '1px solid var(--line)', overflow: 'hidden' }}>
+        <div style={{ height: 3, background: 'var(--line)' }}>
+          <div style={{ height: '100%', background: 'var(--basalt)', width: (tourStep / total * 100) + '%', transition: 'width 0.3s ease' }}></div>
+        </div>
+        <div style={{ padding: '16px 20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 7 }}>
+            <div>
+              <span className="microcopy">Step {tourStep} of {total}</span>
+              <div style={{ fontWeight: 700, fontSize: 15.5, marginTop: 2, lineHeight: 1.25 }}>{step.title}</div>
+            </div>
+            <button onClick={onSkip} className="btn btn-quiet btn-xs" style={{ flexShrink: 0, marginLeft: 12, marginTop: 2 }}>End tour</button>
+          </div>
+          <p style={{ fontSize: 13.5, lineHeight: 1.65, color: 'var(--slate)', margin: '0 0 8px' }}>{step.body}</p>
+          {step.action && (
+            <div style={{ fontSize: 12.5, fontWeight: 650, color: 'var(--basalt)', marginBottom: 12, display: 'flex', gap: 5, alignItems: 'center' }}>
+              <span>&#8594;</span> {step.action}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            {!isFirst && <button className="btn btn-quiet btn-sm" onClick={onBack}>Back</button>}
+            {isLast
+              ? <button className="btn btn-primary btn-sm" onClick={onSkip}>Finish</button>
+              : <button className="btn btn-primary btn-sm" onClick={onNext}>Next &#8594;</button>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { MeraCtx, AuthCtx, Glyph, AnimatedGlyph, Wordmark, Icon, useCountUp, ScoreNum, ScoreBadge, Chip, BarRow, PromiseBadge, SurfaceSwitch, DemoSwitch, PersonaBadge, TopNav, FooterMain, PageHead, useFakeLoad, NotifyToast, TourOverlay });

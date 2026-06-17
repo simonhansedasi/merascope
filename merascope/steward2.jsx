@@ -4,7 +4,23 @@ function ImpassePage() {
   const M = window.MERA;
   const [cat, setCat] = React.useState('Water rights');
   const [routed, setRouted] = React.useState({});
-  const routeToMediation = (key) => setRouted(r => Object.assign({}, r, { [key]: true }));
+
+  React.useEffect(() => {
+    fetch('/api/impasse/routes').then(r => r.json()).then(keys => {
+      const init = {};
+      keys.forEach(k => { init[k] = true; });
+      setRouted(init);
+    });
+  }, []);
+
+  const routeToMediation = key => {
+    fetch('/api/impasse/route', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key })
+    });
+    setRouted(r => Object.assign({}, r, { [key]: true }));
+  };
   return (
     <div style={{ maxWidth: 1140, margin: '0 auto', padding: '22px 24px 50px' }} data-screen-label="Steward — Impasse register">
       <StewardSubNav active="impasse" />
@@ -57,6 +73,25 @@ function ImpassePage() {
 
 function LitigationPage() {
   const M = window.MERA;
+
+  const exportLitigationRecord = l => {
+    const lines = [
+      'MERASCOPE EVIDENTIARY RECORD -- LITIGATION EXPORT',
+      'Matter: ' + l.name,
+      'Court: ' + l.court + ' No. ' + l.no,
+      'Filed: ' + l.filed + ' | Status: ' + l.status,
+      'Exported: ' + new Date().toISOString(),
+      '',
+      'Versioned scores, findings, and chain-of-custody events since intake are',
+      'maintained in the Merascope evidentiary database. Contact the lead agency',
+      'reviewer to obtain the full signed export for court or administrative record.'
+    ];
+    const a = document.createElement('a');
+    a.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(lines.join('\n'));
+    a.download = 'litigation_' + l.no.replace(/[^A-Za-z0-9_-]/g, '_') + '.txt';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  };
+
   return (
     <div style={{ maxWidth: 940, margin: '0 auto', padding: '22px 24px 50px' }} data-screen-label="Steward — Litigation tracker">
       <StewardSubNav active="litigation" />
@@ -70,7 +105,7 @@ function LitigationPage() {
               <div className="microcopy" style={{ marginTop: 2 }}>{l.court} · No. {l.no} · filed {l.filed}</div>
             </div>
             <Chip tone={l.status === 'Briefing' ? 'med' : 'slate'}>{l.status}</Chip>
-            <button className="btn btn-quiet btn-sm">Export evidentiary record (versioned scores + chain-of-custody)</button>
+            <button className="btn btn-quiet btn-sm" onClick={() => exportLitigationRecord(l)}>Export evidentiary record (versioned scores + chain-of-custody)</button>
           </div>
         ))}
       </div>
@@ -115,20 +150,31 @@ var STUDY_SECTIONS = {
 function StudiesPage() {
   const M = window.MERA;
   const [expanded, setExpanded] = React.useState({});
-  const [checked, setChecked] = React.useState(() => {
-    const init = {};
-    M.STUDIES.forEach(st => {
-      const m = st.sections.match(/^(\d+)/);
-      const done = m ? parseInt(m[1]) : 0;
-      const secs = STUDY_SECTIONS[st.name] || [];
-      secs.forEach((_, i) => { if (i < done) init[st.name + '|' + i] = true; });
-    });
-    return init;
-  });
+  const [checked, setChecked] = React.useState({});
   const [localStudies, setLocalStudies] = React.useState(M.STUDIES);
 
+  React.useEffect(() => {
+    fetch('/api/studies/checks').then(r => r.json()).then(list => {
+      const init = {};
+      list.forEach(c => { init[c.study_name + '|' + c.section_idx] = true; });
+      setChecked(init);
+    });
+  }, []);
+
   const toggleExpanded = name => setExpanded(e => Object.assign({}, e, { [name]: !e[name] }));
-  const toggleCheck = key => setChecked(c => Object.assign({}, c, { [key]: !c[key] }));
+
+  const toggleCheck = key => {
+    const bar = key.lastIndexOf('|');
+    const study_name = key.slice(0, bar);
+    const section_idx = parseInt(key.slice(bar + 1));
+    const nowChecked = !checked[key];
+    fetch('/api/studies/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ study_name, section_idx, checked: nowChecked })
+    });
+    setChecked(c => Object.assign({}, c, { [key]: nowChecked }));
+  };
 
   const addTemplate = tpl => {
     if (localStudies.find(s => s.name === tpl)) return;
