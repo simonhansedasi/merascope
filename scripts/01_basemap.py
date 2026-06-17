@@ -21,7 +21,6 @@ from pathlib import Path
 import geopandas as gpd
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 import requests
 from shapely.geometry import LineString
@@ -163,7 +162,7 @@ def plot_basemap(cfg, state, dc_gdf, tx_gdf, plants_gdf, processed):
     if "voltage" in tx_gdf.columns and tx_gdf["voltage"].notna().any():
         def parse_v(v):
             try: return float(str(v).split(";")[0].replace(",", ""))
-            except: return 0.0
+            except Exception: return 0.0
         tx_gdf["_v"] = tx_gdf["voltage"].apply(parse_v)
         tx_gdf[tx_gdf["_v"] >= 230000].plot(ax=ax, color="#5a9aba", linewidth=0.9, alpha=0.8, zorder=2)
         tx_gdf[tx_gdf["_v"] < 230000].plot(ax=ax, color="#3a5a7a", linewidth=0.4, alpha=0.5, zorder=2)

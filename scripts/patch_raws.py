@@ -31,7 +31,6 @@ from pathlib import Path
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-import requests
 from PIL import Image
 from scipy.spatial import cKDTree
 

@@ -159,7 +159,6 @@ def main():
 
     cfg = get_state(args.state)
     root, raw, processed, grid_path = get_paths(cfg["abbr"])
-    crs_proj = cfg["utm_epsg"]
     print(f"\n=== 03_risk: {cfg['name']} ({cfg['abbr']}) ===")
 
     state = gpd.read_file(raw / "state.geojson")

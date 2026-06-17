@@ -246,11 +246,6 @@ def idw_k(src_pts, src_vals, tgt_pts, k=8, power=2):
 def plot_profile(cfg, state, grid, processed):
     fig, axes = plt.subplots(1, 2, figsize=(20, 8), facecolor=DARK_BG)
 
-    panels = [
-        ("soil_profile_score", "Composite Risk Score", "RdYlGn",
-         "0=high contamination pathway risk / 1=clean column"),
-    ]
-
     # Left: composite score
     ax = axes[0]
     ax.set_facecolor(DARK_BG)

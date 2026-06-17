@@ -30,7 +30,6 @@ import zipfile
 from pathlib import Path
 
 import geopandas as gpd
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import requests
@@ -187,8 +186,6 @@ def main():
     print(f"  Output: {grid_path}")
 
     state = gpd.read_file(raw / "state.geojson")
-    dc_gdf = gpd.read_file(raw / "datacenters.geojson") if (raw / "datacenters.geojson").exists() else \
-             gpd.GeoDataFrame(columns=["source", "geometry"], crs=CRS)
     tx_gdf = gpd.read_file(raw / "transmission.geojson") if (raw / "transmission.geojson").exists() else \
              gpd.GeoDataFrame(columns=["geometry"], crs=CRS)
 

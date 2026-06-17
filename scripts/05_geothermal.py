@@ -67,7 +67,7 @@ def load_heatflow(abbr, bbox, raw):
 
     print(f"  WARNING: IHFC_2024_GHFDB.shp not found at {IHFC_GLOBAL}")
     print(f"  Place the IHFC 2024 shapefile at: {IHFC_GLOBAL}")
-    print(f"  geothermal_score will be uniform 0.5 (neutral)")
+    print("  geothermal_score will be uniform 0.5 (neutral)")
     return pd.DataFrame(columns=["q", "lat", "lon"])
 
 

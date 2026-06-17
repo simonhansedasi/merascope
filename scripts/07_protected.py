@@ -67,7 +67,7 @@ def fetch_federal_lands(bbox_str, cache_path):
                     print(f"    Federal lands attempt {attempt+1} failed ({e}); retrying...")
                     time.sleep(2 ** attempt)
                 else:
-                    print(f"    Federal lands failed after 4 attempts; returning empty")
+                    print("    Federal lands failed after 4 attempts; returning empty")
                     return gpd.GeoDataFrame(columns=["Agency", "unit_name", "source", "geometry"], crs=CRS)
         batch = r.json().get("features", [])
         features.extend(batch)
@@ -104,7 +104,7 @@ def fetch_tribal_lands(bbox_str, cache_path):
                 print(f"    Tribal lands attempt {attempt+1} failed ({e}); retrying...")
                 time.sleep(2 ** attempt)
             else:
-                print(f"    Tribal lands failed after 4 attempts; returning empty")
+                print("    Tribal lands failed after 4 attempts; returning empty")
                 return gpd.GeoDataFrame(columns=["NAME", "source", "geometry"], crs=CRS)
     feats = r.json().get("features", [])
     if feats:

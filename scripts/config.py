@@ -86,7 +86,6 @@ def get_paths(abbr: str) -> tuple:
     to data/{STATE}/{DC_SUBDIR}/ instead of data/{STATE}/. Scripts 03-07 are
     geometry-agnostic, so the same scripts serve both fishnet and ZCTA runs.
     """
-    cfg = get_state(abbr)
     raw = PROJECT_ROOT / "data" / abbr / "raw"
     processed = PROJECT_ROOT / "data" / abbr / "processed"
     subdir = os.environ.get("DC_SUBDIR", "")
