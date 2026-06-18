@@ -3,7 +3,8 @@
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "rampStyle": "Field palette",
   "accent": "#B45F1D",
-  "uiFont": "Source Sans"
+  "uiFont": "Source Sans",
+  "theme": "Light"
 }/*EDITMODE-END*/;
 
 const RAMP_MAP = { 'Field palette': 'field', 'Colorblind-safe': 'cb' };
@@ -44,7 +45,7 @@ function AuthWall({ need, setRole }) {
         </span>
         <h2 style={{ fontSize: 24, marginTop: 14 }}>Co-party sign-in</h2>
         <p style={{ color: 'var(--slate)', fontSize: 14.5, lineHeight: 1.6, margin: '10px 0 22px' }}>
-          You have been forwarded a case by the lead agency. Sign in with your organization — or select a demo persona below.
+          The lead agency has added your organization to a case. Sign in, or pick a demo agency below.
         </p>
         <div style={{ display: 'grid', gap: 8, margin: '0 auto 18px', maxWidth: 320 }}>
           {DEMO_CO_PARTIES.map(p => (
@@ -68,15 +69,15 @@ function AuthWall({ need, setRole }) {
       <span style={{ width: 54, height: 54, borderRadius: '50%', background: 'var(--mist)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
         <Icon name="lock" size={24} color="var(--evergreen)" />
       </span>
-      <h2 style={{ fontSize: 24, marginTop: 14 }}>The {label} is behind sign-in.</h2>
+      <h2 style={{ fontSize: 24, marginTop: 14 }}>Sign in to open the {label}.</h2>
       <p style={{ color: 'var(--slate)', fontSize: 14.5, lineHeight: 1.6, margin: '10px 0 22px' }}>
-        The map is public. The workspace on top of it is yours. Sign in — or use the mocked SSO to demo this surface.
+        The map is public. Your workspace is not. Sign in, or demo the reviewer console below.
       </p>
       <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
         <a className="btn btn-primary" href="#/login">Sign in</a>
         <button className="btn btn-ghost" onClick={() => setRole(need)}>Demo SSO — {persona}</button>
       </div>
-      <p className="microcopy" style={{ marginTop: 16 }}>Your views and permissions are scoped by your organization — your scores are not.</p>
+      <p className="microcopy" style={{ marginTop: 16 }}>Views and permissions are organization-scoped. Scores are not.</p>
     </div>
   );
 }
@@ -85,9 +86,26 @@ function App() {
   const [t, setTweak] = window.useTweaks(TWEAK_DEFAULTS);
   const route = useHashRoute();
   const path = route.path;
-  const [role, setRoleState] = React.useState(() => { try { return localStorage.getItem('mera_role') || 'public'; } catch (e) { return 'public'; } });
-  const setRole = r => { setRoleState(r); try { localStorage.setItem('mera_role', r); } catch (e) { } };
-  const partyKey = (() => { try { return localStorage.getItem('mera_party_key') || ''; } catch (e) { return ''; } })();
+  const [role, setRoleState] = React.useState(function() { try { return localStorage.getItem('mera_role') || 'public'; } catch (e) { return 'public'; } });
+  const setRole = function(r) { setRoleState(r); try { localStorage.setItem('mera_role', r); } catch (e) { } };
+  const partyKey = (function() { try { return localStorage.getItem('mera_party_key') || ''; } catch (e) { return ''; } })();
+
+  const [authUser, setAuthUser] = React.useState(null);
+  React.useEffect(function() {
+    fetch('/api/auth/me')
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(u) {
+        if (u && u.email) {
+          setAuthUser(u);
+          setRole(u.role || 'builder');
+        }
+      })
+      .catch(function() {});
+  }, []);
+  var logout = function() {
+    fetch('/api/auth/logout', { method: 'POST' })
+      .then(function() { setAuthUser(null); setRole('public'); });
+  };
 
   const [tourStep, setTourStep] = React.useState(() => {
     try { return localStorage.getItem('mera_tour_done') ? null : 0; } catch (e) { return null; }
@@ -120,7 +138,8 @@ function App() {
   React.useEffect(() => {
     document.documentElement.style.setProperty('--basalt', t.accent);
     document.documentElement.style.setProperty('--sans', FONT_MAP[t.uiFont] || FONT_MAP['Source Sans']);
-  }, [t.accent, t.uiFont]);
+    document.documentElement.setAttribute('data-theme', t.theme === 'Dark' ? 'dark' : '');
+  }, [t.accent, t.uiFont, t.theme]);
 
   let page;
   if (path === '/') page = <LandingPage />;
@@ -142,6 +161,7 @@ function App() {
   else if (path.startsWith('/tracker')) page = <TokenTrackerPage />;
   else if (path.startsWith('/login')) page = <LoginPage />;
   else if (path.startsWith('/methodology')) page = <MethodologyPage />;
+  else if (path.startsWith('/evidence')) page = <EvidencePage caseId={route.query.case} />;
   else page = <LandingPage />;
 
   /* auth gate */
@@ -153,11 +173,13 @@ function App() {
 
   return (
     <MeraCtx.Provider value={{ ramp: RAMP_MAP[t.rampStyle] || 'field' }}>
-      <AuthCtx.Provider value={{ role, setRole, partyKey }}>
+      <AuthCtx.Provider value={{ role, setRole, partyKey, authUser, logout }}>
         <TopNav route={path} role={role} />
         {page}
         {path !== '/login' && <FooterMain />}
         <TweaksPanel>
+          <TweakSection label="Appearance" />
+          <TweakRadio label="Mode" value={t.theme} options={['Light', 'Dark']} onChange={v => setTweak('theme', v)} />
           <TweakSection label="Score ramp" />
           <TweakRadio label="Palette" value={t.rampStyle} options={['Field palette', 'Colorblind-safe']} onChange={v => setTweak('rampStyle', v)} />
           <TweakSection label="Brand" />

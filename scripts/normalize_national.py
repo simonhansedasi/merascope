@@ -39,7 +39,7 @@ SCORE_MAP = [
     ("geothermal_score_nat",    "heatflow_mwm2",    "direct"),
     ("flatness_score_nat",      "flat_frac",        "direct"),   # missing in early 9 states
     ("slope_score_nat",         "flat_frac",        "direct"),   # same raw as flatness
-    ("aquifer_score_nat",       "aquifer_depth_ft", "direct"),
+    ("aquifer_score_nat",       "aquifer_depth_ft", "invert"),
     ("soil_score_nat",          None,               "direct"),   # rank state scores
     ("soil_profile_score_nat",  None,               "direct"),   # rank state scores
     ("ksat_score_nat",          "ksat_mean_ums",    "invert"),

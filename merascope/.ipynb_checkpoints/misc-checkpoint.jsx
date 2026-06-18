@@ -97,83 +97,52 @@ const NEW_ROLES = [
 function LoginPage() {
   const M = window.MERA;
   const { setRole } = React.useContext(AuthCtx);
-  const [email, setEmail] = React.useState('');
-  const [sent, setSent] = React.useState(false);
-  const [loading, setLoading] = React.useState(false);
   const [err, setErr] = React.useState(null);
   const [newRole, setNewRole] = React.useState('builder');
   const [w, setW] = React.useState({ ...M.DEFAULT_WEIGHTS });
-  React.useEffect(function() {
+  React.useEffect(() => {
     if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    var flip = false;
-    var t = setInterval(function() { flip = !flip; setW(normalizeWeights({ ...M.DEFAULT_WEIGHTS }, 'community', flip ? 45 : 25)); }, 2800);
-    return function() { clearInterval(t); };
+    let flip = false;
+    const t = setInterval(() => { flip = !flip; setW(normalizeWeights({ ...M.DEFAULT_WEIGHTS }, 'community', flip ? 45 : 25)); }, 2800);
+    return () => clearInterval(t);
   }, []);
-  var enter = function(r) { setRole(r); location.hash = r === 'builder' ? '#/builder' : r === 'steward' ? '#/steward' : '#/factsheets'; };
-  var handleRequest = function(e) {
-    e.preventDefault();
-    setErr(null);
-    setLoading(true);
-    fetch('/api/auth/request', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email })
-    })
-      .then(function(r) { return r.json(); })
-      .then(function(d) { if (d.ok) { setSent(true); } else { setErr(d.err || 'Something went wrong.'); } })
-      .catch(function() { setErr('Network error — please try again.'); })
-      .finally(function() { setLoading(false); });
-  };
+  const enter = r => { setRole(r); location.hash = r === 'builder' ? '#/builder' : r === 'steward' ? '#/steward' : '#/factsheets'; };
   return (
     <div style={{ display: 'flex', minHeight: 'calc(100vh - 56px)' }} data-screen-label="Login">
       <div style={{ flex: '1 1 440px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 24px' }}>
         <div style={{ width: 372 }}>
           <h2 style={{ fontSize: 26 }}>Welcome back to the map.</h2>
           <p style={{ color: 'var(--slate)', fontSize: 14.5, margin: '6px 0 22px' }}>Same scores as everyone else. Your workspace on top.</p>
-          {sent ? (
-            <div style={{ background: 'var(--lo-bg)', border: '1px solid var(--lo-tx)', borderRadius: 8, padding: '16px 18px' }}>
-              <b style={{ fontSize: 15 }}>Check your inbox.</b>
-              <p style={{ fontSize: 13.5, color: 'var(--slate)', margin: '6px 0 0', lineHeight: 1.55 }}>We sent a sign-in link to <b>{email}</b>. Click it to open your workspace. It expires in 1 hour.</p>
-              <button className="btn btn-quiet btn-sm" style={{ marginTop: 12 }} onClick={function() { setSent(false); setEmail(''); }}>Use a different email</button>
-            </div>
-          ) : (
-            <form onSubmit={handleRequest} style={{ display: 'grid', gap: 10 }}>
-              <input
-                placeholder="Work email"
-                type="email"
-                required
-                value={email}
-                onChange={function(e) { setEmail(e.target.value); }}
-                style={{ padding: '10px 13px', border: '1px solid var(--line)', borderRadius: 7, fontSize: 14.5, background: 'var(--sand)', color: 'var(--ink)' }}
-              />
-              {err && <div style={{ background: 'var(--hi-bg)', color: 'var(--hi-tx)', fontSize: 13, borderRadius: 7, padding: '8px 12px' }}>{err}</div>}
-              <button className="btn btn-primary" type="submit" disabled={loading}>{loading ? 'Sending...' : 'Send sign-in link'}</button>
-              <p className="microcopy" style={{ margin: '2px 0 0' }}>No password. We email you a one-click link.</p>
-            </form>
-          )}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '20px 0', color: 'var(--slate)', fontSize: 12.5 }}>
-            <hr className="hr-soft" style={{ flex: 1 }} /> demo <hr className="hr-soft" style={{ flex: 1 }} />
+          <form onSubmit={e => { e.preventDefault(); setErr("That didn't match. Try again, or reset below."); }} style={{ display: 'grid', gap: 10 }}>
+            <input placeholder="Email" type="email" required style={{ padding: '10px 13px', border: '1px solid var(--line)', borderRadius: 7, fontSize: 14.5, background: 'var(--sand)', color: 'var(--ink)' }} />
+            <input placeholder="Password" type="password" required style={{ padding: '10px 13px', border: '1px solid var(--line)', borderRadius: 7, fontSize: 14.5, background: 'var(--sand)', color: 'var(--ink)' }} />
+            {err && <div style={{ background: 'var(--hi-bg)', color: 'var(--hi-tx)', fontSize: 13, borderRadius: 7, padding: '8px 12px' }}>{err}</div>}
+            <button className="btn btn-primary" type="submit">Sign in</button>
+          </form>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 10 }}>
+            <a href="#/login">Forgot password?</a><a href="#/pricing">Create an account</a>
           </div>
-          <button className="btn btn-quiet" style={{ width: '100%' }} onClick={function() { enter('steward'); }}>Sign in with Microsoft Entra ID</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '20px 0', color: 'var(--slate)', fontSize: 12.5 }}>
+            <hr className="hr-soft" style={{ flex: 1 }} /> or <hr className="hr-soft" style={{ flex: 1 }} />
+          </div>
+          <button className="btn btn-quiet" style={{ width: '100%' }} onClick={() => enter('steward')}>⊞ Sign in with Microsoft Entra ID</button>
           <p className="microcopy" style={{ marginTop: 8 }}>For agency and enterprise workspaces. Your views and permissions are scoped by your organization — your scores are not.</p>
           <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-            <button className="btn btn-quiet btn-xs" style={{ flex: 1 }} onClick={function() { enter('builder'); }}>Demo SSO — Builder (Sarah Chen)</button>
-            <button className="btn btn-quiet btn-xs" style={{ flex: 1 }} onClick={function() { enter('steward'); }}>Demo SSO — Steward (Ecology)</button>
+            <button className="btn btn-quiet btn-xs" style={{ flex: 1 }} onClick={() => enter('builder')}>Demo SSO — Builder (Sarah Chen)</button>
+            <button className="btn btn-quiet btn-xs" style={{ flex: 1 }} onClick={() => enter('steward')}>Demo SSO — Steward (Ecology)</button>
           </div>
           <div className="panel" style={{ marginTop: 20, padding: '15px 17px' }}>
             <b style={{ fontSize: 13.5 }}>New here? Which door did you come in through?</b>
             <div style={{ display: 'grid', gap: 7, marginTop: 10 }}>
-              {NEW_ROLES.map(function(r) {
-                return (
-                  <label key={r.id} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', fontSize: 13, background: newRole === r.id ? 'var(--sand)' : 'transparent', border: '1px solid ' + (newRole === r.id ? 'var(--evergreen)' : 'var(--line-soft)'), borderRadius: 8, padding: '8px 11px', cursor: 'pointer' }}>
-                    <input type="radio" name="newrole" checked={newRole === r.id} onChange={function() { setNewRole(r.id); }} style={{ marginTop: 2 }} />
-                    <span><b style={{ fontWeight: 650 }}>{r.name}</b><span style={{ color: 'var(--slate)' }}> -- {r.desc}</span></span>
-                  </label>
-                );
-              })}
+              {NEW_ROLES.map(r => (
+                <label key={r.id} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', fontSize: 13, background: newRole === r.id ? 'var(--sand)' : 'transparent', border: '1px solid ' + (newRole === r.id ? 'var(--evergreen)' : 'var(--line-soft)'), borderRadius: 8, padding: '8px 11px', cursor: 'pointer' }}>
+                  <input type="radio" name="newrole" checked={newRole === r.id} onChange={() => setNewRole(r.id)} style={{ marginTop: 2 }} />
+                  <span><b style={{ fontWeight: 650 }}>{r.name}</b><span style={{ color: 'var(--slate)' }}> — {r.desc}</span></span>
+                </label>
+              ))}
             </div>
-            <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 10 }} onClick={function() { enter(newRole); }}>Create workspace</button>
-            <p className="microcopy" style={{ margin: '8px 0 0' }}>Just exploring? <a href="#/explorer">You don't need an account for the public map.</a></p>
+            <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 10 }} onClick={() => enter(newRole)}>Create workspace</button>
+            <p className="microcopy" style={{ margin: '8px 0 0' }}>More roles coming — researcher, advocate, educator. Just exploring? <a href="#/explorer">You don't need an account for the public map.</a></p>
           </div>
           <div className="microcopy" style={{ marginTop: 18, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <PromiseBadge compact align="left" /> <a href="#/methodology">Methodology</a> · <a href="#/">Privacy</a> · <a href="#/">Status</a>
@@ -183,7 +152,7 @@ function LoginPage() {
       <div className="hide-mobile" style={{ flex: '1 1 420px', background: 'var(--mist)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 30 }}>
         <div style={{ width: '100%', maxWidth: 560 }}>
           <WAMap weights={w} interactive={false} markers={false} />
-          <p className="microcopy" style={{ textAlign: 'center', marginTop: 10 }}>The product is the decoration. Community-burden weight oscillating 25% ~~ 45%.</p>
+          <p className="microcopy" style={{ textAlign: 'center', marginTop: 10 }}>The product is the decoration. Community-burden weight oscillating 25% ↔ 45%.</p>
         </div>
       </div>
     </div>

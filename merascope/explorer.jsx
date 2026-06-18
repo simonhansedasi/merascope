@@ -486,7 +486,7 @@ function ExplorerPage({ query }) {
   const initial = React.useMemo(() => {
     if (query && query.w) {
       const parts = query.w.split(',').map(Number);
-      if (parts.length === 9 && parts.every(n => !isNaN(n))) {
+      if (parts.length === M.INDICATORS.length && parts.every(n => !isNaN(n))) {
         const w = {}; M.INDICATORS.forEach((m, i) => { w[m.k] = parts[i]; });
         return w;
       }

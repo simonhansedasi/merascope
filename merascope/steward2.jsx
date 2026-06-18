@@ -24,7 +24,7 @@ function ImpassePage() {
   return (
     <div style={{ maxWidth: 1140, margin: '0 auto', padding: '22px 24px 50px' }} data-screen-label="Steward — Impasse register">
       <StewardSubNav active="impasse" />
-      <PageHead title="Impasse register" sub="Deadlocks across all active cases, categorized and routable to mediation. The register itself becomes the intelligence." />
+      <PageHead title="Impasse register" sub="Deadlocked items across all active cases, categorized and time-stamped. What has resolved each category historically is on the right." />
       <div style={{ display: 'flex', gap: 18, alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div className="card" style={{ flex: '2 1 540px', overflow: 'auto' }}>
           <table className="mtable">
@@ -53,7 +53,7 @@ function ImpassePage() {
         </div>
         <div className="panel" style={{ flex: '1 1 300px', padding: '16px 18px' }}>
           <b style={{ fontSize: 12, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--slate)' }}>What historically unlocks "{cat}"</b>
-          <p className="microcopy" style={{ margin: '4px 0 12px' }}>Conditions that resolved this impasse type across the register. Click a row to switch category.</p>
+          <p className="microcopy" style={{ margin: '4px 0 12px' }}>Past conditions that broke this deadlock type. Select a row to switch category.</p>
           <div style={{ display: 'grid', gap: 10 }}>
             {(M.IMPASSE_UNLOCKS[cat] || []).map(u => (
               <div key={u.c}>
@@ -95,7 +95,7 @@ function LitigationPage() {
   return (
     <div style={{ maxWidth: 940, margin: '0 auto', padding: '22px 24px 50px' }} data-screen-label="Steward — Litigation tracker">
       <StewardSubNav active="litigation" />
-      <PageHead title="Litigation tracker" sub="Rare by design. Versioned scores and chain-of-custody were built for admissibility before anyone needed them." />
+      <PageHead title="Litigation tracker" sub="Rare by design. Versioned scores and complete chain of custody for every case, exportable as a signed record." />
       <div style={{ display: 'grid', gap: 12 }}>
         {M.LITIGATION.map(l => (
           <div key={l.no} className="card" style={{ padding: '16px 20px', display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -109,7 +109,7 @@ function LitigationPage() {
           </div>
         ))}
       </div>
-      <p className="microcopy" style={{ marginTop: 16 }}>{M.LITIGATION.length} matters statewide. Every score version, finding, and survey custody event since intake is exportable as a single signed record.</p>
+      <p className="microcopy" style={{ marginTop: 16 }}>{M.LITIGATION.length} matters statewide. Every score version and custody event since intake is in the export.</p>
     </div>
   );
 }

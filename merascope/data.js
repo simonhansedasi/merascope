@@ -290,18 +290,21 @@ window.serverLog = function(eventType, fid, payload) {
   }
 
   var INDICATORS = [
-    { k: 'transmission', label: 'Transmission proximity', def: 50, icon: 'pylon' },
-    { k: 'water', label: 'Water availability', def: 50, icon: 'droplet' },
-    { k: 'community', label: 'Community burden', def: 50, icon: 'rings' },
-    { k: 'seismic', label: 'Seismic safety', def: 50, icon: 'wave' },
-    { k: 'flood', label: 'Flood safety', def: 50, icon: 'flood' },
-    { k: 'contamination', label: 'Contamination distance', def: 50, icon: 'borehole' },
-    { k: 'waterway', label: 'Waterway sensitivity', def: 50, icon: 'river' },
-    { k: 'geothermal', label: 'Geothermal opportunity', def: 50, icon: 'thermal' },
-    { k: 'flatness', label: 'Terrain flatness', def: 50, icon: 'contour' },
-    { k: 'aquifer', label: 'Aquifer depth', def: 50, icon: 'borehole' },
-    { k: 'soil', label: 'Soil suitability', def: 50, icon: 'parcel' },
-    { k: 'slope', label: 'Slope suitability', def: 50, icon: 'wave' }
+    { k: 'transmission', label: 'Transmission proximity', def: 40, icon: 'pylon' },
+    { k: 'water', label: 'Water availability', def: 35, icon: 'droplet' },
+    { k: 'community', label: 'Community burden', def: 25, icon: 'rings' },
+    { k: 'seismic', label: 'Seismic safety', def: 0, icon: 'wave' },
+    { k: 'flood', label: 'Flood safety', def: 0, icon: 'flood' },
+    { k: 'contamination', label: 'Contamination distance', def: 0, icon: 'borehole' },
+    { k: 'waterway', label: 'Waterway sensitivity', def: 0, icon: 'river' },
+    { k: 'geothermal', label: 'Geothermal opportunity', def: 0, icon: 'thermal' },
+    { k: 'flatness', label: 'Terrain flatness', def: 0, icon: 'contour' },
+    { k: 'aquifer', label: 'Aquifer depth', def: 0, icon: 'borehole' },
+    { k: 'soil', label: 'Soil suitability', def: 0, icon: 'parcel' },
+    { k: 'slope', label: 'Slope suitability', def: 0, icon: 'wave' },
+    { k: 'pop_exposure', label: 'Population exposure', def: 0, icon: 'pin' },
+    { k: 'soil_profile', label: 'Soil profile chemistry', def: 0, icon: 'plumb' },
+    { k: 'ksat', label: 'Hydraulic K-sat', def: 0, icon: 'borehole' }
   ];
   var DEFAULT_WEIGHTS = {};
   INDICATORS.forEach(function (m) { DEFAULT_WEIGHTS[m.k] = m.def; });
@@ -404,7 +407,7 @@ window.serverLog = function(eventType, fid, payload) {
   ];
 
   /* ── steward docket ── */
-  var STAGES = ['Intake', 'Analysis', 'Findings Exchange', 'Negotiation', 'Rebuttal Cycle', 'Resolution'];
+  var STAGES = ['Site Inquiry', 'Intake', 'Analysis', 'Findings Exchange', 'Negotiation', 'Rebuttal Cycle', 'Resolution'];
   var CASES = [
     { id: '26-0187', site: 'Goldendale Plateau', applicant: 'Klickitat Energy Partners', score: 0.69, stage: 'Intake', days: 4, parties: ['KC', 'YN', 'PUD'], dot: '#7DBB6C' },
     { id: '26-0171', site: 'Moses Lake North', applicant: 'Columbia Compute Co.', score: 0.64, stage: 'Analysis', days: 11, parties: ['GC', 'PUD'], dot: '#F1C40F' },
@@ -560,7 +563,7 @@ window.serverLog = function(eventType, fid, payload) {
     short: 'Same Score Promise',
     long: 'Our methodology, weights, and sources are public and identical for every user. Subscriptions buy resolution and workflow. They have never bought a friendlier number, and they never will — because a flattering score on a failing site bankrupts everyone who trusted it. The aquifer doesn\u2019t read press releases.'
   };
-  var VERSION = 'v2026.06.11';
+  var VERSION = 'v2026.06.18';
 
   /* ── additional states: synthetic aggregate models (public high-level layer) ── */
   function pip(poly, lon, lat) {

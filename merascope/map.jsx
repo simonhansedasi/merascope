@@ -102,6 +102,9 @@ function propsToInd(p, nat = false) {
     aquifer:       p[`aquifer_score${s}`]        || 0,
     soil:          p[`soil_score${s}`]           || 0,
     slope:         p[`slope_score${s}`]          || 0,
+    pop_exposure:  p[`pop_exposure_score${s}`]   || 0,
+    soil_profile:  p[`soil_profile_score${s}`]   || 0,
+    ksat:          p[`ksat_score${s}`]           || 0,
   };
 }
 
@@ -128,6 +131,7 @@ function WAMap({ weights, selectedState = null, selectedCells = null, onCellTogg
   const gridLayerRef = React.useRef(null);
   const clusterLayerRef = React.useRef(null);
   const pinLayerRef = React.useRef(null);
+  const tileLayerRef = React.useRef(null);
   const weightsRef = React.useRef(weights);
   const rampRef = React.useRef(ramp);
   const [hover, setHover] = React.useState(null);
@@ -206,10 +210,11 @@ function WAMap({ weights, selectedState = null, selectedCells = null, onCellTogg
       touchZoom: interactive,
     });
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      maxZoom: 14,
-      subdomains: 'abcd',
-    }).addTo(map);
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const tileUrl = isDark
+      ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+      : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+    tileLayerRef.current = L.tileLayer(tileUrl, { maxZoom: 14, subdomains: 'abcd' }).addTo(map);
 
     clusterLayerRef.current = L.layerGroup().addTo(map);
     pinLayerRef.current     = L.layerGroup().addTo(map);
@@ -263,6 +268,19 @@ function WAMap({ weights, selectedState = null, selectedCells = null, onCellTogg
   React.useEffect(() => { applyColors(weightsRef.current, rampRef.current); }, [selectedCells]);
   React.useEffect(() => { applyPins(weights, ramp);   }, [pins, ramp]);
   React.useEffect(() => { applyMarkers();              }, [markers]);
+
+  React.useEffect(() => {
+    const obs = new MutationObserver(() => {
+      if (!tileLayerRef.current) return;
+      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+      const url = isDark
+        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+        : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+      tileLayerRef.current.setUrl(url);
+    });
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => obs.disconnect();
+  }, []);
 
   React.useEffect(() => {
     applyColors(weightsRef.current, rampRef.current);
@@ -364,7 +382,7 @@ function WeightPanel({ weights, setWeights, dock = false }) {
       </button>
       {!collapsed && (
         <div style={{ padding: '12px 15px 14px' }}>
-          <p className="microcopy" style={{ margin: '0 0 8px' }}>12 indicators, equal weight by default. Percentages show each indicator's share of the total. The map recolors as you drag.</p>
+          <p className="microcopy" style={{ margin: '0 0 8px' }}>15 indicators, equal weight by default. Percentages show each indicator's share of the total. The map recolors as you drag.</p>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 11 }}>
             {[['Default', null],
               ['Builder lens', { transmission: 50, water: 20, community: 10, seismic: 5, flood: 5, contamination: 5, flatness: 5 }],

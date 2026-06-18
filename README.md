@@ -90,7 +90,9 @@ Raw columns are now added automatically by `run_pipeline.py` at the end of every
 ## Product surfaces
 
 ### Builder surface (`#/builder`)
-Workspace tab (saved cells, comparison panel), Status tab (CRM tracker per site: contacts/events/notes/pipeline), Portfolio screening (CSV upload of lat/lons, scored results with gate check). Builder can look up their case ID under "My Application" to see read-only case file with full transparency into conditions being negotiated.
+Workspace tab (saved cells, comparison panel), Status tab (CRM tracker per site: contacts/events/notes/pipeline), Portfolio screening (CSV upload of lat/lons, scored results with gate check), My Inquiry tab (submit a site inquiry + case lookup).
+
+**Site inquiry flow:** Builder selects a saved site from a card grid → confirms site name and score → lead agency is auto-detected via Nominatim reverse geocode → fills contact details → submits. Merascope routes the inquiry to the relevant agency; the agency runs their own jurisdiction-specific permitting process from there. Merascope is the first contact point and routing layer, not the permitting system itself.
 
 ### Steward surface (`#/steward`)
 Kanban docket across all stages. Case file: versioned findings, conditions negotiation (propose/accept/reject), co-party coordination, rebuttal clock, document chain, CSV exports. Impasse register (route to mediation). Mandated studies workbench (section checklists, live progress).
@@ -104,6 +106,7 @@ Filtered docket — only shows cases where the agency is invited. Same case file
 ### Multi-party permission model
 | Action | Lead (steward) | Co-party | Builder |
 |---|---|---|---|
+| Submit site inquiry | no | no | yes |
 | See findings + conditions | yes | yes | yes |
 | Propose condition | yes | yes (pending lead approval) | no |
 | Approve/reject condition | yes | no | no |
@@ -121,6 +124,51 @@ Three normalization windows are planned:
 2. **State** — current output (0-1, within-state). Default view.
 3. **County / ZCTA / parcel** — dynamic re-ranking in the frontend using raw values; no
    new pipeline work needed. Raw columns in every GeoJSON enable arbitrary re-normalization.
+
+## Server setup
+
+`server.py` requires PostgreSQL. For a fresh VPS:
+
+```bash
+sudo bash setup_pg.sh          # installs Postgres, creates role+DB, applies schema.sql
+```
+
+Add to `/etc/merascope.env`:
+
+```
+DATABASE_URL=postgresql://merascope:PASS@localhost/merascope
+S3_ENDPOINT=https://<region>.your-objectstorage.com
+S3_ACCESS_KEY=<key>
+S3_SECRET_KEY=<secret>
+S3_BUCKET=merascope-docs
+SMTP_USER=vitruviansandwich@gmail.com
+SMTP_PASS=<gmail-app-password>
+APP_URL=https://merascope.com
+APP_ENV=production
+```
+
+Pre-seed the lead steward before the pilot:
+
+```sql
+INSERT INTO users (email) VALUES ('name@seattle.gov') ON CONFLICT DO NOTHING;
+INSERT INTO user_roles (email, role, agency_key) VALUES ('name@seattle.gov', 'steward', 'OPCD');
+```
+
+In local dev, omit `S3_ENDPOINT` (falls back to disk) and omit SMTP vars (magic link printed to console).
+
+## Testing
+
+```bash
+# Unit + pipeline tests (124 tests)
+/home/simonhans/anaconda3/envs/merascope/bin/python3 -m pytest tests/ -v
+
+# Browser smoke test (26 checks — starts its own server, headless Chromium)
+/home/simonhans/anaconda3/envs/merascope/bin/python3 tests/smoke_test.py
+```
+
+`tests/test_server.py` — 45 tests covering all server API routes including pagination. Requires PostgreSQL (`TEST_DATABASE_URL`); skips cleanly if unavailable.
+`tests/test_config.py`, `test_gates.py`, `test_indicators.py` — 79 pipeline tests (no DB needed).
+`tests/smoke_test.py` — Playwright end-to-end: builder submit form, progressive reveal, steward docket, intake case view, case lookup.
 
 ## Frontend
 

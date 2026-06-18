@@ -147,11 +147,11 @@ function SiteProfile({ id }) {
 }
 
 var CRM_STATUSES = [
-  { k: 'researching',  label: 'Researching',   bg: '#1e2040', color: '#7b8bb2' },
-  { k: 'contacted',    label: 'Contacted',      bg: '#3d2e00', color: '#c89a00' },
-  { k: 'in_diligence', label: 'In diligence',   bg: '#0d2340', color: '#4a9edd' },
-  { k: 'negotiating',  label: 'Negotiating',    bg: '#0d2b1a', color: '#3ecf6a' },
-  { k: 'dead',         label: 'Dead',           bg: '#2b0d0d', color: '#c0392b' },
+  { k: 'researching',  label: 'Researching',   bg: 'var(--gate)',   color: 'var(--slate)' },
+  { k: 'contacted',    label: 'Contacted',      bg: 'var(--med-bg)', color: 'var(--med-tx)' },
+  { k: 'in_diligence', label: 'In diligence',   bg: 'var(--sand)',   color: 'var(--basalt)' },
+  { k: 'negotiating',  label: 'Negotiating',    bg: 'var(--lo-bg)',  color: 'var(--lo-tx)' },
+  { k: 'dead',         label: 'Dead',           bg: 'var(--hi-bg)',  color: 'var(--hi-tx)' },
 ];
 var EVENT_TYPES = ['Call', 'Email', 'Meeting', 'Site visit', 'Note'];
 
@@ -265,7 +265,7 @@ function CrmPanel({ fid, cell, geo }) {
                 return (
                   <button key={s.k} onClick={function() { setStatus(s.k); }}
                     style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 8, cursor: 'pointer', border: 'none',
-                      background: active ? s.bg : 'var(--surface)', color: active ? s.color : 'var(--slate)',
+                      background: active ? s.bg : 'var(--gate)', color: active ? s.color : 'var(--slate)',
                       outline: active ? ('2px solid ' + s.color) : '1px solid var(--line)', outlineOffset: active ? 1 : 0 }}>
                     {s.label}
                   </button>
@@ -291,7 +291,7 @@ function CrmPanel({ fid, cell, geo }) {
               return (
                 <input key={pair[0]} placeholder={pair[1]} value={contactDraft[pair[0]]}
                   onChange={function(e) { var v = e.target.value; setContactDraft(function(d) { var n = Object.assign({}, d); n[pair[0]] = v; return n; }); }}
-                  style={{ gridColumn: pair[0] === 'name' ? 'span 2' : undefined, padding: '6px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--surface)', color: 'inherit', fontSize: 13 }} />
+                  style={{ gridColumn: pair[0] === 'name' ? 'span 2' : undefined, padding: '6px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 13 }} />
               );
             })}
             <button className="btn btn-primary btn-sm" style={{ gridColumn: 'span 2' }} onClick={submitContact}>Save contact</button>
@@ -334,16 +334,16 @@ function CrmPanel({ fid, cell, geo }) {
             <div style={{ display: 'flex', gap: 8 }}>
               <select value={eventDraft.type}
                 onChange={function(e) { var v = e.target.value; setEventDraft(function(d) { return Object.assign({}, d, { type: v }); }); }}
-                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--surface)', color: 'inherit', fontSize: 13 }}>
+                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 13 }}>
                 {EVENT_TYPES.map(function(t) { return <option key={t}>{t}</option>; })}
               </select>
               <input type="date" value={eventDraft.date}
                 onChange={function(e) { var v = e.target.value; setEventDraft(function(d) { return Object.assign({}, d, { date: v }); }); }}
-                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--surface)', color: 'inherit', fontSize: 13, flex: 1 }} />
+                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 13, flex: 1 }} />
             </div>
             <textarea placeholder="What happened? Who was involved? What are the next steps?" value={eventDraft.summary} rows={3}
               onChange={function(e) { var v = e.target.value; setEventDraft(function(d) { return Object.assign({}, d, { summary: v }); }); }}
-              style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--surface)', color: 'inherit', fontSize: 13, resize: 'vertical', fontFamily: 'inherit' }} />
+              style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 13, resize: 'vertical', fontFamily: 'inherit' }} />
             <button className="btn btn-primary btn-sm" onClick={submitEvent}>Save</button>
           </div>
         )}
@@ -673,7 +673,7 @@ function PortfolioPage() {
               <div key={pair[0]} style={{ marginBottom: 12 }}>
                 <label style={{ fontSize: 13, fontWeight: 650, display: 'block', marginBottom: 4 }}>{pair[1]}</label>
                 <select value={colMap[pair[0]]} onChange={function(e) { setColVal(pair[0], e.target.value); }}
-                  style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--surface)', color: 'inherit', fontSize: 13 }}>
+                  style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 13 }}>
                   <option value="">{pair[0] === 'nameCol' ? '-- use row number --' : '-- select --'}</option>
                   {parsed.headers.map(function(h) { return <option key={h} value={h}>{h}</option>; })}
                 </select>

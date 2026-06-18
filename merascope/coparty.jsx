@@ -48,7 +48,7 @@ function CoDocketPage() {
         <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--slate)' }}>
           <Icon name="doc" size={32} color="var(--line)" />
           <p style={{ marginTop: 12, fontSize: 15 }}>No cases found for {partyName}.</p>
-          <p className="microcopy">If you were forwarded a case, contact the lead agency to confirm your party code.</p>
+          <p className="microcopy">If you were invited to a case, ask the lead agency to confirm your party code.</p>
         </div>
       ) : (
         <div style={{ display: 'grid', gap: 12 }}>
@@ -86,7 +86,7 @@ function CoDocketPage() {
 
       <div className="panel" style={{ marginTop: 28, padding: '14px 18px' }}>
         <b style={{ fontSize: 12, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--slate)' }}>Same Score Promise</b>
-        <p className="microcopy" style={{ margin: '5px 0 0' }}>The scores and findings you see here are identical to what the lead agency and the applicant see. The methodology is public. No party receives a friendlier number.</p>
+        <p className="microcopy" style={{ margin: '5px 0 0' }}>Every party sees the same scores. The methodology is public. No one gets a friendlier number.</p>
       </div>
     </div>
   );

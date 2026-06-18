@@ -6,3 +6,7 @@ folium
 requests
 shapely
 openpyxl
+flask
+gunicorn
+psycopg2-binary
+boto3

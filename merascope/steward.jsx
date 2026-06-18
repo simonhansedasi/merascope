@@ -25,7 +25,8 @@ function PartyAvatars({ parties }) {
 function CaseCard({ k }) {
   const M = window.MERA;
   const { ramp } = React.useContext(MeraCtx);
-  const openable = !!(M.CASE_DETAIL_MAP && M.CASE_DETAIL_MAP[k.id]);
+  const hasDetail = !!(M.CASE_DETAIL_MAP && M.CASE_DETAIL_MAP[k.id]);
+  const openable = hasDetail || !!k._dynamic;
   return (
     <div className="kcard" onClick={() => { if (openable) location.hash = '#/steward/case/' + k.id; }}
       title={openable ? '' : 'Demo — full record available for case 26-0142'}
@@ -49,44 +50,62 @@ function CaseCard({ k }) {
   );
 }
 
+var DOCKET_LIMIT = 50;
+
+function _shapeDynamic(c) {
+  return { id: c.case_id, site: c.site, applicant: c.applicant, score: c.score, stage: c.stage || 'Site Inquiry', dot: '#888', days: c.days || 0, parties: [], resolution: null, _dynamic: true };
+}
+
 function DocketPage() {
   const M = window.MERA;
   const loading = useFakeLoad(700);
   const [dynamicCases, setDynamicCases] = React.useState([]);
+  const [total, setTotal] = React.useState(0);
+  const [loadingMore, setLoadingMore] = React.useState(false);
   const [showNewCase, setShowNewCase] = React.useState(false);
   const [newDraft, setNewDraft] = React.useState({ site: '', applicant: '', score: 0.5 });
   const [stageOverrides, setStageOverrides] = React.useState({});
 
-  React.useEffect(() => {
-    fetch('/api/cases').then(r => r.json()).then(rows => {
-      setDynamicCases(rows.map(c => ({
-        id: c.case_id, site: c.site, applicant: c.applicant,
-        score: c.score, stage: c.stage || 'Application',
-        dot: '#888', days: c.days || 0, parties: [], resolution: null
-      })));
-    });
-    const detailIds = Object.keys(M.CASE_DETAIL_MAP || {});
-    Promise.all(detailIds.map(cid =>
-      fetch('/api/case/' + cid + '/stage').then(r => r.json()).then(s => [cid, s])
-    )).then(pairs => {
-      const map = {};
+  var fetchCases = function(offset, append) {
+    return fetch('/api/cases?limit=' + DOCKET_LIMIT + '&offset=' + offset)
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        var shaped = (d.cases || []).map(_shapeDynamic);
+        setTotal(d.total || 0);
+        if (append) { setDynamicCases(function(prev) { return prev.concat(shaped); }); }
+        else { setDynamicCases(shaped); }
+      });
+  };
+
+  React.useEffect(function() {
+    fetchCases(0, false);
+    var detailIds = Object.keys(M.CASE_DETAIL_MAP || {});
+    Promise.all(detailIds.map(function(cid) {
+      return fetch('/api/case/' + cid + '/stage').then(function(r) { return r.json(); }).then(function(s) { return [cid, s]; });
+    })).then(function(pairs) {
+      var map = {};
       pairs.forEach(function(p) { if (p[1]) map[p[0]] = p[1]; });
       setStageOverrides(map);
     });
   }, []);
 
-  const createCase = () => {
+  var loadMore = function() {
+    setLoadingMore(true);
+    fetchCases(dynamicCases.length, true).finally(function() { setLoadingMore(false); });
+  };
+
+  var createCase = function() {
     if (!newDraft.site.trim() || !newDraft.applicant.trim()) return;
     fetch('/api/cases', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newDraft)
-    }).then(r => r.json()).then(res => {
+    }).then(function(r) { return r.json(); }).then(function(res) {
       if (!res.ok) return;
-      setDynamicCases(prev => [...prev, {
-        id: res.case_id, site: newDraft.site, applicant: newDraft.applicant,
-        score: newDraft.score, stage: 'Application', dot: '#888', days: 0, parties: [], resolution: null
-      }]);
+      setDynamicCases(function(prev) {
+        return prev.concat([{ id: res.case_id, site: newDraft.site, applicant: newDraft.applicant, score: newDraft.score, stage: 'Site Inquiry', dot: '#888', days: 0, parties: [], resolution: null, _dynamic: true }]);
+      });
+      setTotal(function(n) { return n + 1; });
       setNewDraft({ site: '', applicant: '', score: 0.5 });
       setShowNewCase(false);
     });
@@ -127,21 +146,29 @@ function DocketPage() {
         </div>
       )}
       <StewardSubNav active="docket" />
-      <PageHead title="The Docket" sub={<span><span className="score-serif">{allCases.length}</span> active case files · Dept. of Ecology — reviewer view · all findings versioned on one evidence base.</span>}
+      <PageHead title="The Docket"
+        sub={<span><span className="score-serif">{allCases.length}</span>{total > dynamicCases.length ? ' of ' + (M.CASES.length + total) : ''} active cases · Dept. of Ecology · findings versioned from intake.</span>}
         right={<React.Fragment><button className="btn btn-ghost btn-sm" onClick={() => setShowNewCase(true)}>New case file</button><PromiseBadge /></React.Fragment>} />
       <div className="kanban">
-        {M.STAGES.map(stage => {
-          const cards = allCases.filter(c => c.stage === stage);
+        {M.STAGES.map(function(stage) {
+          var cards = allCases.filter(function(c) { return c.stage === stage; });
           return (
             <div key={stage} className="kcol">
               <h4>{stage} <span className="score-serif" style={{ color: 'var(--slate)' }}>{cards.length}</span></h4>
               {loading ? <div className="shimmer" style={{ height: 110 }}></div>
                 : cards.length === 0 ? <div style={{ fontSize: 12.5, color: 'var(--slate)', textAlign: 'center', padding: '26px 8px', border: '1.5px dashed var(--line)', borderRadius: 8 }}>No cases in {stage.toLowerCase()}.</div>
-                : cards.map(k => <CaseCard key={k.id} k={k} />)}
+                : cards.map(function(k) { return <CaseCard key={k.id} k={k} />; })}
             </div>
           );
         })}
       </div>
+      {dynamicCases.length < total && (
+        <div style={{ textAlign: 'center', padding: '18px 0 4px' }}>
+          <button className="btn btn-quiet btn-sm" onClick={loadMore} disabled={loadingMore}>
+            {loadingMore ? 'Loading...' : 'Load more (' + (total - dynamicCases.length) + ' remaining)'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -171,7 +198,8 @@ const COND_TYPES = ['Water', 'Grid', 'Community', 'Environmental', 'Heat reuse',
 
 function CaseFilePage({ id }) {
   const M = window.MERA;
-  const C = (M.CASE_DETAIL_MAP && M.CASE_DETAIL_MAP[id]) || M.CASE_DETAIL;
+  const isDynamic = !(M.CASE_DETAIL_MAP && M.CASE_DETAIL_MAP[id]);
+  const C = isDynamic ? M.CASE_DETAIL : M.CASE_DETAIL_MAP[id];
   const { ramp } = React.useContext(MeraCtx);
   const { role, partyKey } = React.useContext(AuthCtx);
   const isLead = role === 'steward';
@@ -196,6 +224,33 @@ function CaseFilePage({ id }) {
   const fileInputRef = React.useRef(null);
   const [caseStage, setCaseStage] = React.useState(C.stage);
   const [serverRebuttals, setServerRebuttals] = React.useState([]);
+  const [dynCase, setDynCase] = React.useState(null);
+  const [dynLoading, setDynLoading] = React.useState(isDynamic);
+  const [trackingInput, setTrackingInput] = React.useState('');
+  const [confirming, setConfirming] = React.useState(false);
+
+  var handleConfirm = function() {
+    setConfirming(true);
+    fetch('/api/builder/case/' + id + '/confirm', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agency_tracking_id: trackingInput.trim() }),
+    })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.ok) {
+          setDynCase(function(prev) {
+            return Object.assign({}, prev, {
+              agency_tracking_id: data.agency_tracking_id,
+              confirmed_at: data.confirmed_at,
+              stage: 'Intake'
+            });
+          });
+          setToast('Case confirmed. Record is now active.');
+        }
+      })
+      .finally(function() { setConfirming(false); });
+  };
 
   const notify = msg => { setToast(msg); };
 
@@ -245,7 +300,7 @@ function CaseFilePage({ id }) {
     fetch('/api/case/' + id + '/conditions')
       .then(r => r.json())
       .then(list => {
-        if (list.length === 0 && C.conditions.length > 0) {
+        if (!isDynamic && list.length === 0 && C.conditions.length > 0) {
           return Promise.all(C.conditions.map(c =>
             fetch('/api/case/' + id + '/conditions', {
               method: 'POST',
@@ -269,6 +324,15 @@ function CaseFilePage({ id }) {
     fetch('/api/case/' + id + '/deadline').then(r => r.json()).then(d => { if (d) setDeadline(d); });
     fetch('/api/case/' + id + '/stage').then(r => r.json()).then(s => { if (s) setCaseStage(s); });
     fetch('/api/case/' + id + '/rebuttals').then(r => r.json()).then(setServerRebuttals);
+  }, [id]);
+
+  React.useEffect(() => {
+    if (!isDynamic) return;
+    setDynLoading(true);
+    fetch('/api/builder/case/' + id)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { setDynCase(data && data.case_id ? data : null); })
+      .finally(() => setDynLoading(false));
   }, [id]);
 
   const submitCondition = () => {
@@ -393,6 +457,132 @@ function CaseFilePage({ id }) {
   const backHref = isCoParty ? '#/co-party' : '#/steward';
   const backLabel = isCoParty ? 'Back to My Cases' : 'Back to the Docket';
 
+  /* ── dynamic (builder-submitted) case intake view ── */
+  if (isDynamic) {
+    if (dynLoading) {
+      return (
+        <div style={{ maxWidth: 1100, margin: '0 auto', padding: '40px 24px', color: 'var(--slate)' }}>
+          Loading case...
+        </div>
+      );
+    }
+    if (!dynCase) {
+      return (
+        <div style={{ maxWidth: 1100, margin: '0 auto', padding: '40px 24px' }}>
+          <a href="#/steward" className="btn btn-quiet btn-sm">Back to Docket</a>
+          <h2 style={{ marginTop: 20 }}>Case not found</h2>
+          <p style={{ color: 'var(--slate)' }}>No record found for case ID {id}.</p>
+        </div>
+      );
+    }
+    const dc = dynCase;
+    return (
+      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '22px 24px 50px' }} data-screen-label="Steward -- Intake case">
+        {toast && <NotifyToast message={toast} onDone={() => setToast(null)} />}
+        <a href="#/steward" className="btn btn-quiet btn-sm" style={{ marginBottom: 16, display: 'inline-block' }}>Back to Docket</a>
+
+        <div className="callout" style={{ padding: '12px 16px', marginBottom: 16, display: 'flex', gap: 12, alignItems: 'flex-start', background: 'var(--med-bg)', border: '1px solid var(--med-tx)' }}>
+          <div style={{ fontSize: 13.5, color: 'var(--med-tx)' }}>
+            {dc.imported
+              ? <span><b>Builder-registered permit.</b> The applicant has brought an existing permitting pipeline into Merascope. Review their documents and advance the stage to formally open the case.</span>
+              : <span><b>New site inquiry received.</b> Review the submission and advance the stage to formally open the case.</span>}
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: '18px 22px', marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+            <div>
+              <div className="eyebrow">Case {dc.case_id}</div>
+              <h2 style={{ fontSize: 22 }}>{dc.site}</h2>
+              <div className="microcopy">
+                Applicant: {dc.applicant}
+                {dc.lead_agency ? ' · Lead agency: ' + dc.lead_agency : ''}
+                {' · Stage: '}<b>{dc.stage || 'Site Inquiry'}</b>
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <span className="score-badge" style={{ background: M.rampColor(dc.score || 0.5, ramp), color: M.rampText(dc.score || 0.5, ramp), fontSize: 22, padding: '4px 13px' }}>{(dc.score || 0.5).toFixed(3)}</span>
+              <div className="microcopy" style={{ marginTop: 3 }}>composite score</div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 16 }}>
+          <div className="card" style={{ padding: '14px 16px' }}>
+            <div style={{ fontSize: 11, color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 5 }}>Contact</div>
+            <div style={{ fontWeight: 650 }}>{dc.contact_name || '—'}</div>
+            <div style={{ fontSize: 12.5, color: 'var(--slate)' }}>{dc.contact_email || ''}</div>
+          </div>
+          <div className="card" style={{ padding: '14px 16px' }}>
+            <div style={{ fontSize: 11, color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 5 }}>Submitted</div>
+            <div style={{ fontWeight: 650 }}>{dc.ts ? dc.ts.substring(0, 10) : '—'}</div>
+          </div>
+          <div className="card" style={{ padding: '14px 16px' }}>
+            <div style={{ fontSize: 11, color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 5 }}>Location</div>
+            <div style={{ fontWeight: 650 }}>{dc.state_code || '—'}</div>
+            {dc.lat != null && <div style={{ fontSize: 12, color: 'var(--slate)', fontFamily: 'monospace' }}>{Number(dc.lat).toFixed(3) + 'N ' + Math.abs(Number(dc.lon)).toFixed(3) + 'W'}</div>}
+          </div>
+        </div>
+
+        {dc.notes && (
+          <div className="card" style={{ padding: '14px 16px', marginBottom: 16 }}>
+            <div style={{ fontSize: 11, color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 5 }}>Notes from builder</div>
+            <div style={{ fontSize: 13.5 }}>{dc.notes}</div>
+          </div>
+        )}
+
+        {dc.external_permit_id && (
+          <div className="card" style={{ padding: '14px 16px', marginBottom: 16 }}>
+            <div style={{ fontSize: 11, color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 5 }}>External permit / application ID</div>
+            <div style={{ fontWeight: 650, fontSize: 14, fontFamily: 'monospace' }}>{dc.external_permit_id}</div>
+          </div>
+        )}
+
+        <DocSection caseId={dc.case_id} />
+
+        <div style={{ marginTop: 20, display: 'grid', gap: 12 }}>
+          {!dc.confirmed_at ? (
+            <div className="card" style={{ padding: '16px 20px' }}>
+              <b style={{ fontSize: 14 }}>Confirm case &amp; assign tracking number</b>
+              <p className="microcopy" style={{ margin: '4px 0 12px', lineHeight: 1.5 }}>
+                Confirming formally opens the record and moves the case to Intake. The applicant will see your agency tracking number in their case view.
+              </p>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                <input type="text" value={trackingInput}
+                  placeholder="Your agency tracking number (optional)"
+                  onChange={function(e) { setTrackingInput(e.target.value); }}
+                  style={{ flex: 1, minWidth: 220, padding: '8px 10px', borderRadius: 7, border: '1.5px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 13.5, fontFamily: 'inherit' }} />
+                <button className="btn btn-primary" onClick={handleConfirm} disabled={confirming}>
+                  {confirming ? 'Confirming...' : 'Confirm case'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="card" style={{ padding: '14px 16px', background: 'var(--lo-bg)', border: '1px solid var(--lo-tx)' }}>
+              <div style={{ fontSize: 11, color: 'var(--lo-tx)', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 4, fontWeight: 700 }}>Case confirmed</div>
+              {dc.agency_tracking_id && (
+                <div style={{ fontWeight: 650, fontSize: 14, fontFamily: 'monospace', color: 'var(--ink)' }}>{dc.agency_tracking_id}</div>
+              )}
+              <div style={{ fontSize: 12, color: 'var(--slate)', marginTop: 2 }}>{dc.confirmed_at ? dc.confirmed_at.substring(0, 10) : ''}</div>
+            </div>
+          )}
+
+          <div className="card" style={{ padding: '16px 20px' }}>
+            <b style={{ fontSize: 14 }}>Advance stage</b>
+            <p className="microcopy" style={{ margin: '4px 0 10px' }}>Move this case to the next stage in the review process.</p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {M.STAGES.filter(function(s) { return s !== (dc.stage || 'Site Inquiry'); }).map(function(s) {
+                return (
+                  <button key={s} className="btn btn-quiet btn-sm" onClick={() => advanceStage(s)}>Move to {s}</button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ maxWidth: 1340, margin: '0 auto', padding: '22px 24px 50px' }} data-screen-label="Steward — Case file">
       {toast && <NotifyToast message={toast} onDone={() => setToast(null)} />}
@@ -499,7 +689,7 @@ function CaseFilePage({ id }) {
                 <div style={{ display: 'flex', gap: 6 }}>
                   <Chip tone="slate">{f.ver}</Chip>
                   {f.contested && <Chip tone="hi">contested</Chip>}
-                  <a href="#/methodology" style={{ fontSize: 12, marginLeft: 'auto', fontWeight: 650 }}>evidence</a>
+                  <a href={"#/evidence?case=" + C.id} style={{ fontSize: 12, marginLeft: 'auto', fontWeight: 650 }}>Evidence</a>
                 </div>
               </div>
             ))}
@@ -528,7 +718,7 @@ function CaseFilePage({ id }) {
                         ? <Chip tone="med">Pending lead approval</Chip>
                         : isLead
                           ? <select value={c.status} onChange={e => changeStatus(c.id, e.target.value)}
-                              style={{ fontSize: 12.5, padding: '3px 6px', borderRadius: 5, border: '1px solid var(--line)', background: 'var(--surface)', color: 'inherit', fontFamily: 'inherit' }}>
+                              style={{ fontSize: 12.5, padding: '3px 6px', borderRadius: 5, border: '1px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontFamily: 'inherit' }}>
                               {['Proposed', 'Under review', 'Countered', 'Accepted', 'Impasse'].map(s => <option key={s}>{s}</option>)}
                             </select>
                           : <Chip tone={COND_TONE[c.status] || 'slate'}>{c.status}</Chip>}
@@ -552,10 +742,10 @@ function CaseFilePage({ id }) {
             <div style={{ display: 'grid', gap: 8, marginTop: 10, padding: '12px 14px', background: 'var(--sand)', borderRadius: 8 }}>
               <textarea placeholder="Describe the proposed condition..." value={draft.text} rows={3}
                 onChange={e => { const v = e.target.value; setDraft(d => Object.assign({}, d, { text: v })); }}
-                style={{ padding: '7px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--surface)', color: 'inherit', fontSize: 13, resize: 'vertical', fontFamily: 'inherit' }} />
+                style={{ padding: '7px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 13, resize: 'vertical', fontFamily: 'inherit' }} />
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <select value={draft.type} onChange={e => { const v = e.target.value; setDraft(d => Object.assign({}, d, { type: v })); }}
-                  style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--surface)', color: 'inherit', fontSize: 13 }}>
+                  style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 13 }}>
                   {COND_TYPES.map(t => <option key={t}>{t}</option>)}
                 </select>
                 <span className="microcopy">Proposed by: <b>{isCoParty ? (partyName || 'Co-party') : 'Dept. of Ecology'}</b></span>

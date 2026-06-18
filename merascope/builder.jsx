@@ -1,9 +1,9 @@
 /* -- Surface B: Builder workspace -- saved cells + comparison */
 
 function BuilderSubNav({ active }) {
-  const tabs = [['search', 'Workspace', '#/builder'], ['status', 'Status', '#/builder/status'], ['portfolio', 'Portfolio screening', '#/builder/portfolio'], ['mycase', 'My Application', '#/builder/case/']];
+  const tabs = [['search', 'Workspace', '#/builder'], ['status', 'Status', '#/builder/status'], ['portfolio', 'Portfolio screening', '#/builder/portfolio'], ['mycase', 'My Inquiry', '#/builder/case/']];
   return (
-    <div className="tabs" style={{ marginBottom: 18 }}>
+    <div className="tabs" style={{ marginBottom: 18, flexWrap: 'wrap', overflowX: 'visible' }}>
       {tabs.map(([k, label, href]) => (
         <button key={k} className={active === k ? 'on' : ''} onClick={() => { location.hash = href; }}>{label}</button>
       ))}
@@ -402,6 +402,33 @@ function BuilderSearch() {
   );
 }
 
+var AFFILIATED_AGENCIES = [
+  { match: 'Seattle',     label: 'Seattle OPCD',           partner: true  },
+  { match: 'King County', label: 'King County DPER',        partner: true  },
+  { match: 'Snohomish',   label: 'Snohomish County PDS',    partner: false },
+  { match: 'Pierce',      label: 'Pierce County Planning',  partner: false },
+  { match: 'Washington',  label: 'WA Dept. of Ecology',     partner: true  },
+];
+
+function deriveJurisdictions(addr) {
+  var pool = [addr.city, addr.town, addr.village, addr.county, addr.state].filter(Boolean);
+  var results = [];
+  pool.forEach(function(name) {
+    AFFILIATED_AGENCIES.forEach(function(ag) {
+      if (name.indexOf(ag.match) !== -1 && !results.some(function(r) { return r.label === ag.label; })) {
+        results.push(ag);
+      }
+    });
+  });
+  if (results.length === 0) {
+    var city = addr.city || addr.town || addr.village;
+    var county = addr.county;
+    if (city)   results.push({ match: city,   label: city + ' Planning Dept.',   partner: false });
+    if (county) results.push({ match: county, label: county + ' Planning',        partner: false });
+  }
+  return results;
+}
+
 function BuilderCaseView({ id }) {
   const M = window.MERA;
   const { ramp } = React.useContext(MeraCtx);
@@ -412,9 +439,28 @@ function BuilderCaseView({ id }) {
   const [rebuttalSent, setRebuttalSent] = React.useState(false);
   const [liveConditions, setLiveConditions] = React.useState(null);
   const [liveStage, setLiveStage] = React.useState(null);
+  const [mode, setMode] = React.useState('lookup');
+  const [dynCase, setDynCase] = React.useState(null);
+  const [dynLoading, setDynLoading] = React.useState(false);
+
+  /* submission form state */
+  const [savedCells]        = React.useState(window.getSavedCells ? window.getSavedCells() : []);
+  const [selCell, setSelCell]         = React.useState(null);
+  const [form, setForm]               = React.useState({ siteName: '', applicant: '', contactName: '', contactEmail: '', score: '0.500', notes: '' });
+  const setField = function(k, v) { setForm(function(f) { return Object.assign({}, f, { [k]: v }); }); };
+  const [jurisdictions, setJurisdictions]     = React.useState([]);
+  const [selJur, setSelJur]           = React.useState(null);
+  const [geoLoading, setGeoLoading]   = React.useState(false);
+  const [submitting, setSubmitting]   = React.useState(false);
+  const [subError, setSubError]       = React.useState('');
+
+  /* import form state */
+  const [impForm, setImpForm] = React.useState({ siteName: '', externalPermitId: '', stage: '', lat: '', lon: '', leadAgency: '', applicant: '', contactName: '', contactEmail: '', notes: '' });
+  const setImpField = function(k, v) { setImpForm(function(f) { return Object.assign({}, f, { [k]: v }); }); };
 
   const C = (M.CASE_DETAIL_MAP && M.CASE_DETAIL_MAP[caseId]) || null;
 
+  /* fetch live conditions/stage when viewing a demo case */
   React.useEffect(() => {
     if (!C) return;
     setLiveConditions(null);
@@ -431,9 +477,149 @@ function BuilderCaseView({ id }) {
     });
   }, [caseId]);
 
+  /* fetch dynamic case when id is pre-set and not in CASE_DETAIL_MAP */
+  React.useEffect(() => {
+    if (!id || C) return;
+    setDynLoading(true);
+    fetch('/api/builder/case/' + id)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data && data.case_id) setDynCase(data); })
+      .finally(() => setDynLoading(false));
+  }, [id]);
+
+  /* Nominatim reverse geocode when a saved cell is selected */
+  React.useEffect(function() {
+    if (!selCell || selCell.lat == null) { setJurisdictions([]); setSelJur(null); return; }
+    setGeoLoading(true);
+    setJurisdictions([]);
+    setSelJur(null);
+    fetch('https://nominatim.openstreetmap.org/reverse?lat=' + selCell.lat + '&lon=' + selCell.lon + '&format=json&zoom=10')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var candidates = deriveJurisdictions(data.address || {});
+        setJurisdictions(candidates);
+        if (candidates.length === 1) setSelJur(candidates[0]);
+      })
+      .catch(function() { setJurisdictions([]); })
+      .finally(function() { setGeoLoading(false); });
+  }, [selCell ? selCell.fid : null]);
+
+  const handleImport = function() {
+    setSubError('');
+    if (!impForm.siteName.trim())     { setSubError('Site name is required.'); return; }
+    if (!impForm.applicant.trim())    { setSubError('Company / applicant is required.'); return; }
+    if (!impForm.contactEmail.trim()) { setSubError('Contact email is required.'); return; }
+    setSubmitting(true);
+    var payload = {
+      site:               impForm.siteName.trim(),
+      applicant:          impForm.applicant.trim(),
+      contact_name:       impForm.contactName.trim(),
+      contact_email:      impForm.contactEmail.trim(),
+      lead_agency:        impForm.leadAgency.trim(),
+      notes:              impForm.notes.trim(),
+      external_permit_id: impForm.externalPermitId.trim(),
+      stage:              impForm.stage.trim() || 'Site Inquiry',
+      score:              0.5,
+      imported:           true,
+    };
+    if (impForm.lat && impForm.lon) {
+      payload.lat = parseFloat(impForm.lat);
+      payload.lon = parseFloat(impForm.lon);
+    }
+    fetch('/api/builder/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.ok) {
+          setCaseId(data.case_id);
+          setSearched(true);
+          setMode('lookup');
+          setDynCase(null);
+          fetch('/api/builder/case/' + data.case_id)
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(d) { if (d && d.case_id) setDynCase(d); });
+          location.hash = '#/builder/case/' + data.case_id;
+          setToast('Permit registered — Case ' + data.case_id + ' created.');
+        } else {
+          setSubError(data.err || 'Import failed. Please try again.');
+        }
+      })
+      .catch(function() { setSubError('Network error. Please try again.'); })
+      .finally(function() { setSubmitting(false); });
+  };
+
   const handleSearch = () => {
     setSearched(true);
-    if (C) location.hash = '#/builder/case/' + caseId;
+    setDynCase(null);
+    if (C) { location.hash = '#/builder/case/' + caseId; return; }
+    if (!caseId) return;
+    setDynLoading(true);
+    fetch('/api/builder/case/' + caseId)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data && data.case_id) setDynCase(data); })
+      .finally(() => setDynLoading(false));
+  };
+
+  const handleCellSelect = function(fid) {
+    var cell = savedCells.find(function(c) { return c.fid === fid; }) || null;
+    setSelCell(cell);
+    if (cell) {
+      var label = (window.cellLabel && window.cellLabel(cell.properties)) || (cell.properties._state || '');
+      var pi = window.propsToInd;
+      var nat = (pi && M) ? M.composite(pi(cell.properties, true), M.DEFAULT_WEIGHTS) : null;
+      setField('siteName', label);
+      if (nat != null) setField('score', nat.toFixed(3));
+    }
+  };
+
+  const handleSubmit = function() {
+    setSubError('');
+    if (!form.siteName.trim())       { setSubError('Site name is required.'); return; }
+    if (!form.applicant.trim())      { setSubError('Company / applicant is required.'); return; }
+    if (!form.contactEmail.trim())   { setSubError('Contact email is required.'); return; }
+    if (!selJur && jurisdictions.length > 0) { setSubError('Please select a lead agency.'); return; }
+    setSubmitting(true);
+    var payload = {
+      site:          form.siteName.trim(),
+      applicant:     form.applicant.trim(),
+      score:         parseFloat(form.score) || 0.5,
+      contact_name:  form.contactName.trim(),
+      contact_email: form.contactEmail.trim(),
+      lead_agency:   selJur ? selJur.label : (jurisdictions[0] ? jurisdictions[0].label : ''),
+      notes:         form.notes.trim(),
+    };
+    if (selCell) {
+      payload.cell_fid   = selCell.fid;
+      payload.lat        = selCell.lat;
+      payload.lon        = selCell.lon;
+      payload.state_code = selCell.properties._state || '';
+    }
+    fetch('/api/builder/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.ok) {
+          setCaseId(data.case_id);
+          setSearched(true);
+          setMode('lookup');
+          setDynCase(null);
+          fetch('/api/builder/case/' + data.case_id)
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(d) { if (d && d.case_id) setDynCase(d); });
+          location.hash = '#/builder/case/' + data.case_id;
+          setToast('Site inquiry submitted — Case ' + data.case_id + ' created.');
+        } else {
+          setSubError(data.err || 'Submission failed. Please try again.');
+        }
+      })
+      .catch(function() { setSubError('Network error. Please try again.'); })
+      .finally(function() { setSubmitting(false); });
   };
 
   const sendRebuttal = () => {
@@ -449,31 +635,14 @@ function BuilderCaseView({ id }) {
     });
   };
 
+  /* ── render ── */
   return (
-    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '22px 24px 50px' }} data-screen-label="Builder — My Application">
+    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '22px 24px 50px' }} data-screen-label="Builder -- My Inquiry">
       {toast && <NotifyToast message={toast} onDone={() => setToast(null)} />}
       <BuilderSubNav active="mycase" />
 
-      {!C ? (
-        <div style={{ maxWidth: 440 }}>
-          <h2 style={{ fontSize: 21, marginBottom: 6 }}>Find your application</h2>
-          <p style={{ color: 'var(--slate)', fontSize: 14, marginBottom: 18, lineHeight: 1.6 }}>
-            Your lead agency assigned a case ID when your application was received. Enter it below to view your case file.
-          </p>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input type="text" value={caseId} placeholder="e.g. 26-0142"
-              onChange={e => { setCaseId(e.target.value.trim()); setSearched(false); }}
-              onKeyDown={e => { if (e.key === 'Enter') handleSearch(); }}
-              style={{ flex: 1, padding: '9px 12px', borderRadius: 8, border: '1.5px solid var(--line)', background: 'var(--surface)', color: 'inherit', fontSize: 14, fontFamily: 'inherit' }} />
-            <button className="btn btn-primary" onClick={handleSearch}>Look up</button>
-          </div>
-          {searched && caseId && !C && (
-            <p style={{ marginTop: 12, color: '#C0392B', fontSize: 13.5 }}>
-              Case {caseId} not found. Contact your lead agency to confirm the ID.
-            </p>
-          )}
-        </div>
-      ) : (
+      {C ? (
+        /* ── full demo case view ── */
         <div>
           <div style={{ marginBottom: 14, display: 'flex', gap: 10, alignItems: 'center' }}>
             <button className="btn btn-quiet btn-sm" onClick={() => { setCaseId(''); setSearched(false); location.hash = '#/builder/case/'; }}>Look up a different case</button>
@@ -483,7 +652,7 @@ function BuilderCaseView({ id }) {
           <div className="callout" style={{ padding: '12px 16px', marginBottom: 16, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
             <Icon name="lock" size={16} color="var(--basalt)" />
             <div style={{ fontSize: 13.5 }}>
-              <b>Your application is under active review.</b> You can see all conditions as they are proposed — including those pending lead agency approval. This is your real-time view of the process.
+              <b>Your site inquiry is under active review.</b> You can see all conditions as they are proposed — including those pending lead agency approval. This is your real-time view of the process.
             </div>
           </div>
 
@@ -492,11 +661,11 @@ function BuilderCaseView({ id }) {
               <div>
                 <div className="eyebrow">Case {C.id}</div>
                 <h2 style={{ fontSize: 22 }}>{C.title}</h2>
-                <div className="microcopy">Lead agency: {C.leadParty || 'Dept. of Ecology'} · {C.invitedParties ? C.invitedParties.length + ' co-parties invited' : ''} · Stage: <b>{liveStage || C.stage}</b></div>
+                <div className="microcopy">Lead agency: {C.leadParty || 'Dept. of Ecology'} &middot; {C.invitedParties ? C.invitedParties.length + ' co-parties invited' : ''} &middot; Stage: <b>{liveStage || C.stage}</b></div>
               </div>
               <div style={{ textAlign: 'right' }}>
                 <span className="score-badge" style={{ background: M.rampColor(C.score, ramp), color: M.rampText(C.score, ramp), fontSize: 22, padding: '4px 13px' }}>{C.score.toFixed(3)}</span>
-                <div className="microcopy" style={{ marginTop: 3 }}>composite · same weights as all parties</div>
+                <div className="microcopy" style={{ marginTop: 3 }}>composite &middot; same weights as all parties</div>
               </div>
             </div>
           </div>
@@ -522,7 +691,7 @@ function BuilderCaseView({ id }) {
             </div>
 
             <div style={{ flex: '2 1 400px', minWidth: 340 }}>
-              <h3 style={{ fontSize: 15, marginBottom: 9 }}>All conditions <span className="microcopy" style={{ fontWeight: 400 }}>· including pending</span></h3>
+              <h3 style={{ fontSize: 15, marginBottom: 9 }}>All conditions <span className="microcopy" style={{ fontWeight: 400 }}>&middot; including pending</span></h3>
               <div className="card" style={{ overflow: 'auto' }}>
                 <table className="mtable">
                   <thead><tr><th>Condition</th><th>Proposed by</th><th>Type</th><th>Status</th></tr></thead>
@@ -553,7 +722,7 @@ function BuilderCaseView({ id }) {
                     <div style={{ display: 'grid', gap: 8 }}>
                       <textarea rows={3} placeholder="Describe your rebuttal..." value={rebuttal}
                         onChange={e => setRebuttal(e.target.value)}
-                        style={{ padding: '7px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--surface)', color: 'inherit', fontSize: 13, resize: 'vertical', fontFamily: 'inherit' }} />
+                        style={{ padding: '7px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 13, resize: 'vertical', fontFamily: 'inherit' }} />
                       <button className="btn btn-primary btn-sm" onClick={sendRebuttal}>File rebuttal</button>
                     </div>
                   )}
@@ -562,9 +731,486 @@ function BuilderCaseView({ id }) {
             </div>
           </div>
         </div>
+
+      ) : dynCase ? (
+        /* ── intake view for builder-submitted / imported cases ── */
+        <div>
+          <div style={{ marginBottom: 14, display: 'flex', gap: 10, alignItems: 'center' }}>
+            <button className="btn btn-quiet btn-sm" onClick={() => { setDynCase(null); setCaseId(''); setSearched(false); location.hash = '#/builder/case/'; }}>Look up a different case</button>
+            {dynCase.imported ? <Chip tone="basalt">Imported</Chip> : <Chip tone="slate">In intake</Chip>}
+          </div>
+
+          {dynCase.confirmed_at ? (
+            <div className="callout" style={{ padding: '12px 16px', marginBottom: 16, display: 'flex', gap: 12, alignItems: 'flex-start', background: 'var(--lo-bg)', border: '1px solid var(--lo-tx)' }}>
+              <div style={{ fontSize: 13.5, color: 'var(--lo-tx)' }}>
+                <b>Case accepted{dynCase.lead_agency ? ' by ' + dynCase.lead_agency : ''}.</b>
+                {dynCase.agency_tracking_id
+                  ? <span> Agency reference: <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{dynCase.agency_tracking_id}</span>. This is your shared record — both you and the agency see the same file.</span>
+                  : <span> Your case is now under active review. Both you and the agency see the same file.</span>}
+              </div>
+            </div>
+          ) : (
+            <div className="callout" style={{ padding: '12px 16px', marginBottom: 16, display: 'flex', gap: 12, alignItems: 'flex-start', background: 'var(--med-bg)', border: '1px solid var(--med-tx)' }}>
+              <div style={{ fontSize: 13.5, color: 'var(--med-tx)' }}>
+                {dynCase.imported
+                  ? <span><b>Permit registered.</b> Awaiting agency confirmation. Once confirmed, you will see their tracking number here.</span>
+                  : <span><b>Site inquiry received.</b> Awaiting agency confirmation. Once confirmed, you will see their tracking number here.</span>}
+              </div>
+            </div>
+          )}
+
+          <div className="card" style={{ padding: '18px 22px', marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4, flexWrap: 'wrap' }}>
+                  <span className="eyebrow" style={{ margin: 0 }}>Merascope {dynCase.case_id}</span>
+                  {dynCase.agency_tracking_id && (
+                    <span style={{ fontSize: 11, color: 'var(--slate)' }}>·</span>
+                  )}
+                  {dynCase.agency_tracking_id && (
+                    <span style={{ fontSize: 12, fontFamily: 'monospace', color: 'var(--evergreen)', fontWeight: 700, background: 'var(--lo-bg)', padding: '2px 7px', borderRadius: 5 }}>
+                      Agency ref: {dynCase.agency_tracking_id}
+                    </span>
+                  )}
+                </div>
+                <h2 style={{ fontSize: 22 }}>{dynCase.site}</h2>
+                <div className="microcopy">
+                  Applicant: {dynCase.applicant}
+                  {dynCase.lead_agency ? ' · Lead agency: ' + dynCase.lead_agency : ''}
+                  {' · Stage: '}<b>{dynCase.stage || 'Site Inquiry'}</b>
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <span className="score-badge" style={{ background: M.rampColor(dynCase.score || 0.5, ramp), color: M.rampText(dynCase.score || 0.5, ramp), fontSize: 22, padding: '4px 13px' }}>{(dynCase.score || 0.5).toFixed(3)}</span>
+                <div className="microcopy" style={{ marginTop: 3 }}>composite score</div>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, maxWidth: 640 }}>
+            <div className="card" style={{ padding: '14px 16px' }}>
+              <div style={{ fontSize: 11, color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 5 }}>Contact</div>
+              <div style={{ fontWeight: 650 }}>{dynCase.contact_name || '—'}</div>
+              <div style={{ fontSize: 13, color: 'var(--slate)' }}>{dynCase.contact_email || ''}</div>
+            </div>
+            <div className="card" style={{ padding: '14px 16px' }}>
+              <div style={{ fontSize: 11, color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 5 }}>
+                {dynCase.imported ? 'Imported' : 'Submitted'}
+              </div>
+              <div style={{ fontWeight: 650 }}>{dynCase.ts ? dynCase.ts.substring(0, 10) : '—'}</div>
+            </div>
+          </div>
+          {dynCase.external_permit_id && (
+            <div className="card" style={{ padding: '14px 16px', marginTop: 14, maxWidth: 640 }}>
+              <div style={{ fontSize: 11, color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 5 }}>External permit / application ID</div>
+              <div style={{ fontWeight: 650, fontSize: 14, fontFamily: 'monospace' }}>{dynCase.external_permit_id}</div>
+            </div>
+          )}
+          {dynCase.notes && (
+            <div className="card" style={{ padding: '14px 16px', marginTop: 14, maxWidth: 640 }}>
+              <div style={{ fontSize: 11, color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 5 }}>Notes</div>
+              <div style={{ fontSize: 13.5 }}>{dynCase.notes}</div>
+            </div>
+          )}
+
+          <div style={{ maxWidth: 640 }}>
+            <DocSection caseId={dynCase.case_id} />
+          </div>
+        </div>
+
+      ) : (
+        /* ── lookup / submit form ── */
+        <div style={{ maxWidth: 800 }}>
+          <div className="tabs" style={{ marginBottom: 20, flexWrap: 'wrap', overflowX: 'visible' }}>
+            <button className={mode === 'lookup' ? 'on' : ''} onClick={() => setMode('lookup')}>Find existing case</button>
+            <button className={mode === 'submit' ? 'on' : ''} onClick={() => setMode('submit')}>Submit site inquiry</button>
+            <button className={mode === 'import' ? 'on' : ''} onClick={() => setMode('import')}>Register existing permit</button>
+          </div>
+
+          {mode === 'lookup' ? (
+            <div style={{ maxWidth: 480 }}>
+              <h2 style={{ fontSize: 21, marginBottom: 6 }}>Find your inquiry</h2>
+              <p style={{ color: 'var(--slate)', fontSize: 14, marginBottom: 18, lineHeight: 1.6 }}>
+                Enter the case ID assigned by your lead agency to view your case file.
+              </p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input type="text" value={caseId} placeholder="e.g. 26-0142"
+                  onChange={e => { setCaseId(e.target.value.trim()); setSearched(false); setDynCase(null); }}
+                  onKeyDown={e => { if (e.key === 'Enter') handleSearch(); }}
+                  style={{ flex: 1, padding: '9px 12px', borderRadius: 8, border: '1.5px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 14, fontFamily: 'inherit' }} />
+                <button className="btn btn-primary" onClick={handleSearch} disabled={dynLoading}>{dynLoading ? 'Searching...' : 'Look up'}</button>
+              </div>
+              {searched && caseId && !C && !dynCase && !dynLoading && (
+                <p style={{ marginTop: 12, color: '#C0392B', fontSize: 13.5 }}>
+                  Case {caseId} not found. Check the ID or submit a new inquiry above.
+                </p>
+              )}
+            </div>
+          ) : mode === 'import' ? (
+            /* ── import existing pipeline form ── */
+            <div>
+              <h2 style={{ fontSize: 21, marginBottom: 4 }}>Register an existing permit</h2>
+              <p style={{ color: 'var(--slate)', fontSize: 14, marginBottom: 20, lineHeight: 1.6 }}>
+                Already in permitting somewhere? Register it here. Use your own terminology — Merascope tracks from wherever you are.
+              </p>
+
+              <div style={{ display: 'grid', gap: 16, maxWidth: 600 }}>
+
+                {/* project details */}
+                <div>
+                  <div style={{ fontSize: 12.5, fontWeight: 650, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--slate)' }}>Project</div>
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12.5, color: 'var(--slate)', marginBottom: 4 }}>Project / site name (required)</label>
+                      <input type="text" value={impForm.siteName} placeholder="e.g. Cascade Ridge Data Center"
+                        onChange={function(e) { setImpField('siteName', e.target.value); }}
+                        style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1.5px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12.5, color: 'var(--slate)', marginBottom: 4 }}>Existing permit / application ID (optional)</label>
+                      <input type="text" value={impForm.externalPermitId} placeholder="e.g. King County #2024-0312, SEPA-2025-0087"
+                        onChange={function(e) { setImpField('externalPermitId', e.target.value); }}
+                        style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1.5px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* current stage */}
+                <div>
+                  <div style={{ fontSize: 12.5, fontWeight: 650, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--slate)' }}>Current stage</div>
+                  <p style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 8, lineHeight: 1.5 }}>
+                    Use your own terminology — or pick from suggestions.
+                  </p>
+                  <datalist id="imp-stage-suggestions">
+                    {(M.STAGES || []).map(function(s) { return <option key={s} value={s} />; })}
+                  </datalist>
+                  <input type="text" list="imp-stage-suggestions" value={impForm.stage}
+                    placeholder="e.g. Conditional Use Hearing, SEPA Comment Period, Pre-Application..."
+                    onChange={function(e) { setImpField('stage', e.target.value); }}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1.5px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                </div>
+
+                {/* lead agency */}
+                <div>
+                  <div style={{ fontSize: 12.5, fontWeight: 650, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--slate)' }}>Lead agency</div>
+                  <input type="text" value={impForm.leadAgency} placeholder="e.g. King County DPER, WA Dept. of Ecology"
+                    onChange={function(e) { setImpField('leadAgency', e.target.value); }}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1.5px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                </div>
+
+                {/* coordinates (optional) */}
+                <div>
+                  <div style={{ fontSize: 12.5, fontWeight: 650, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--slate)' }}>Coordinates <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: 11 }}>(optional — enables Merascope scoring)</span></div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12.5, color: 'var(--slate)', marginBottom: 4 }}>Latitude (decimal)</label>
+                      <input type="number" step="0.0001" value={impForm.lat} placeholder="47.6062"
+                        onChange={function(e) { setImpField('lat', e.target.value); }}
+                        style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1.5px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 13.5, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12.5, color: 'var(--slate)', marginBottom: 4 }}>Longitude (decimal)</label>
+                      <input type="number" step="0.0001" value={impForm.lon} placeholder="-122.3321"
+                        onChange={function(e) { setImpField('lon', e.target.value); }}
+                        style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1.5px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 13.5, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* contact */}
+                <div>
+                  <div style={{ fontSize: 12.5, fontWeight: 650, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--slate)' }}>Your details</div>
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12.5, color: 'var(--slate)', marginBottom: 4 }}>Company / applicant (required)</label>
+                      <input type="text" value={impForm.applicant} placeholder="e.g. Cascade Summit Data LLC"
+                        onChange={function(e) { setImpField('applicant', e.target.value); }}
+                        style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1.5px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: 12.5, color: 'var(--slate)', marginBottom: 4 }}>Contact name</label>
+                        <input type="text" value={impForm.contactName} placeholder="Jane Smith"
+                          onChange={function(e) { setImpField('contactName', e.target.value); }}
+                          style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1.5px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 13.5, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: 12.5, color: 'var(--slate)', marginBottom: 4 }}>Contact email (required)</label>
+                        <input type="email" value={impForm.contactEmail} placeholder="jane@example.com"
+                          onChange={function(e) { setImpField('contactEmail', e.target.value); }}
+                          style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1.5px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 13.5, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                      </div>
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12.5, color: 'var(--slate)', marginBottom: 4 }}>Notes (optional)</label>
+                      <textarea rows={3} value={impForm.notes} placeholder="Brief description of the project or current status..."
+                        onChange={function(e) { setImpField('notes', e.target.value); }}
+                        style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1.5px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 13, resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                    </div>
+                  </div>
+                </div>
+
+                {subError && <p style={{ color: '#C0392B', fontSize: 13.5, margin: 0 }}>{subError}</p>}
+                <div>
+                  <button className="btn btn-primary" onClick={handleImport} disabled={submitting}>
+                    {submitting ? 'Importing...' : 'Import pipeline'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* ── submission form ── */
+            <div>
+              <h2 style={{ fontSize: 21, marginBottom: 4 }}>Submit a site inquiry</h2>
+              <p style={{ color: 'var(--slate)', fontSize: 14, marginBottom: 20, lineHeight: 1.6 }}>
+                Select a saved site to auto-fill scores and detect the lead agency. Add your contact details and submit — the agency will reach out to begin their review process.
+              </p>
+
+              {/* saved cell picker */}
+              <div style={{ marginBottom: 22 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 650, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--slate)' }}>1. Select saved site</div>
+                {savedCells.length === 0 ? (
+                  <div style={{ padding: '20px 18px', borderRadius: 10, border: '2px dashed var(--line)', textAlign: 'center', color: 'var(--slate)' }}>
+                    <div style={{ marginBottom: 8 }}>No saved sites yet.</div>
+                    <a className="btn btn-quiet btn-sm" href="#/explorer">Open Explorer to find sites</a>
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
+                    {savedCells.map(function(c) {
+                      var label = (window.cellLabel && window.cellLabel(c.properties)) || (c.properties._state || 'Cell ' + c.fid);
+                      var pi = window.propsToInd;
+                      var nat = (pi && M) ? M.composite(pi(c.properties, true), M.DEFAULT_WEIGHTS) : null;
+                      var isSelected = selCell && selCell.fid === c.fid;
+                      return (
+                        <div key={c.fid}
+                          onClick={() => handleCellSelect(c.fid)}
+                          style={{ padding: '11px 13px', borderRadius: 9, border: '2px solid ' + (isSelected ? 'var(--basalt)' : 'var(--line)'), background: isSelected ? 'var(--sand)' : 'var(--paper)', cursor: 'pointer' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 }}>
+                            <div style={{ fontWeight: 650, fontSize: 13, lineHeight: 1.3 }}>{label}</div>
+                            {nat != null && (
+                              <span className="score-badge" style={{ background: M.rampColor(nat, ramp), color: M.rampText(nat, ramp), fontSize: 11.5, padding: '1px 7px', flexShrink: 0 }}>{nat.toFixed(3)}</span>
+                            )}
+                          </div>
+                          {c.lat != null && (
+                            <div style={{ fontSize: 10, color: 'var(--slate)', fontFamily: 'monospace', marginTop: 4 }}>
+                              {c.lat.toFixed(2) + 'N ' + Math.abs(c.lon).toFixed(2) + 'W'}
+                            </div>
+                          )}
+                          {isSelected && (
+                            <div style={{ marginTop: 5, fontSize: 11, color: 'var(--basalt)', fontWeight: 700 }}>Selected</div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* project name — shown once a cell is selected */}
+              {selCell && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 650, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--slate)' }}>2. Confirm project details</div>
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12.5, color: 'var(--slate)', marginBottom: 4 }}>Project / site name (editable)</label>
+                      <input type="text" value={form.siteName}
+                        onChange={e => setField('siteName', e.target.value)}
+                        style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1.5px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--slate)' }}>
+                      <span>Composite score:</span>
+                      <span className="score-serif" style={{ fontSize: 16, color: M.rampColor(parseFloat(form.score) || 0.5, ramp) }}>{form.score}</span>
+                      <span style={{ fontSize: 11 }}>(from selected site)</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* lead agency — only shown after cell selected */}
+              {selCell && (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 650, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--slate)' }}>3. Lead agency</div>
+                  {geoLoading && <div style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 6 }}>Detecting jurisdiction from site location...</div>}
+                  {!geoLoading && jurisdictions.length > 0 && (
+                    <div style={{ display: 'grid', gap: 6, marginBottom: 8 }}>
+                      {jurisdictions.map(function(jur) {
+                        return (
+                          <label key={jur.label} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '9px 12px', borderRadius: 8, border: '1.5px solid ' + (selJur && selJur.label === jur.label ? 'var(--basalt)' : 'var(--line)'), background: selJur && selJur.label === jur.label ? 'var(--sand)' : 'var(--paper)', cursor: 'pointer' }}>
+                            <input type="radio" name="jurisdiction" checked={selJur && selJur.label === jur.label} onChange={() => setSelJur(jur)} style={{ accentColor: 'var(--basalt)' }} />
+                            <div style={{ flex: 1 }}>
+                              <span style={{ fontWeight: 650, fontSize: 13.5 }}>{jur.label}</span>
+                              <span style={{ marginLeft: 8, fontSize: 11, padding: '2px 6px', borderRadius: 10, fontWeight: 700, background: jur.partner ? 'var(--lo-bg)' : 'var(--gate)', color: jur.partner ? 'var(--lo-tx)' : 'var(--slate)' }}>
+                                {jur.partner ? 'Merascope Partner' : 'Forwarding via Merascope'}
+                              </span>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {!geoLoading && jurisdictions.length === 0 && (
+                    <input type="text" placeholder="e.g. King County DPER"
+                      value={selJur ? selJur.label : ''}
+                      onChange={e => setSelJur({ match: e.target.value, label: e.target.value, partner: false })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1.5px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                  )}
+                </div>
+              )}
+
+              {/* contact — only shown after cell selected */}
+              {selCell && (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 650, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--slate)' }}>4. Your details</div>
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12.5, color: 'var(--slate)', marginBottom: 4 }}>Company / applicant (required)</label>
+                      <input type="text" value={form.applicant} placeholder="e.g. Cascade Summit Data LLC"
+                        onChange={e => setField('applicant', e.target.value)}
+                        style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1.5px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: 12.5, color: 'var(--slate)', marginBottom: 4 }}>Contact name</label>
+                        <input type="text" value={form.contactName} placeholder="Jane Smith"
+                          onChange={e => setField('contactName', e.target.value)}
+                          style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1.5px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 13.5, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: 12.5, color: 'var(--slate)', marginBottom: 4 }}>Contact email (required)</label>
+                        <input type="email" value={form.contactEmail} placeholder="jane@example.com"
+                          onChange={e => setField('contactEmail', e.target.value)}
+                          style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1.5px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 13.5, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                      </div>
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12.5, color: 'var(--slate)', marginBottom: 4 }}>Notes (optional)</label>
+                      <textarea rows={3} value={form.notes} placeholder="Brief project description or additional context..."
+                        onChange={e => setField('notes', e.target.value)}
+                        style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1.5px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 13, resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {selCell && (
+                <div>
+                  {subError && <p style={{ color: '#C0392B', fontSize: 13.5, marginBottom: 12 }}>{subError}</p>}
+                  <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting}>
+                    {submitting ? 'Submitting...' : 'Submit site inquiry'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
 }
 
-Object.assign(window, { BuilderSearch, BuilderSubNav, SiteCard, MiniRampBar, SavedCellCard, ComparisonPanel, BuilderCaseView });
+function DocSection({ caseId }) {
+  const [docs, setDocs]         = React.useState(null);
+  const [label, setLabel]       = React.useState('');
+  const [docStatus, setDocStatus] = React.useState('Achieved');
+  const [file, setFile]         = React.useState(null);
+  const [uploading, setUploading] = React.useState(false);
+  const [upToast, setUpToast]   = React.useState(null);
+  const fileRef = React.useRef(null);
+
+  var loadDocs = function() {
+    fetch('/api/case/' + caseId + '/docs')
+      .then(function(r) { return r.json(); })
+      .then(function(list) { setDocs(list); });
+  };
+
+  React.useEffect(function() { if (caseId) loadDocs(); }, [caseId]);
+
+  var handleUpload = function() {
+    if (!file) return;
+    var fd = new FormData();
+    fd.append('file', file);
+    fd.append('label', label.trim());
+    fd.append('doc_status', docStatus);
+    setUploading(true);
+    fetch('/api/case/' + caseId + '/docs', { method: 'POST', body: fd })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.ok) {
+          setLabel('');
+          setDocStatus('Achieved');
+          setFile(null);
+          if (fileRef.current) fileRef.current.value = '';
+          loadDocs();
+          setUpToast('Document uploaded.');
+        }
+      })
+      .finally(function() { setUploading(false); });
+  };
+
+  return (
+    <div style={{ marginTop: 24 }}>
+      {upToast && <NotifyToast message={upToast} onDone={function() { setUpToast(null); }} />}
+      <h3 style={{ fontSize: 15, marginBottom: 12 }}>Documents</h3>
+
+      {docs === null ? (
+        <div style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 12 }}>Loading...</div>
+      ) : docs.length === 0 ? (
+        <div style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 12 }}>No documents uploaded yet.</div>
+      ) : (
+        <div style={{ display: 'grid', gap: 8, marginBottom: 16 }}>
+          {docs.map(function(doc) {
+            var isAchieved = doc.doc_status === 'Achieved';
+            return (
+              <div key={doc.id} className="card" style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 650, fontSize: 13.5 }}>{doc.label || doc.name}</div>
+                  {doc.label && <div style={{ fontSize: 11.5, color: 'var(--slate)', marginTop: 1 }}>{doc.name}</div>}
+                  <div style={{ fontSize: 11, color: 'var(--slate)', marginTop: 2 }}>{doc.date}</div>
+                </div>
+                <Chip tone={isAchieved ? 'lo' : 'med'}>{doc.doc_status || 'Achieved'}</Chip>
+                <a href={'/api/case/' + caseId + '/docs/' + doc.filename} download={doc.name}
+                  className="btn btn-quiet btn-sm" style={{ flexShrink: 0 }}>Download</a>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="card" style={{ padding: '14px 16px' }}>
+        <div style={{ fontSize: 12.5, fontWeight: 650, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--slate)' }}>Upload document</div>
+        <div style={{ display: 'grid', gap: 10 }}>
+          <div>
+            <label style={{ display: 'block', fontSize: 12.5, color: 'var(--slate)', marginBottom: 4 }}>Label</label>
+            <input type="text" value={label}
+              placeholder="e.g. SEPA DNS, Geotech Report, Land Use Permit, Building Permit Application"
+              onChange={function(e) { setLabel(e.target.value); }}
+              style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1.5px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 13.5, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span style={{ fontSize: 12.5, color: 'var(--slate)' }}>Status:</span>
+            {['Achieved', 'In Progress'].map(function(s) {
+              return (
+                <button key={s} className={'btn btn-sm ' + (docStatus === s ? 'btn-primary' : 'btn-quiet')}
+                  onClick={function() { setDocStatus(s); }}>
+                  {s}
+                </button>
+              );
+            })}
+          </div>
+          <div>
+            <input ref={fileRef} type="file"
+              onChange={function(e) { setFile(e.target.files[0] || null); }}
+              style={{ fontSize: 13, color: 'inherit' }} />
+          </div>
+          <div>
+            <button className="btn btn-primary btn-sm" onClick={handleUpload} disabled={uploading || !file}>
+              {uploading ? 'Uploading...' : 'Upload'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { BuilderSearch, BuilderSubNav, SiteCard, MiniRampBar, SavedCellCard, ComparisonPanel, BuilderCaseView, DocSection });

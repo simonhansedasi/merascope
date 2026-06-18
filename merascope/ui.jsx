@@ -187,23 +187,28 @@ function DemoSwitch() {
 
 /* ── top navigation ── */
 function TopNav({ route, role }) {
+  const { authUser, logout } = React.useContext(AuthCtx);
   const pub = [['#/explorer', 'Explorer'], ['#/factsheets', 'Fact sheets'], ['#/methodology', 'Methodology']];
-  let links = pub;
+  var links = pub;
   if (role === 'builder') links = [pub[0], ['#/builder', 'Builder'], ...pub.slice(1)];
   if (role === 'steward') links = [pub[0], ['#/steward', 'Steward'], ...pub.slice(1)];
   return (
     <nav className="topnav">
       <a href="#/" style={{ textDecoration: 'none', display: 'inline-flex' }}><Wordmark size={15} /></a>
       <div className="topnav-links hide-mobile">
-        {links.map(([href, label]) => (
-          <a key={href} href={href} className={'navlink' + (route.startsWith(href.slice(1)) ? ' active' : '')}>{label}</a>
-        ))}
+        {links.map(function([href, label]) {
+          return <a key={href} href={href} className={'navlink' + (route.startsWith(href.slice(1)) ? ' active' : '')}>{label}</a>;
+        })}
       </div>
       <div style={{ flex: 1 }}></div>
       <PersonaBadge surface={role} />
       <DemoSwitch />
       <span className="hide-mobile"><PromiseBadge compact /></span>
-      {role === 'public' && <a className="btn btn-primary btn-sm hide-mobile" href="#/login">Sign in</a>}
+      {authUser ? (
+        <button className="btn btn-quiet btn-sm hide-mobile" onClick={logout} title={'Signed in as ' + authUser.email}>Sign out</button>
+      ) : (
+        role === 'public' && <a className="btn btn-primary btn-sm hide-mobile" href="#/login">Sign in</a>
+      )}
     </nav>
   );
 }

@@ -2,7 +2,7 @@
 08_aquifer.py — Compute groundwater depth score from USGS NWIS field measurements.
 
 Adds to grid_scores.geojson:
-  aquifer_score — normalized depth-to-water-table (1 = deepest = lowest contamination risk)
+  aquifer_score — normalized depth-to-water-table (1 = shallowest = best cooling access)
 
 Method:
   - Fetches discrete depth-to-water measurements (parameter 72019, ft below land surface)
@@ -204,9 +204,9 @@ def main():
 
     grid["aquifer_depth_ft"] = interp_depth.round(1)
 
-    # Normalize: p95 cap → 0-1 (deeper = higher score)
+    # Normalize: p95 cap → 0-1 (shallower = higher score; shallow aquifer = better cooling access)
     p95 = np.percentile(interp_depth, 95)
-    grid["aquifer_score"] = np.clip(interp_depth / p95, 0, 1).round(4)
+    grid["aquifer_score"] = (1 - np.clip(interp_depth / p95, 0, 1)).round(4)
     print(f"  Depth range (interpolated): {interp_depth.min():.1f} - {interp_depth.max():.1f} ft")
     print(f"  p95 = {p95:.1f} ft  |  score range: {grid.aquifer_score.min():.3f} - {grid.aquifer_score.max():.3f}")
 

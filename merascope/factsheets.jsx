@@ -33,7 +33,7 @@ function SheetShell({ title, kicker, children, seed }) {
       <div style={{ marginTop: 16 }}>{children}</div>
       <div style={{ position: 'absolute', left: 58, right: 58, bottom: 38, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 14, borderTop: '1px solid var(--line)', paddingTop: 12 }}>
         <div style={{ fontSize: 9.5, color: 'var(--slate)', maxWidth: 520, lineHeight: 1.5 }}>
-          Methodology: 16 indicators normalized 0-1, 2 hard gates (protected land {'>'} 25%, FEMA flood zone), 0.15 deg grid (~14 km). Sources: OSM (ODbL) · Census ACS · PRISM Climate Group · USGS NWIS + ASCE 7-22 · FEMA NFHL · EPA TRI · SSURGO SDM · IHFC 2024 GHFDB · SRTM1 · EIA Form 860. {M.VERSION}. All scoring code reproducible.
+          Methodology: 15 indicators normalized 0-1, 2 hard gates (protected land {'>'} 25%, FEMA flood zone), 0.15 deg grid (~14 km). Sources: OSM (ODbL) · Census ACS · PRISM Climate Group · USGS NWIS + ASCE 7-22 · FEMA NFHL · EPA TRI · SSURGO SDM · IHFC 2024 GHFDB · SRTM1 · EIA Form 860. {M.VERSION}. All scoring code reproducible.
           <div style={{ marginTop: 4, fontWeight: 700, color: 'var(--evergreen)' }}>◈ Same Score Promise — identical methodology, weights, and sources for every reader of this page.</div>
         </div>
         <div style={{ textAlign: 'center' }}>
@@ -188,6 +188,78 @@ function FactSheetDynamic({ stateCode }) {
   );
 }
 
+const _GRADE_SCALE = [
+  { g: 'A+', pct: '0-8%',   desc: 'Top 4 states' },
+  { g: 'A',  pct: '8-17%',  desc: 'Top 8 states' },
+  { g: 'A-', pct: '17-25%', desc: 'Top 12 states' },
+  { g: 'B+', pct: '25-33%', desc: 'Top 16 states' },
+  { g: 'B',  pct: '33-42%', desc: 'Top 20 states' },
+  { g: 'B-', pct: '42-50%', desc: 'Top 24 states' },
+  { g: 'C+', pct: '50-58%', desc: 'Bottom 24 states' },
+  { g: 'C',  pct: '58-67%', desc: 'Bottom 20 states' },
+  { g: 'C-', pct: '67-75%', desc: 'Bottom 16 states' },
+  { g: 'D+', pct: '75-83%', desc: 'Bottom 12 states' },
+  { g: 'D',  pct: '83-92%', desc: 'Bottom 8 states' },
+  { g: 'D-', pct: '92-100%', desc: 'Bottom 4 states' },
+];
+
+const _GRADE_CAT_DETAIL = [
+  { k: 'Water Durability',       inds: 'Water availability, Aquifer depth, Waterway sensitivity' },
+  { k: 'Grid Access',            inds: 'Transmission proximity' },
+  { k: 'Hazard Exposure',        inds: 'Seismic safety, Flood safety' },
+  { k: 'Community Burden',       inds: 'Community burden, Population exposure' },
+  { k: 'Contamination Distance', inds: 'Contamination distance' },
+];
+
+function GradeMethodologyPanel() {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <div className="panel" style={{ marginBottom: 20, padding: '12px 16px' }}>
+      <button onClick={() => setOpen(v => !v)}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none',
+          cursor: 'pointer', fontFamily: 'var(--sans)', fontSize: 13, fontWeight: 650,
+          color: 'var(--ink)', padding: 0, width: '100%', textAlign: 'left' }}>
+        {open ? '▼' : '▶'} How grades are calculated
+      </button>
+      {open && (
+        <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+
+          <div>
+            <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase',
+              color: 'var(--slate)', marginBottom: 8 }}>5 categories</div>
+            <p style={{ fontSize: 13, color: 'var(--slate)', lineHeight: 1.6, margin: '0 0 10px' }}>
+              Each category averages the nationally-normalized scores for its constituent indicators across all viable cells in the state. National normalization (p01/p99 across 48 states) makes cross-state comparison valid. The composite grade averages the 5 category scores with equal weight.
+            </p>
+            {_GRADE_CAT_DETAIL.map(c => (
+              <div key={c.k} style={{ display: 'flex', gap: 10, marginBottom: 5, fontSize: 12.5 }}>
+                <span style={{ fontWeight: 700, minWidth: 160, flexShrink: 0 }}>{c.k}</span>
+                <span style={{ color: 'var(--slate)' }}>{c.inds}</span>
+              </div>
+            ))}
+          </div>
+
+          <div>
+            <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase',
+              color: 'var(--slate)', marginBottom: 8 }}>12-point grade scale</div>
+            <p style={{ fontSize: 13, color: 'var(--slate)', lineHeight: 1.6, margin: '0 0 10px' }}>
+              Grades are rank-percentile based, not score-threshold based. A state scores A+ by ranking in the top 8% of states on a given category — not by crossing an absolute score cutoff. With 48 states, each grade band covers roughly 4 states.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '3px 8px' }}>
+              {_GRADE_SCALE.map(row => (
+                <div key={row.g} style={{ display: 'flex', alignItems: 'baseline', gap: 5, fontSize: 12 }}>
+                  <span className="score-serif" style={{ fontSize: 14, minWidth: 28 }}>{row.g}</span>
+                  <span style={{ color: 'var(--slate)', fontSize: 11 }}>{row.pct}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FactSheetsPage({ which }) {
   const STATE_NAMES = window.STATE_NAMES || {};
   const initCode = which && which.length === 2 && STATE_NAMES[which.toUpperCase()] ? which.toUpperCase() : null;
@@ -205,16 +277,17 @@ function FactSheetsPage({ which }) {
       <div style={{ maxWidth: 980, margin: '0 auto', padding: '30px 24px 0' }}>
         <PageHead eyebrow="Fact sheets — print-grade, version-stamped"
           title={stateName ? stateName + ' — data center siting posture' : 'State fact sheets'}
-          sub="16-indicator profile, national rankings, physical measurements. Select a state to load its fact sheet."
+          sub="15-indicator profile, national rankings, physical measurements. Select a state to load its fact sheet."
           right={selectedState
             ? <button className="btn btn-ghost btn-sm" onClick={() => window.print()}>Print / Save as PDF</button>
             : null} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
           <StateSelector selectedState={selectedState} onChange={handleSelect} />
           {selectedState && (
             <span className="microcopy">Loading ranks all 48 states — takes a few seconds on first open.</span>
           )}
         </div>
+        <GradeMethodologyPanel />
       </div>
       {selectedState ? (
         <div className="sheet-wrap" style={{ marginTop: 0 }}>
