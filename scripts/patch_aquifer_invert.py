@@ -6,7 +6,6 @@ Shallow aquifer = higher score (better cooling access).
 Does NOT re-fetch from USGS NWIS; uses raw column already in each GeoJSON.
 """
 
-import sys
 from pathlib import Path
 import numpy as np
 import geopandas as gpd
