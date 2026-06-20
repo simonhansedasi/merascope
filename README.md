@@ -154,7 +154,13 @@ INSERT INTO users (email) VALUES ('name@seattle.gov') ON CONFLICT DO NOTHING;
 INSERT INTO user_roles (email, role, agency_key) VALUES ('name@seattle.gov', 'steward', 'OPCD');
 ```
 
-In local dev, omit `S3_ENDPOINT` (falls back to disk) and omit SMTP vars (magic link printed to console).
+The systemd service file must include `EnvironmentFile=/etc/merascope.env` under `[Service]`. Also add `listen 80 default_server` to the nginx block if you need IP-based access during testing.
+
+In local dev, omit `S3_ENDPOINT` (falls back to disk) and omit SMTP vars (magic link printed to journal — `journalctl -u merascope | grep "Magic link"`). Use `APP_ENV=development` while testing over HTTP — the `Secure` cookie flag is tied to `APP_ENV`, not `APP_URL`, so `APP_ENV=production` with an HTTP connection will silently drop the auth cookie.
+
+**S3 bucket name**: `merascopedocs` (no hyphen — that's what was created in Hetzner HEL1).
+
+**Go-live checklist**: Gmail app password → update `SMTP_PASS` → Tom flips DNS → `certbot --nginx -d merascope.com` → `APP_ENV=production` → seed OPCD steward email.
 
 ## Testing
 

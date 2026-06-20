@@ -433,7 +433,8 @@ def add_condition(case_id):
              data.get('status', 'Proposed'), 1 if data.get('pending_approval') else 0,
              data.get('submitted_by_role', 'lead'))
         )
-    return jsonify({'ok': True, 'id': cur.lastrowid})
+        new_id = cur.lastrowid
+    return jsonify({'ok': True, 'id': new_id})
 
 @app.route('/api/case/<case_id>/conditions/<int:cond_id>', methods=['PATCH'])
 def update_condition(case_id, cond_id):
@@ -781,7 +782,8 @@ def add_rebuttal(case_id):
         cur = db.execute(
             'INSERT INTO case_rebuttals (case_id, text) VALUES (?,?) RETURNING id', (case_id, text)
         )
-    return jsonify({'ok': True, 'id': cur.lastrowid})
+        new_id = cur.lastrowid
+    return jsonify({'ok': True, 'id': new_id})
 
 
 # ── mandated study checks ──────────────────────────────────────────────────────
@@ -818,7 +820,7 @@ def toggle_study_check():
 APP_URL    = os.environ.get('APP_URL', 'http://localhost:8877')
 MAGIC_TTL  = timedelta(hours=1)
 SESS_TTL   = timedelta(days=30)
-_SECURE    = APP_URL.startswith('https')
+_SECURE    = os.environ.get('APP_ENV') == 'production'
 
 
 def _send_magic_email(to_email, token):
