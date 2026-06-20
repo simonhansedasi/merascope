@@ -1,0 +1,50 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install flake8
+      - run: |
+          flake8 scripts/ merascope/ \
+            --max-line-length 120 \
+            --exclude=scripts/.ipynb_checkpoints,merascope/.ipynb_checkpoints \
+            --extend-ignore=E127,E221,E222,E231,E302,E402,E501,E701,E702,W503
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Hetzner
+        env:
+          SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H 204.168.182.60 >> ~/.ssh/known_hosts
+
+          rsync -av --checksum \
+            -e "ssh -i ~/.ssh/id_ed25519" \
+            --exclude='.git/' \
+            --exclude='__pycache__/' \
+            --exclude='*.pyc' \
+            --exclude='venv/' \
+            --exclude='merascope_log.db' \
+            --exclude='merascope_test.db' \
+            --exclude='data/' \
+            ./ \
+            root@204.168.182.60:/home/simonhans/coding/merascope/
+
+          ssh -i ~/.ssh/id_ed25519 root@204.168.182.60 \
+            "systemctl restart merascope"
