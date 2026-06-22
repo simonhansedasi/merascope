@@ -304,7 +304,7 @@ var TOUR_STEPS = [
   },
   {
     title: 'Case file — conditions and coordination',
-    body: 'Versioned findings, a live conditions table with inline status editing, a rebuttal clock with a date picker, document upload, and a co-party tracker derived from invited agencies. Click any stage label to advance the case. "Invite co-parties" opens a searchable directory of 95 pre-registered WA agencies.',
+    body: 'Versioned findings, a live conditions table with inline status editing, a rebuttal clock with a date picker, document upload, and a co-party tracker derived from invited agencies. Click any stage label to advance the case. "Invite co-parties" opens a searchable national directory — filter by state and agency type.',
     action: 'Try changing a condition status or clicking a stage label.',
     nav: '#/steward/case/26-0142', role: 'steward'
   },
