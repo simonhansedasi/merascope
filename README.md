@@ -95,7 +95,7 @@ Workspace tab (saved cells, comparison panel), Status tab (CRM tracker per site:
 **Site inquiry flow:** Builder selects a saved site from a card grid → confirms site name and score → lead agency is auto-detected via Nominatim reverse geocode → fills contact details → submits. Merascope routes the inquiry to the relevant agency; the agency runs their own jurisdiction-specific permitting process from there. Merascope is the first contact point and routing layer, not the permitting system itself.
 
 ### Steward surface (`#/steward`)
-Kanban docket across all stages. Case file: versioned findings, conditions negotiation (propose/accept/reject), co-party coordination, rebuttal clock, document chain, CSV exports. Impasse register (route to mediation). Mandated studies workbench (section checklists, live progress).
+Kanban docket across all stages. Case file: versioned findings, conditions negotiation (propose/accept/reject), co-party coordination, rebuttal clock, document chain, CSV exports. Impasse register (route to mediation). Mandated studies workbench (section checklists, live progress). **Weight templates** (`#/steward/templates`): define named weight profiles and attach them to geographic zones; lock a template to gate builders whose cells score below the minimum threshold.
 
 ### Co-party surface (`#/co-party`)
 Filtered docket — only shows cases where the agency is invited. Same case file as steward, propose-only permissions. Co-party conditions show as "Pending lead approval" until lead approves.
@@ -165,14 +165,14 @@ In local dev, omit `S3_ENDPOINT` (falls back to disk) and omit SMTP vars (magic 
 ## Testing
 
 ```bash
-# Unit + pipeline tests (124 tests)
+# Unit + pipeline tests (143 tests)
 /home/simonhans/anaconda3/envs/merascope/bin/python3 -m pytest tests/ -v
 
 # Browser smoke test (26 checks — starts its own server, headless Chromium)
 /home/simonhans/anaconda3/envs/merascope/bin/python3 tests/smoke_test.py
 ```
 
-`tests/test_server.py` — 45 tests covering all server API routes including pagination. Requires PostgreSQL (`TEST_DATABASE_URL`); skips cleanly if unavailable.
+`tests/test_server.py` — 64 tests covering all server API routes including steward templates/zones CRUD and gate check. Requires PostgreSQL (`TEST_DATABASE_URL`); skips cleanly if unavailable.
 `tests/test_config.py`, `test_gates.py`, `test_indicators.py` — 79 pipeline tests (no DB needed).
 `tests/smoke_test.py` — Playwright end-to-end: builder submit form, progressive reveal, steward docket, intake case view, case lookup.
 
