@@ -141,6 +141,37 @@ function App() {
     setTourStep(null);
   };
 
+  const [stewardTourStep, setStewardTourStep] = React.useState(null);
+  React.useEffect(function() {
+    if (role === 'steward') {
+      try {
+        if (!localStorage.getItem('mera_steward_tour_done')) setStewardTourStep(0);
+      } catch (e) {}
+    }
+  }, [role]);
+  const applySTourStep = function(step) {
+    if (step.role) setRole(step.role);
+    if (step.nav) location.hash = step.nav;
+  };
+  const startStewardTour = function() { applySTourStep(STEWARD_TOUR_STEPS[0]); setStewardTourStep(1); };
+  const nextStewardTour = function() {
+    const cur = STEWARD_TOUR_STEPS[stewardTourStep - 1];
+    if (cur && cur.done) { skipStewardTour(); return; }
+    const next = STEWARD_TOUR_STEPS[stewardTourStep];
+    if (next) applySTourStep(next);
+    setStewardTourStep(function(s) { return Math.min(s + 1, STEWARD_TOUR_STEPS.length); });
+  };
+  const backStewardTour = function() {
+    if (stewardTourStep <= 1) return;
+    const prev = STEWARD_TOUR_STEPS[stewardTourStep - 2];
+    if (prev) applySTourStep(prev);
+    setStewardTourStep(function(s) { return s - 1; });
+  };
+  const skipStewardTour = function() {
+    try { localStorage.setItem('mera_steward_tour_done', '1'); } catch (e) {}
+    setStewardTourStep(null);
+  };
+
   React.useEffect(() => {
     document.documentElement.style.setProperty('--basalt', t.accent);
     document.documentElement.style.setProperty('--sans', FONT_MAP[t.uiFont] || FONT_MAP['Source Sans']);
@@ -194,8 +225,10 @@ function App() {
           <TweakSelect label="UI font" value={t.uiFont} options={['Source Sans', 'Helvetica', 'IBM Plex']} onChange={v => setTweak('uiFont', v)} />
           <TweakSection label="Tour" />
           <button className="btn btn-quiet btn-sm" style={{ margin: '4px 8px 8px' }} onClick={() => { try { localStorage.removeItem('mera_tour_done'); } catch (e) { } setTourStep(0); }}>Replay guided tour</button>
+          <button className="btn btn-quiet btn-sm" style={{ margin: '0 8px 8px' }} onClick={() => { try { localStorage.removeItem('mera_steward_tour_done'); } catch (e) { } setStewardTourStep(0); }}>Replay steward tour</button>
         </TweaksPanel>
         <TourOverlay tourStep={tourStep} onStart={startTour} onNext={nextTour} onBack={backTour} onSkip={skipTour} />
+        <StewardTourOverlay tourStep={stewardTourStep} onStart={startStewardTour} onNext={nextStewardTour} onBack={backStewardTour} onSkip={skipStewardTour} />
       </AuthCtx.Provider>
     </MeraCtx.Provider>
   );
