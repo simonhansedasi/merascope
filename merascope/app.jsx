@@ -92,6 +92,12 @@ function App() {
 
   const [authUser, setAuthUser] = React.useState(null);
   React.useEffect(function() {
+    fetch('/api/zones/active')
+      .then(function(r) { return r.ok ? r.json() : []; })
+      .then(function(zones) { window.ACTIVE_ZONES = zones || []; })
+      .catch(function() { window.ACTIVE_ZONES = []; });
+  }, []);
+  React.useEffect(function() {
     fetch('/api/auth/me')
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(u) {
@@ -153,6 +159,7 @@ function App() {
   else if (path === '/steward/impasse') page = <ImpassePage />;
   else if (path === '/steward/litigation') page = <LitigationPage />;
   else if (path === '/steward/studies') page = <StudiesPage />;
+  else if (path === '/steward/templates') page = <StewardTemplatesPage />;
   else if (path.startsWith('/steward')) page = <DocketPage />;
   else if (path.startsWith('/co-party/case/')) page = <CaseFilePage id={path.split('/')[3]} />;
   else if (path.startsWith('/co-party')) page = <CoDocketPage />;

@@ -1,7 +1,7 @@
 /* ── Surface C: Steward console — "The Docket" ── */
 
 function StewardSubNav({ active }) {
-  const tabs = [['docket', 'Docket', '#/steward'], ['impasse', 'Impasse register', '#/steward/impasse'], ['litigation', 'Litigation tracker', '#/steward/litigation'], ['studies', 'Mandated studies', '#/steward/studies']];
+  const tabs = [['docket', 'Docket', '#/steward'], ['templates', 'Weight templates', '#/steward/templates'], ['impasse', 'Impasse register', '#/steward/impasse'], ['litigation', 'Litigation tracker', '#/steward/litigation'], ['studies', 'Mandated studies', '#/steward/studies']];
   return (
     <div className="tabs" style={{ marginBottom: 18 }}>
       {tabs.map(([k, label, href]) => (

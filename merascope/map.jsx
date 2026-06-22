@@ -123,7 +123,28 @@ function normalizeWeights(w, k, val) {
 }
 
 /* ── Leaflet multi-state suitability map ── */
-function WAMap({ weights, selectedState = null, selectedCells = null, onCellToggle = null, stateData = null, interactive = true, markers = true, pins = null, onPinClick = null, dimmed = false, highlight = null, style }) {
+/* ── steward gate helpers ── */
+function _checkStewardGateLocal(p) {
+  var zones = window.ACTIVE_ZONES || [];
+  var M = window.MERA;
+  if (!M) return [];
+  var gates = [];
+  for (var i = 0; i < zones.length; i++) {
+    var z = zones[i];
+    var inZone = false;
+    if (z.zone_type === 'state') inZone = (p._state === z.state_code);
+    else if (z.zone_type === 'bbox' && z.bbox) {
+      var lat = p._lat, lon = p._lon;
+      inZone = lat != null && lon != null && lon >= z.bbox.w && lon <= z.bbox.e && lat >= z.bbox.s && lat <= z.bbox.n;
+    }
+    if (!inZone) continue;
+    var score = M.composite(propsToInd(p, true), z.weights);
+    if (score < z.min_score) gates.push({ zone: z, score: score });
+  }
+  return gates;
+}
+
+function WAMap({ weights, selectedState = null, selectedCells = null, onCellToggle = null, stateData = null, interactive = true, markers = true, pins = null, onPinClick = null, dimmed = false, highlight = null, onStewardLockIn = null, style }) {
   const M = window.MERA;
   const { ramp } = React.useContext(MeraCtx);
   const containerRef = React.useRef(null);
@@ -136,6 +157,36 @@ function WAMap({ weights, selectedState = null, selectedCells = null, onCellTogg
   const rampRef = React.useRef(ramp);
   const [hover, setHover] = React.useState(null);
   const [mousePos, setMousePos] = React.useState({ x: 0, y: 0 });
+  const [stewardGates, setStewardGates] = React.useState([]);
+  const hoverRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!hover) { setStewardGates([]); return; }
+    var local = _checkStewardGateLocal(hover);
+    setStewardGates(local);
+    var zones = window.ACTIVE_ZONES || [];
+    var hasServerZone = zones.some(function(z) { return z.zone_type === 'county' || z.zone_type === 'zcta'; });
+    if (!hasServerZone || !hover._state) return;
+    var lat = hover._lat, lon = hover._lon;
+    if (lat == null || lon == null) return;
+    var token = {};
+    hoverRef.current = token;
+    fetch('/api/gate_check?lat=' + lat + '&lon=' + lon + '&state=' + hover._state)
+      .then(function(r) { return r.json(); })
+      .then(function(serverGates) {
+        if (hoverRef.current !== token) return;
+        setStewardGates(function(prev) {
+          var combined = prev.slice();
+          (serverGates || []).forEach(function(sg) {
+            if (!combined.some(function(g) { return g.zone.zone_id === sg.zone_id; })) {
+              combined.push({ zone: sg, score: null });
+            }
+          });
+          return combined;
+        });
+      })
+      .catch(function() {});
+  }, [hover]);
 
   const selectedStateRef = React.useRef(selectedState);
   const selectedCellsRef = React.useRef(selectedCells);
@@ -228,7 +279,10 @@ function WAMap({ weights, selectedState = null, selectedCells = null, onCellTogg
       const layer = L.geoJSON(data, {
         style: feat => cellStyle(feat.properties, weightsRef.current, rampRef.current),
         onEachFeature: interactive ? (feat, lyr) => {
-          lyr.on('mouseover', () => setHover(feat.properties));
+          lyr.on('mouseover', () => {
+            const ctr = lyr.getBounds().getCenter();
+            setHover(Object.assign({}, feat.properties, { _lat: ctr.lat, _lon: ctr.lng }));
+          });
           lyr.on('mouseout',  () => setHover(null));
           lyr.on('click', () => {
             if (onCellToggleRef.current) onCellToggleRef.current(feat.properties._fid, feat.properties);
@@ -321,6 +375,17 @@ function WAMap({ weights, selectedState = null, selectedCells = null, onCellTogg
           <div>
             <div className="score-serif" style={{ fontSize: 30, lineHeight: 1.1, color: M.rampColor(score, ramp) }}>{score.toFixed(3)}</div>
             <div className="microcopy" style={{ marginBottom: 6 }}>composite suitability</div>
+            {stewardGates.length > 0 && stewardGates.map(function(g, i) {
+              return (
+                <div key={i} style={{ background: 'rgba(180,95,29,0.13)', border: '1px solid rgba(180,95,29,0.35)', borderRadius: 6, padding: '5px 7px', marginBottom: 6 }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 700, color: '#b45f1d', marginBottom: 2 }}>Steward gate: {g.zone.zone_name || g.zone.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--slate)', lineHeight: 1.5 }}>
+                    {g.zone.agency_key} requires min. {g.zone.min_score.toFixed(2)} under {g.zone.template_name || 'steward'} weights.
+                    {g.score != null ? (' This cell scores ' + g.score.toFixed(3) + '.') : ''}
+                  </div>
+                </div>
+              );
+            })}
             <div style={{ display: 'grid', gap: 3 }}>
               {M.INDICATORS.map(m => <BarRow key={m.k} label={m.label.replace(' proximity', '').replace(' availability', '').replace(' opportunity', '').replace(' sensitivity', '').replace(' distance', '')} value={ind[m.k]} width={92} />)}
             </div>
