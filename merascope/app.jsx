@@ -143,12 +143,12 @@ function App() {
 
   const [stewardTourStep, setStewardTourStep] = React.useState(null);
   React.useEffect(function() {
-    if (role === 'steward') {
+    if (role === 'steward' && tourStep === null) {
       try {
         if (!localStorage.getItem('mera_steward_tour_done')) setStewardTourStep(0);
       } catch (e) {}
     }
-  }, [role]);
+  }, [role, tourStep]);
   const applySTourStep = function(step) {
     if (step.role) setRole(step.role);
     if (step.nav) location.hash = step.nav;
