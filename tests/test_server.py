@@ -29,6 +29,7 @@ _TABLES = [
     'event_log', 'case_invites', 'case_conditions', 'case_docs',
     'case_meta', 'cases', 'case_stage_overrides', 'case_impasse_routes',
     'study_checks', 'case_rebuttals', 'crm_state',
+    'steward_zones', 'steward_templates',
 ]
 
 def _pg_available():
@@ -456,3 +457,228 @@ class TestImpasseRouting:
     def test_missing_key_returns_400(self, client):
         r = post_json(client, '/api/impasse/route', {})
         assert r.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Steward templates + zones
+# ---------------------------------------------------------------------------
+
+def _seed_steward(client):
+    """Insert a steward user+role+session and return a cookie dict."""
+    import psycopg2
+    from datetime import datetime, timedelta
+    import secrets as _sec
+    conn = psycopg2.connect(dsn=TEST_DSN)
+    token = _sec.token_urlsafe(16)
+    exp   = (datetime.utcnow() + timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')
+    try:
+        with conn.cursor() as cur:
+            cur.execute("INSERT INTO users (email) VALUES ('steward@test.gov') ON CONFLICT DO NOTHING")
+            cur.execute(
+                "INSERT INTO user_roles (email, role, agency_key) VALUES ('steward@test.gov','steward','TESTCO') "
+                "ON CONFLICT DO NOTHING"
+            )
+            cur.execute(
+                "INSERT INTO sessions (token, email, expires_at) VALUES (%s,'steward@test.gov',%s)",
+                (token, exp)
+            )
+        conn.commit()
+    finally:
+        conn.close()
+    return {'mera_sess': token}
+
+
+def _steward_get(client, url):
+    cookies = _seed_steward(client)
+    return client.get(url, headers={'Cookie': 'mera_sess=' + cookies['mera_sess']})
+
+
+def _steward_post(client, url, payload):
+    cookies = _seed_steward(client)
+    return client.post(
+        url, data=json.dumps(payload), content_type='application/json',
+        headers={'Cookie': 'mera_sess=' + cookies['mera_sess']}
+    )
+
+
+def _steward_patch(client, url, payload):
+    cookies = _seed_steward(client)
+    return client.patch(
+        url, data=json.dumps(payload), content_type='application/json',
+        headers={'Cookie': 'mera_sess=' + cookies['mera_sess']}
+    )
+
+
+def _steward_delete(client, url):
+    cookies = _seed_steward(client)
+    return client.delete(url, headers={'Cookie': 'mera_sess=' + cookies['mera_sess']})
+
+
+class TestStewardPresets:
+
+    def test_returns_five_presets(self, client):
+        r = client.get('/api/steward/presets')
+        assert r.status_code == 200
+        data = r.get_json()
+        assert len(data) == 5
+
+    def test_preset_has_required_fields(self, client):
+        data = client.get('/api/steward/presets').get_json()
+        for p in data:
+            assert 'name' in p
+            assert 'weights' in p
+            assert 'min_score' in p
+
+    def test_preset_weights_sum_to_100(self, client):
+        data = client.get('/api/steward/presets').get_json()
+        for p in data:
+            total = sum(p['weights'].values())
+            assert abs(total - 100) < 1e-6, f"{p['name']} weights sum to {total}"
+
+
+class TestStewardTemplates:
+
+    def test_unauthenticated_returns_401(self, client):
+        r = client.get('/api/steward/templates')
+        assert r.status_code == 401
+
+    def test_create_and_list(self, client):
+        weights = {k: 0 for k in srv._IND_KEYS}
+        weights['water'] = 60; weights['transmission'] = 25; weights['community'] = 15
+        r = _steward_post(client, '/api/steward/templates',
+                          {'name': 'Water Focus', 'weights': weights, 'min_score': 0.5})
+        assert r.status_code == 200
+        assert r.get_json()['ok'] is True
+        rows = _steward_get(client, '/api/steward/templates').get_json()
+        assert any(t['name'] == 'Water Focus' for t in rows)
+
+    def test_missing_name_returns_400(self, client):
+        r = _steward_post(client, '/api/steward/templates', {'weights': {}, 'min_score': 0.4})
+        assert r.status_code == 400
+
+    def test_update_locked_flag(self, client):
+        weights = {k: 0 for k in srv._IND_KEYS}
+        weights['transmission'] = 100
+        r = _steward_post(client, '/api/steward/templates',
+                          {'name': 'Grid Only', 'weights': weights, 'min_score': 0.45})
+        tmpl_id = r.get_json()['id']
+        patch = _steward_patch(client, '/api/steward/templates/' + str(tmpl_id), {'locked': 1})
+        assert patch.get_json()['ok'] is True
+        rows = _steward_get(client, '/api/steward/templates').get_json()
+        match = next(t for t in rows if t['id'] == tmpl_id)
+        assert match['locked'] == 1
+
+    def test_delete_template(self, client):
+        weights = {k: 0 for k in srv._IND_KEYS}
+        weights['community'] = 100
+        r = _steward_post(client, '/api/steward/templates',
+                          {'name': 'To Delete', 'weights': weights, 'min_score': 0.4})
+        tmpl_id = r.get_json()['id']
+        _steward_delete(client, '/api/steward/templates/' + str(tmpl_id))
+        rows = _steward_get(client, '/api/steward/templates').get_json()
+        assert not any(t['id'] == tmpl_id for t in rows)
+
+
+class TestStewardZones:
+
+    def _make_template(self, client):
+        weights = {k: 0 for k in srv._IND_KEYS}
+        weights['transmission'] = 40; weights['water'] = 35; weights['community'] = 25
+        r = _steward_post(client, '/api/steward/templates',
+                          {'name': 'Balanced', 'weights': weights, 'min_score': 0.4})
+        return r.get_json()['id']
+
+    def test_create_state_zone(self, client):
+        tmpl_id = self._make_template(client)
+        r = _steward_post(client, '/api/steward/zones',
+                          {'name': 'All of WA', 'zone_type': 'state',
+                           'state_code': 'WA', 'template_id': tmpl_id})
+        assert r.status_code == 200
+        assert r.get_json()['ok'] is True
+
+    def test_create_bbox_zone(self, client):
+        r = _steward_post(client, '/api/steward/zones',
+                          {'name': 'Seattle Metro', 'zone_type': 'bbox',
+                           'bbox': {'w': -122.5, 's': 47.4, 'e': -122.1, 'n': 47.8}})
+        assert r.get_json()['ok'] is True
+
+    def test_create_county_zone(self, client):
+        r = _steward_post(client, '/api/steward/zones',
+                          {'name': 'King County', 'zone_type': 'county',
+                           'state_code': 'WA', 'county_fips': '033'})
+        assert r.get_json()['ok'] is True
+
+    def test_create_zcta_zone(self, client):
+        r = _steward_post(client, '/api/steward/zones',
+                          {'name': 'ZCTA 98104', 'zone_type': 'zcta',
+                           'state_code': 'WA', 'zcta_code': '98104'})
+        assert r.get_json()['ok'] is True
+
+    def test_missing_name_returns_400(self, client):
+        r = _steward_post(client, '/api/steward/zones',
+                          {'zone_type': 'state', 'state_code': 'WA'})
+        assert r.status_code == 400
+
+    def test_invalid_zone_type_returns_400(self, client):
+        r = _steward_post(client, '/api/steward/zones',
+                          {'name': 'Bad', 'zone_type': 'galaxy'})
+        assert r.status_code == 400
+
+    def test_list_zones(self, client):
+        _steward_post(client, '/api/steward/zones',
+                      {'name': 'Zone A', 'zone_type': 'state', 'state_code': 'WA'})
+        rows = _steward_get(client, '/api/steward/zones').get_json()
+        assert any(z['name'] == 'Zone A' for z in rows)
+
+    def test_delete_zone(self, client):
+        r = _steward_post(client, '/api/steward/zones',
+                          {'name': 'Gone', 'zone_type': 'state', 'state_code': 'OR'})
+        zone_id = r.get_json()['id']
+        _steward_delete(client, '/api/steward/zones/' + str(zone_id))
+        rows = _steward_get(client, '/api/steward/zones').get_json()
+        assert not any(z['id'] == zone_id for z in rows)
+
+
+class TestActiveZones:
+
+    def _make_locked_zone(self, client, zone_type='state', extra=None):
+        weights = {k: 0 for k in srv._IND_KEYS}
+        weights['transmission'] = 40; weights['water'] = 35; weights['community'] = 25
+        tmpl_r = _steward_post(client, '/api/steward/templates',
+                               {'name': 'T', 'weights': weights, 'min_score': 0.5})
+        tmpl_id = tmpl_r.get_json()['id']
+        _steward_patch(client, '/api/steward/templates/' + str(tmpl_id), {'locked': 1})
+        zone_data = {'name': 'Z', 'zone_type': zone_type,
+                     'state_code': 'WA', 'template_id': tmpl_id}
+        if extra:
+            zone_data.update(extra)
+        _steward_post(client, '/api/steward/zones', zone_data)
+        return tmpl_id
+
+    def test_locked_zone_appears_in_active(self, client):
+        self._make_locked_zone(client)
+        data = client.get('/api/zones/active').get_json()
+        assert len(data) >= 1
+        assert 'weights' in data[0]
+        assert 'min_score' in data[0]
+
+    def test_unlocked_template_absent_from_active(self, client):
+        weights = {k: 0 for k in srv._IND_KEYS}
+        weights['transmission'] = 100
+        tmpl_r = _steward_post(client, '/api/steward/templates',
+                               {'name': 'Unlocked', 'weights': weights, 'min_score': 0.3})
+        tmpl_id = tmpl_r.get_json()['id']
+        _steward_post(client, '/api/steward/zones',
+                      {'name': 'Unlocked zone', 'zone_type': 'state',
+                       'state_code': 'OR', 'template_id': tmpl_id})
+        data = client.get('/api/zones/active').get_json()
+        assert not any(z.get('agency_key') == 'TESTCO' and z.get('zone_name') == 'Unlocked zone'
+                       for z in data)
+
+    def test_active_zone_has_zone_geometry_fields(self, client):
+        self._make_locked_zone(client, zone_type='county',
+                               extra={'county_fips': '033', 'state_code': 'WA'})
+        data = client.get('/api/zones/active').get_json()
+        county_zone = next((z for z in data if z.get('zone_type') == 'county'), None)
+        assert county_zone is not None
+        assert county_zone['county_fips'] == '033'

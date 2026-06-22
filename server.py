@@ -266,6 +266,30 @@ def init_db():
             PRIMARY KEY (email, role)
         )''')
 
+        db.execute('''CREATE TABLE IF NOT EXISTS steward_templates (
+            id           SERIAL PRIMARY KEY,
+            agency_key   TEXT NOT NULL,
+            name         TEXT NOT NULL,
+            weights_json TEXT NOT NULL,
+            min_score    REAL DEFAULT 0.40,
+            locked       INTEGER DEFAULT 0,
+            created_at   TIMESTAMP DEFAULT NOW(),
+            updated_at   TIMESTAMP DEFAULT NOW()
+        )''')
+
+        db.execute('''CREATE TABLE IF NOT EXISTS steward_zones (
+            id           SERIAL PRIMARY KEY,
+            agency_key   TEXT NOT NULL,
+            name         TEXT NOT NULL,
+            zone_type    TEXT NOT NULL DEFAULT 'state',
+            state_code   TEXT,
+            bbox_json    TEXT,
+            county_fips  TEXT,
+            zcta_code    TEXT,
+            template_id  INTEGER REFERENCES steward_templates(id) ON DELETE SET NULL,
+            created_at   TIMESTAMP DEFAULT NOW()
+        )''')
+
 
 # ── event log ─────────────────────────────────────────────────────────────────
 
@@ -969,6 +993,414 @@ def auth_logout():
     resp = jsonify({'ok': True})
     resp.delete_cookie('mera_sess')
     return resp
+
+
+# ── steward templates — presets + helpers ─────────────────────────────────────
+
+_IND_KEYS = [
+    'transmission', 'water', 'community', 'seismic', 'flood', 'contamination',
+    'waterway', 'geothermal', 'flatness', 'aquifer', 'soil', 'slope',
+    'pop_exposure', 'soil_profile', 'ksat',
+]
+
+def _zero_weights():
+    return {k: 0 for k in _IND_KEYS}
+
+PRESET_TEMPLATES = [
+    {
+        'id': 'balanced',
+        'name': 'Balanced',
+        'description': 'Equal weighting across the three primary pillars — Merascope defaults.',
+        'weights': {**_zero_weights(), 'transmission': 40, 'water': 35, 'community': 25},
+        'min_score': 0.40,
+    },
+    {
+        'id': 'water_first',
+        'name': 'Water-First',
+        'description': 'Prioritizes water availability above all. Suited for drought-stressed jurisdictions.',
+        'weights': {**_zero_weights(), 'water': 65, 'transmission': 15, 'community': 20},
+        'min_score': 0.50,
+    },
+    {
+        'id': 'grid_priority',
+        'name': 'Grid Priority',
+        'description': 'Transmission access is the critical path. Water and community burden are secondary.',
+        'weights': {**_zero_weights(), 'transmission': 70, 'water': 15, 'community': 15},
+        'min_score': 0.45,
+    },
+    {
+        'id': 'community_first',
+        'name': 'Community-First',
+        'description': 'EJ and community burden are the primary screens.',
+        'weights': {**_zero_weights(), 'community': 60, 'water': 20, 'transmission': 20},
+        'min_score': 0.55,
+    },
+    {
+        'id': 'ej_forward',
+        'name': 'EJ Forward',
+        'description': 'Strict community + contamination screening. Highest minimum score.',
+        'weights': {**_zero_weights(), 'community': 45, 'contamination': 25, 'water': 15, 'transmission': 15},
+        'min_score': 0.60,
+    },
+]
+
+
+# ── boundary GeoJSON cache + point-in-polygon ─────────────────────────────────
+
+_geo_cache = {}
+
+def _load_boundary(path):
+    if path not in _geo_cache:
+        try:
+            with open(path) as f:
+                _geo_cache[path] = json.load(f)
+        except FileNotFoundError:
+            _geo_cache[path] = None
+    return _geo_cache[path]
+
+
+def _point_in_ring(lon, lat, ring):
+    inside = False
+    n = len(ring)
+    j = n - 1
+    for i in range(n):
+        xi, yi = ring[i][0], ring[i][1]
+        xj, yj = ring[j][0], ring[j][1]
+        if ((yi > lat) != (yj > lat)) and (lon < (xj - xi) * (lat - yi) / (yj - yi) + xi):
+            inside = not inside
+        j = i
+    return inside
+
+
+def _point_in_geometry(lon, lat, geom):
+    gtype = geom.get('type')
+    if gtype == 'Polygon':
+        rings = geom['coordinates']
+        if not _point_in_ring(lon, lat, rings[0]):
+            return False
+        for hole in rings[1:]:
+            if _point_in_ring(lon, lat, hole):
+                return False
+        return True
+    if gtype == 'MultiPolygon':
+        for poly in geom['coordinates']:
+            if _point_in_ring(lon, lat, poly[0]):
+                ok = True
+                for hole in poly[1:]:
+                    if _point_in_ring(lon, lat, hole):
+                        ok = False
+                        break
+                if ok:
+                    return True
+    return False
+
+
+def _point_in_county(lon, lat, state_code, county_fips):
+    path = os.path.join(ROOT, 'data', state_code, 'raw', 'tracts.geojson')
+    gj = _load_boundary(path)
+    if not gj:
+        return False
+    for feat in gj['features']:
+        if feat['properties'].get('COUNTYFP') == county_fips:
+            if _point_in_geometry(lon, lat, feat['geometry']):
+                return True
+    return False
+
+
+def _point_in_zcta(lon, lat, state_code, zcta_code):
+    path = os.path.join(ROOT, 'data', state_code, 'zcta', 'zcta.geojson')
+    gj = _load_boundary(path)
+    if not gj:
+        return False
+    for feat in gj['features']:
+        if str(feat['properties'].get('zcta', '')) == str(zcta_code):
+            if _point_in_geometry(lon, lat, feat['geometry']):
+                return True
+    return False
+
+
+# ── require_steward decorator ─────────────────────────────────────────────────
+
+def require_steward(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = request.cookies.get('mera_sess', '')
+        if not token:
+            g.user_email = 'demo@merascope.com'
+            g.user_role  = 'steward'
+            g.agency_key = 'DEMO'
+            return f(*args, **kwargs)
+        with get_db() as db:
+            row = db.execute(
+                '''SELECT s.email, r.role, r.agency_key
+                   FROM sessions s
+                   LEFT JOIN user_roles r ON r.email = s.email
+                   WHERE s.token = ? AND s.expires_at > NOW()''',
+                (token,)
+            ).fetchone()
+        if not row:
+            return jsonify({'ok': False, 'err': 'unauthorized'}), 401
+        if (row.get('role') or 'builder') != 'steward':
+            return jsonify({'ok': False, 'err': 'steward role required'}), 403
+        g.user_email  = row['email']
+        g.user_role   = row['role']
+        g.agency_key  = row['agency_key'] or ''
+        return f(*args, **kwargs)
+    return decorated
+
+
+# ── steward presets ───────────────────────────────────────────────────────────
+
+@app.route('/api/steward/presets')
+def get_steward_presets():
+    return jsonify(PRESET_TEMPLATES)
+
+
+# ── steward templates CRUD ────────────────────────────────────────────────────
+
+@app.route('/api/steward/templates')
+@require_steward
+def list_steward_templates():
+    with get_db() as db:
+        rows = db.execute(
+            'SELECT * FROM steward_templates WHERE agency_key=? ORDER BY created_at',
+            (g.agency_key,)
+        ).fetchall()
+    result = []
+    for r in rows:
+        r = dict(r)
+        r['weights'] = json.loads(r['weights_json'])
+        del r['weights_json']
+        result.append(r)
+    return jsonify(result)
+
+
+@app.route('/api/steward/templates', methods=['POST'])
+@require_steward
+def create_steward_template():
+    data    = request.get_json(silent=True) or {}
+    name    = (data.get('name') or '').strip()
+    weights = data.get('weights') or {}
+    min_sc  = float(data.get('min_score', 0.40))
+    if not name:
+        return jsonify({'ok': False, 'err': 'name required'}), 400
+    # Fill any missing indicator keys with 0
+    full_w = {**_zero_weights(), **{k: float(v) for k, v in weights.items() if k in _IND_KEYS}}
+    with get_db() as db:
+        cur = db.execute(
+            '''INSERT INTO steward_templates (agency_key, name, weights_json, min_score)
+               VALUES (?,?,?,?) RETURNING id''',
+            (g.agency_key, name, json.dumps(full_w), min_sc)
+        )
+        new_id = cur.lastrowid
+    return jsonify({'ok': True, 'id': new_id})
+
+
+@app.route('/api/steward/templates/<int:tmpl_id>', methods=['PATCH'])
+@require_steward
+def update_steward_template(tmpl_id):
+    data = request.get_json(silent=True) or {}
+    with get_db() as db:
+        row = db.execute(
+            'SELECT * FROM steward_templates WHERE id=? AND agency_key=?',
+            (tmpl_id, g.agency_key)
+        ).fetchone()
+        if not row:
+            return jsonify({'ok': False, 'err': 'not found'}), 404
+        name    = (data.get('name') or row['name']).strip()
+        min_sc  = float(data.get('min_score', row['min_score']))
+        locked  = int(data['locked']) if 'locked' in data else row['locked']
+        if 'weights' in data:
+            existing = json.loads(row['weights_json'])
+            full_w   = {**existing, **{k: float(v) for k, v in data['weights'].items() if k in _IND_KEYS}}
+            w_json   = json.dumps(full_w)
+        else:
+            w_json = row['weights_json']
+        db.execute(
+            '''UPDATE steward_templates
+               SET name=?, weights_json=?, min_score=?, locked=?, updated_at=NOW()
+               WHERE id=? AND agency_key=?''',
+            (name, w_json, min_sc, locked, tmpl_id, g.agency_key)
+        )
+    return jsonify({'ok': True})
+
+
+@app.route('/api/steward/templates/<int:tmpl_id>', methods=['DELETE'])
+@require_steward
+def delete_steward_template(tmpl_id):
+    with get_db() as db:
+        row = db.execute(
+            'SELECT id FROM steward_templates WHERE id=? AND agency_key=?',
+            (tmpl_id, g.agency_key)
+        ).fetchone()
+        if not row:
+            return jsonify({'ok': False, 'err': 'not found'}), 404
+        db.execute('UPDATE steward_zones SET template_id=NULL WHERE template_id=?', (tmpl_id,))
+        db.execute('DELETE FROM steward_templates WHERE id=?', (tmpl_id,))
+    return jsonify({'ok': True})
+
+
+# ── steward zones CRUD ────────────────────────────────────────────────────────
+
+def _shape_zone(r):
+    z = dict(r)
+    z['bbox'] = json.loads(z['bbox_json']) if z.get('bbox_json') else None
+    z.pop('bbox_json', None)
+    return z
+
+
+@app.route('/api/steward/zones')
+@require_steward
+def list_steward_zones():
+    with get_db() as db:
+        rows = db.execute(
+            '''SELECT z.*, t.name AS template_name, t.min_score AS template_min_score,
+                      t.locked AS template_locked, t.weights_json
+               FROM steward_zones z
+               LEFT JOIN steward_templates t ON t.id = z.template_id
+               WHERE z.agency_key=? ORDER BY z.created_at''',
+            (g.agency_key,)
+        ).fetchall()
+    result = []
+    for r in rows:
+        z = _shape_zone(r)
+        if z.get('weights_json'):
+            z['template_weights'] = json.loads(z['weights_json'])
+            del z['weights_json']
+        result.append(z)
+    return jsonify(result)
+
+
+@app.route('/api/steward/zones', methods=['POST'])
+@require_steward
+def create_steward_zone():
+    data        = request.get_json(silent=True) or {}
+    name        = (data.get('name') or '').strip()
+    zone_type   = (data.get('zone_type') or 'state').strip()
+    state_code  = (data.get('state_code') or '').strip().upper() or None
+    bbox        = data.get('bbox')
+    county_fips = (data.get('county_fips') or '').strip() or None
+    zcta_code   = (data.get('zcta_code') or '').strip() or None
+    template_id = data.get('template_id')
+    if not name:
+        return jsonify({'ok': False, 'err': 'name required'}), 400
+    if zone_type not in ('state', 'bbox', 'county', 'zcta'):
+        return jsonify({'ok': False, 'err': 'invalid zone_type'}), 400
+    bbox_json = json.dumps(bbox) if bbox else None
+    with get_db() as db:
+        cur = db.execute(
+            '''INSERT INTO steward_zones
+               (agency_key, name, zone_type, state_code, bbox_json, county_fips, zcta_code, template_id)
+               VALUES (?,?,?,?,?,?,?,?) RETURNING id''',
+            (g.agency_key, name, zone_type, state_code, bbox_json, county_fips, zcta_code, template_id)
+        )
+        new_id = cur.lastrowid
+    return jsonify({'ok': True, 'id': new_id})
+
+
+@app.route('/api/steward/zones/<int:zone_id>', methods=['PATCH'])
+@require_steward
+def update_steward_zone(zone_id):
+    data = request.get_json(silent=True) or {}
+    with get_db() as db:
+        row = db.execute(
+            'SELECT * FROM steward_zones WHERE id=? AND agency_key=?',
+            (zone_id, g.agency_key)
+        ).fetchone()
+        if not row:
+            return jsonify({'ok': False, 'err': 'not found'}), 404
+        name        = (data.get('name') or row['name']).strip()
+        template_id = data.get('template_id', row['template_id'])
+        state_code  = data.get('state_code', row['state_code'])
+        county_fips = data.get('county_fips', row['county_fips'])
+        zcta_code   = data.get('zcta_code', row['zcta_code'])
+        bbox_json   = json.dumps(data['bbox']) if 'bbox' in data else row['bbox_json']
+        db.execute(
+            '''UPDATE steward_zones
+               SET name=?, template_id=?, state_code=?, county_fips=?, zcta_code=?, bbox_json=?
+               WHERE id=? AND agency_key=?''',
+            (name, template_id, state_code, county_fips, zcta_code, bbox_json, zone_id, g.agency_key)
+        )
+    return jsonify({'ok': True})
+
+
+@app.route('/api/steward/zones/<int:zone_id>', methods=['DELETE'])
+@require_steward
+def delete_steward_zone(zone_id):
+    with get_db() as db:
+        row = db.execute(
+            'SELECT id FROM steward_zones WHERE id=? AND agency_key=?',
+            (zone_id, g.agency_key)
+        ).fetchone()
+        if not row:
+            return jsonify({'ok': False, 'err': 'not found'}), 404
+        db.execute('DELETE FROM steward_zones WHERE id=?', (zone_id,))
+    return jsonify({'ok': True})
+
+
+# ── public zone endpoints ─────────────────────────────────────────────────────
+
+@app.route('/api/zones/active')
+def zones_active():
+    with get_db() as db:
+        rows = db.execute(
+            '''SELECT z.id AS zone_id, z.name AS zone_name, z.agency_key,
+                      z.zone_type, z.state_code, z.bbox_json,
+                      z.county_fips, z.zcta_code,
+                      t.name AS template_name, t.weights_json, t.min_score
+               FROM steward_zones z
+               JOIN steward_templates t ON t.id = z.template_id
+               WHERE t.locked = 1'''
+        ).fetchall()
+    result = []
+    for r in rows:
+        z = dict(r)
+        z['bbox']    = json.loads(z['bbox_json']) if z.get('bbox_json') else None
+        z['weights'] = json.loads(z['weights_json'])
+        del z['bbox_json'], z['weights_json']
+        result.append(z)
+    return jsonify(result)
+
+
+@app.route('/api/gate_check')
+def gate_check():
+    try:
+        lat   = float(request.args.get('lat', ''))
+        lon   = float(request.args.get('lon', ''))
+        state = (request.args.get('state') or '').strip().upper()
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'err': 'lat, lon, state required'}), 400
+
+    with get_db() as db:
+        rows = db.execute(
+            '''SELECT z.id AS zone_id, z.name AS zone_name, z.agency_key,
+                      z.zone_type, z.state_code, z.county_fips, z.zcta_code,
+                      t.name AS template_name, t.weights_json, t.min_score
+               FROM steward_zones z
+               JOIN steward_templates t ON t.id = z.template_id
+               WHERE t.locked = 1
+                 AND z.zone_type IN ('county','zcta')
+                 AND (z.state_code = ? OR z.state_code IS NULL)''',
+            (state,)
+        ).fetchall()
+
+    gates = []
+    for r in rows:
+        matched = False
+        if r['zone_type'] == 'county' and r['county_fips'] and state:
+            matched = _point_in_county(lon, lat, state, r['county_fips'])
+        elif r['zone_type'] == 'zcta' and r['zcta_code'] and state:
+            matched = _point_in_zcta(lon, lat, state, r['zcta_code'])
+        if matched:
+            gates.append({
+                'zone_id':       r['zone_id'],
+                'zone_name':     r['zone_name'],
+                'agency_key':    r['agency_key'],
+                'template_name': r['template_name'],
+                'weights':       json.loads(r['weights_json']),
+                'min_score':     r['min_score'],
+            })
+    return jsonify(gates)
 
 
 # ── static file serving ────────────────────────────────────────────────────────
