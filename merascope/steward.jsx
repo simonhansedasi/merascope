@@ -218,6 +218,7 @@ function CaseFilePage({ id }) {
   const [showInvite, setShowInvite] = React.useState(false);
   const [dirSearch, setDirSearch] = React.useState('');
   const [dirType, setDirType] = React.useState('all');
+  const [dirState, setDirState] = React.useState('all');
   const [serverInvited, setServerInvited] = React.useState([]);
   const [serverDocs, setServerDocs] = React.useState([]);
   const [deadline, setDeadline] = React.useState(null);
@@ -424,11 +425,13 @@ function CaseFilePage({ id }) {
     notify('Invite sent to ' + agency.name);
   };
   const dirQ = dirSearch.trim().toLowerCase();
-  const filteredDir = (M.AGENCY_DIRECTORY || []).filter(a => {
+  const filteredDir = (M.AGENCY_DIRECTORY || []).filter(function(a) {
     if (dirType !== 'all' && a.type !== dirType) return false;
+    if (dirState !== 'all' && a.type !== 'federal' && a.state !== dirState) return false;
     if (dirQ && a.name.toLowerCase().indexOf(dirQ) === -1) return false;
     return true;
   });
+  var ALL_STATES = ['AL','AR','AZ','CA','CO','CT','DE','FL','GA','IA','ID','IL','IN','KS','KY','LA','MA','MD','ME','MI','MN','MO','MS','MT','NC','ND','NE','NH','NJ','NM','NV','NY','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VA','VT','WA','WI','WV','WY'];
   const onCaseNames = [
     ...(C.invitedParties || []).map(k => {
       const d = (M.AGENCY_DIRECTORY || []).find(a => a.key === k);
@@ -610,6 +613,11 @@ function CaseFilePage({ id }) {
               <input type="text" placeholder="Search registered agencies..." value={dirSearch}
                 onChange={e => setDirSearch(e.target.value)}
                 style={{ flex: 1, padding: '7px 11px', borderRadius: 7, border: '1px solid var(--line)', background: 'var(--sand)', fontSize: 13, fontFamily: 'inherit', color: 'inherit' }} />
+              <select value={dirState} onChange={e => setDirState(e.target.value)}
+                style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--line)', background: 'var(--sand)', fontSize: 13, fontFamily: 'inherit', color: 'inherit', cursor: 'pointer' }}>
+                <option value="all">All states</option>
+                {ALL_STATES.map(function(s) { return <option key={s} value={s}>{s}</option>; })}
+              </select>
             </div>
             <div style={{ display: 'flex', gap: 4, marginBottom: 10, flexWrap: 'wrap' }}>
               {['all', 'state', 'county', 'tribe', 'utility', 'federal'].map(t => (
