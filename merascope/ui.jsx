@@ -286,7 +286,7 @@ var TOUR_STEPS = [
   },
   {
     title: 'Explorer — suitability map',
-    body: 'Washington State is loaded. Each cell shows a composite score across 16 physical indicators. Use the weight sliders to shift what matters most — scores update live. Click any cell to see its full indicator breakdown. Save cells to your workspace with the star button.',
+    body: 'All 48 contiguous states are scored. Each cell shows a composite score across 15 physical indicators — transmission access, water availability, community burden, seismic risk, terrain, protected land, aquifer depth, soil permeability, and more. Use the weight sliders to shift what matters most — scores update live. Click any cell to see its full indicator breakdown. Save cells to your workspace with the star button.',
     action: 'Try adjusting a weight slider, then click a cell.',
     nav: '#/explorer', role: null
   },
@@ -380,4 +380,101 @@ function TourOverlay({ tourStep, onStart, onNext, onBack, onSkip }) {
   );
 }
 
-Object.assign(window, { MeraCtx, AuthCtx, Glyph, AnimatedGlyph, Wordmark, Icon, useCountUp, ScoreNum, ScoreBadge, Chip, BarRow, PromiseBadge, SurfaceSwitch, DemoSwitch, PersonaBadge, TopNav, FooterMain, PageHead, useFakeLoad, NotifyToast, TourOverlay });
+var STEWARD_TOUR_STEPS = [
+  {
+    title: 'Your jurisdiction dashboard',
+    body: 'The Docket lists every active case in your regulatory queue. The tabs above unlock the full steward console: weight templates, impasse register, litigation tracker, and mandated studies. Cases arrive here automatically when builders submit site inquiries in your jurisdiction.',
+    action: null, nav: '#/steward', role: 'steward'
+  },
+  {
+    title: 'National siting data — 48 states',
+    body: 'Merascope covers all 48 contiguous states. Each ~14 km cell is scored on 15 physical and social indicators: transmission proximity, water availability, community burden, seismic risk, flood zones, terrain, protected land, aquifer depth, soil permeability, and more. Your jurisdiction lives inside this national dataset.',
+    action: 'Pan to your state and click a few cells to see their indicator breakdowns.',
+    nav: '#/explorer', role: 'steward'
+  },
+  {
+    title: 'Set your weight template',
+    body: 'Open Weight Templates. Pick one of five presets — Balanced, Water-First, Grid Priority, Community-First, or EJ Forward — or build a custom mix from scratch using the 15 weight sliders. Your template defines how Merascope scores cells inside your jurisdiction.',
+    action: 'Open the Weight templates tab and pick or create a template.',
+    nav: '#/steward/templates', role: 'steward'
+  },
+  {
+    title: 'Define a zone, lock the gate',
+    body: 'Create a zone to attach your template to a geographic footprint: state-wide, county, ZCTA, or a custom bounding box. Then lock the template. Once locked, builders viewing cells in your zone see an orange gate warning when their site scores below your minimum. Your weights become binding — not advisory.',
+    action: 'Create a zone, attach your template, set a minimum score, and lock it.',
+    nav: '#/steward/templates', role: 'steward'
+  },
+  {
+    title: 'Advance a case through stages',
+    body: 'Cases arrive as Site Inquiries from builder submissions. Click any case card to open the full record. Inside, advance the stage by clicking stage labels: Intake, Review, Conditions, Decision. Set a rebuttal deadline with the date picker and upload supporting documents.',
+    action: 'Click case 26-0142 to open the full record.',
+    nav: '#/steward', role: 'steward'
+  },
+  {
+    title: 'Co-parties and conditions',
+    body: 'Invite tribal entities, utilities, and county agencies as co-parties from the case file. Co-parties see only their invited cases and can propose conditions that land in your approval queue. The builder sees every condition in real time — same scores, same record, no information asymmetry.',
+    action: 'Open case 26-0142, find the co-party tab, and review the conditions table.',
+    nav: '#/steward/case/26-0142', role: 'steward', done: true
+  }
+];
+
+function StewardTourOverlay({ tourStep, onStart, onNext, onBack, onSkip }) {
+  if (tourStep === null) return null;
+
+  if (tourStep === 0) {
+    return (
+      <div style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <div style={{ background: 'var(--sand)', borderRadius: 14, padding: '32px 36px', maxWidth: 480, width: '100%', boxShadow: '0 12px 60px rgba(0,0,0,0.6)', border: '1px solid var(--line)', textAlign: 'center' }}>
+          <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'var(--mist)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
+            <Icon name="lock" size={26} color="var(--basalt)" />
+          </div>
+          <h2 style={{ fontSize: 22, marginBottom: 10 }}>Steward onboarding</h2>
+          <p style={{ color: 'var(--slate)', fontSize: 14.5, lineHeight: 1.65, marginBottom: 26 }}>A 6-step walkthrough of the steward workflow: configure a weight template, define a zone, lock the gate, manage your docket, and coordinate co-parties.</p>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+            <button className="btn btn-primary" onClick={onStart}>Start walkthrough</button>
+            <button className="btn btn-quiet" onClick={onSkip}>Skip for now</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const step = STEWARD_TOUR_STEPS[tourStep - 1];
+  if (!step) return null;
+  const total = STEWARD_TOUR_STEPS.length;
+  const isFirst = tourStep === 1;
+  const isLast = !!step.done;
+
+  return (
+    <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 1200, width: 520, maxWidth: 'calc(100vw - 32px)' }}>
+      <div style={{ background: 'var(--sand)', borderRadius: 12, boxShadow: '0 8px 40px rgba(0,0,0,0.55)', border: '1px solid var(--line)', overflow: 'hidden' }}>
+        <div style={{ height: 3, background: 'var(--line)' }}>
+          <div style={{ height: '100%', background: 'var(--basalt)', width: (tourStep / total * 100) + '%', transition: 'width 0.3s ease' }}></div>
+        </div>
+        <div style={{ padding: '16px 20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 7 }}>
+            <div>
+              <span className="microcopy">Steward setup: step {tourStep} of {total}</span>
+              <div style={{ fontWeight: 700, fontSize: 15.5, marginTop: 2, lineHeight: 1.25 }}>{step.title}</div>
+            </div>
+            <button onClick={onSkip} className="btn btn-quiet btn-xs" style={{ flexShrink: 0, marginLeft: 12, marginTop: 2 }}>End tour</button>
+          </div>
+          <p style={{ fontSize: 13.5, lineHeight: 1.65, color: 'var(--slate)', margin: '0 0 8px' }}>{step.body}</p>
+          {step.action && (
+            <div style={{ fontSize: 12.5, fontWeight: 650, color: 'var(--basalt)', marginBottom: 12, display: 'flex', gap: 5, alignItems: 'center' }}>
+              <span>&#8594;</span> {step.action}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            {!isFirst && <button className="btn btn-quiet btn-sm" onClick={onBack}>Back</button>}
+            {isLast
+              ? <button className="btn btn-primary btn-sm" onClick={onSkip}>Done</button>
+              : <button className="btn btn-primary btn-sm" onClick={onNext}>Next &#8594;</button>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { MeraCtx, AuthCtx, Glyph, AnimatedGlyph, Wordmark, Icon, useCountUp, ScoreNum, ScoreBadge, Chip, BarRow, PromiseBadge, SurfaceSwitch, DemoSwitch, PersonaBadge, TopNav, FooterMain, PageHead, useFakeLoad, NotifyToast, TourOverlay, StewardTourOverlay });
