@@ -92,10 +92,16 @@ function App() {
 
   const [authUser, setAuthUser] = React.useState(null);
   React.useEffect(function() {
-    fetch('/api/zones/active')
-      .then(function(r) { return r.ok ? r.json() : []; })
-      .then(function(zones) { window.ACTIVE_ZONES = zones || []; })
-      .catch(function() { window.ACTIVE_ZONES = []; });
+    window.refreshActiveZones = function() {
+      fetch('/api/zones/active')
+        .then(function(r) { return r.ok ? r.json() : []; })
+        .then(function(zones) {
+          window.ACTIVE_ZONES = zones || [];
+          if (window._recolorMap) window._recolorMap();
+        })
+        .catch(function() { window.ACTIVE_ZONES = []; });
+    };
+    window.refreshActiveZones();
   }, []);
   React.useEffect(function() {
     fetch('/api/auth/me')

@@ -277,6 +277,18 @@ def init_db():
             updated_at   TIMESTAMP DEFAULT NOW()
         )''')
 
+        db.execute('''CREATE TABLE IF NOT EXISTS template_history (
+            id           SERIAL PRIMARY KEY,
+            template_id  INTEGER NOT NULL,
+            agency_key   TEXT NOT NULL,
+            changed_by   TEXT NOT NULL,
+            changed_at   TIMESTAMP DEFAULT NOW(),
+            weights_json TEXT NOT NULL,
+            min_score    REAL NOT NULL,
+            locked       INTEGER NOT NULL,
+            summary      TEXT NOT NULL
+        )''')
+
         db.execute('''CREATE TABLE IF NOT EXISTS steward_zones (
             id           SERIAL PRIMARY KEY,
             agency_key   TEXT NOT NULL,
@@ -1216,6 +1228,21 @@ def update_steward_template(tmpl_id):
             w_json   = json.dumps(full_w)
         else:
             w_json = row['weights_json']
+        # build change summary
+        parts = []
+        if name != row['name']:                       parts.append('renamed to ' + name)
+        if abs(min_sc - row['min_score']) > 0.001:    parts.append('min score → ' + str(round(min_sc, 2)))
+        if locked != row['locked']:                   parts.append('locked' if locked else 'unlocked')
+        if w_json != row['weights_json']:             parts.append('weights updated')
+        summary = ', '.join(parts) or 'updated'
+        # snapshot current state before overwriting
+        db.execute(
+            '''INSERT INTO template_history
+               (template_id, agency_key, changed_by, weights_json, min_score, locked, summary)
+               VALUES (?, ?, ?, ?, ?, ?, ?)''',
+            (tmpl_id, g.agency_key, g.user_email,
+             row['weights_json'], row['min_score'], row['locked'], summary)
+        )
         db.execute(
             '''UPDATE steward_templates
                SET name=?, weights_json=?, min_score=?, locked=?, updated_at=NOW()
@@ -1223,6 +1250,61 @@ def update_steward_template(tmpl_id):
             (name, w_json, min_sc, locked, tmpl_id, g.agency_key)
         )
     return jsonify({'ok': True})
+
+
+@app.route('/api/steward/templates/<int:tmpl_id>/history')
+@require_steward
+def get_template_history(tmpl_id):
+    with get_db() as db:
+        rows = db.execute(
+            '''SELECT id, changed_by, changed_at, weights_json, min_score, locked, summary
+               FROM template_history
+               WHERE template_id=? AND agency_key=?
+               ORDER BY changed_at DESC LIMIT 20''',
+            (tmpl_id, g.agency_key)
+        ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route('/api/steward/templates/<int:tmpl_id>/rollback', methods=['POST'])
+@require_steward
+def rollback_template(tmpl_id):
+    data = request.get_json(silent=True) or {}
+    history_id = data.get('history_id')
+    if not history_id:
+        return jsonify({'ok': False, 'err': 'history_id required'}), 400
+    with get_db() as db:
+        snap = db.execute(
+            'SELECT * FROM template_history WHERE id=? AND template_id=? AND agency_key=?',
+            (history_id, tmpl_id, g.agency_key)
+        ).fetchone()
+        if not snap:
+            return jsonify({'ok': False, 'err': 'snapshot not found'}), 404
+        cur = db.execute(
+            'SELECT * FROM steward_templates WHERE id=? AND agency_key=?',
+            (tmpl_id, g.agency_key)
+        ).fetchone()
+        if not cur:
+            return jsonify({'ok': False, 'err': 'template not found'}), 404
+        # snapshot current state before rollback
+        db.execute(
+            '''INSERT INTO template_history
+               (template_id, agency_key, changed_by, weights_json, min_score, locked, summary)
+               VALUES (?, ?, ?, ?, ?, ?, ?)''',
+            (tmpl_id, g.agency_key, g.user_email,
+             cur['weights_json'], cur['min_score'], cur['locked'],
+             'rolled back to ' + str(snap['changed_at'])[:10])
+        )
+        db.execute(
+            '''UPDATE steward_templates
+               SET weights_json=?, min_score=?, locked=?, updated_at=NOW()
+               WHERE id=? AND agency_key=?''',
+            (snap['weights_json'], snap['min_score'], snap['locked'], tmpl_id, g.agency_key)
+        )
+    return jsonify({'ok': True,
+                    'weights':   json.loads(snap['weights_json']),
+                    'min_score': snap['min_score'],
+                    'locked':    snap['locked']})
 
 
 @app.route('/api/steward/templates/<int:tmpl_id>', methods=['DELETE'])
@@ -1358,6 +1440,26 @@ def zones_active():
         z['bbox']    = json.loads(z['bbox_json']) if z.get('bbox_json') else None
         z['weights'] = json.loads(z['weights_json'])
         del z['bbox_json'], z['weights_json']
+        if z['zone_type'] == 'zcta' and z.get('zcta_code') and z.get('state_code'):
+            path = os.path.join(ROOT, 'data', z['state_code'], 'zcta', 'zcta.geojson')
+            gj = _load_boundary(path)
+            if gj:
+                feat = next((f for f in gj['features']
+                             if str(f['properties'].get('zcta', '')) == str(z['zcta_code'])), None)
+                if feat:
+                    geom = feat['geometry']
+                    coords = []
+                    if geom['type'] == 'Polygon':
+                        for ring in geom['coordinates']: coords.extend(ring)
+                    elif geom['type'] == 'MultiPolygon':
+                        for poly in geom['coordinates']:
+                            for ring in poly: coords.extend(ring)
+                    if coords:
+                        lons = [c[0] for c in coords]
+                        lats = [c[1] for c in coords]
+                        z['polygon']      = geom
+                        z['polygon_bbox'] = {'w': min(lons), 'e': max(lons),
+                                             's': min(lats), 'n': max(lats)}
         result.append(z)
     return jsonify(result)
 

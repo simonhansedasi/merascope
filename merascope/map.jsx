@@ -75,7 +75,24 @@ function loadGridCache() {
   _gridCachePromise = Promise.all(GRID_URLS.map(url =>
     fetch(url).then(r => r.json()).then(d => {
       const st = url.split('/')[1];
-      d.features.forEach(f => { f.properties._state = st; f.properties._fid = fid++; });
+      d.features.forEach(f => {
+        f.properties._state = st;
+        f.properties._fid = fid++;
+        const ring = f.geometry.coordinates[0];
+        const n = ring.length;
+        let slat = 0, slon = 0, minLon = Infinity, maxLon = -Infinity, minLat = Infinity, maxLat = -Infinity;
+        for (let i = 0; i < n; i++) {
+          slon += ring[i][0]; slat += ring[i][1];
+          if (ring[i][0] < minLon) minLon = ring[i][0];
+          if (ring[i][0] > maxLon) maxLon = ring[i][0];
+          if (ring[i][1] < minLat) minLat = ring[i][1];
+          if (ring[i][1] > maxLat) maxLat = ring[i][1];
+        }
+        f.properties._lon = slon / n;
+        f.properties._lat = slat / n;
+        f.properties._bboxW = minLon; f.properties._bboxE = maxLon;
+        f.properties._bboxS = minLat; f.properties._bboxN = maxLat;
+      });
       return d;
     })
   )).then(datasets => {
@@ -124,6 +141,33 @@ function normalizeWeights(w, k, val) {
 
 /* ── Leaflet multi-state suitability map ── */
 /* ── steward gate helpers ── */
+function _ptInRing(lon, lat, ring) {
+  var inside = false, n = ring.length, j = n - 1;
+  for (var i = 0; i < n; i++) {
+    var xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+    if (((yi > lat) !== (yj > lat)) && (lon < (xj - xi) * (lat - yi) / (yj - yi) + xi)) inside = !inside;
+    j = i;
+  }
+  return inside;
+}
+function _ptInGeom(lon, lat, geom) {
+  if (!geom) return false;
+  if (geom.type === 'Polygon') return _ptInRing(lon, lat, geom.coordinates[0]);
+  if (geom.type === 'MultiPolygon') return geom.coordinates.some(function(poly) { return _ptInRing(lon, lat, poly[0]); });
+  return false;
+}
+function _inZone(p, z) {
+  if (z.zone_type === 'state') return p._state === z.state_code;
+  if (z.zone_type === 'bbox' && z.bbox) {
+    return p._lon >= z.bbox.w && p._lon <= z.bbox.e && p._lat >= z.bbox.s && p._lat <= z.bbox.n;
+  }
+  if (z.zone_type === 'zcta' && z.polygon_bbox) {
+    var b = z.polygon_bbox;
+    return p._bboxE > b.w && p._bboxW < b.e && p._bboxN > b.s && p._bboxS < b.n;
+  }
+  return false;
+}
+
 function _checkStewardGateLocal(p) {
   var zones = window.ACTIVE_ZONES || [];
   var M = window.MERA;
@@ -204,7 +248,10 @@ function WAMap({ weights, selectedState = null, selectedCells = null, onCellTogg
     const isSelected = selectedCellsRef.current && selectedCellsRef.current.has(p._fid);
     if (p.protected_score === 0) return { fillColor: '#0d2b1a', fillOpacity: 0.88, color: isSelected ? '#fff' : 'transparent', weight: isSelected ? 2 : 0 };
     const fill = M.rampColor(M.composite(propsToInd(p, nat), w), r);
+    const zones = window.ACTIVE_ZONES || [];
+    const stewarded = p._lat != null && zones.some(function(z) { return _inZone(p, z); });
     if (isSelected) return { fillColor: fill, fillOpacity: 0.95, color: '#ffffff', weight: 2.5 };
+    if (stewarded) return { fillColor: fill, fillOpacity: 0.72, color: '#b45f1d', weight: 2 };
     return { fillColor: fill, fillOpacity: 0.72, color: 'transparent', weight: 0 };
   }
 
@@ -319,6 +366,7 @@ function WAMap({ weights, selectedState = null, selectedCells = null, onCellTogg
   }, []);
 
   React.useEffect(() => { applyColors(weights, ramp); }, [weights, ramp]);
+  React.useEffect(() => { window._recolorMap = function() { applyColors(weightsRef.current, rampRef.current); }; return function() { window._recolorMap = null; }; }, []);
   React.useEffect(() => { applyColors(weightsRef.current, rampRef.current); }, [selectedCells]);
   React.useEffect(() => { applyPins(weights, ramp);   }, [pins, ramp]);
   React.useEffect(() => { applyMarkers();              }, [markers]);
@@ -419,6 +467,10 @@ function MapLegend() {
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
         <span style={{ width: 13, height: 13, borderRadius: 3, background: '#0d2b1a', display: 'inline-block', border: '1px solid var(--line)' }}></span>
         protected land
+      </span>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+        <span style={{ width: 13, height: 13, borderRadius: 3, background: 'transparent', display: 'inline-block', border: '2px solid #b45f1d' }}></span>
+        steward review zone
       </span>
     </div>
   );
