@@ -4,7 +4,7 @@ Output: data/{STATE}/zcta/zcta.geojson with features: {properties: {zcta: "XXXXX
 Run: /home/simonhans/anaconda3/envs/merascope/bin/python3 scripts/build_zcta.py
 """
 import os
-import json
+# import json
 import geopandas as gpd
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
