@@ -1,8 +1,8 @@
 # Merascope
 
 National data center site suitability intelligence and permitting coordination platform.
-GIS-MCDA across 0.15-degree fishnet cells, 16 scored indicators, raw physical values
-included in every output for multi-scale renormalization.
+GIS-MCDA across 0.15-degree fishnet cells, 22 scored indicators (16 core + 6 supplemental),
+raw physical values included in every output for multi-scale renormalization.
 
 Built for three audiences:
 - **Builders** (developers evaluating sites) — Explorer map, workspace, portfolio screening
@@ -55,6 +55,20 @@ Hard gates: only two remain.
 
 Terrain (flatness_score, slope_score) is a scoring penalty, not a hard gate.
 All scores normalized 0-1 within state (1 = most favorable for siting).
+
+### Supplemental indicators (scripts 11-16, default weight 0)
+
+These are added to all 48 states as of 2026-06-23. Weights default to 0 in the Explorer (sliders must be turned up to include them in the composite score).
+
+| Script | Score column | Source | Notes |
+|---|---|---|---|
+| 11 | substation_score | EIA Form 860 power plant locations (capacity proxy for voltage) | KDTree proximity + capacity weighting |
+| 12 | superfund_score | EPA Envirofacts NPL Superfund sites | Distance, 1 = farthest |
+| 12 | rcra_score | EPA Envirofacts RCRA corrective action sites | Distance, 1 = farthest |
+| 13 | air_quality_score | EPA Green Book NAAQS non-attainment areas | 1 = attainment, 0 = non-attainment |
+| 14 | fiber_score | PeeringDB carrier hotel/colo facility locations | KDTree proximity |
+| 15 | water_stress_score | WRI Aqueduct 3.0 baseline water stress (bws_score 0-5) | Inverted: 1 = low stress |
+| 16 | grid_capacity_score | EIA Form 860M planned vs. operating MW ratio per state | 1 = least interconnection queue pressure |
 
 ### Raw columns
 

@@ -33,7 +33,7 @@ function SheetShell({ title, kicker, children, seed }) {
       <div style={{ marginTop: 16 }}>{children}</div>
       <div style={{ position: 'absolute', left: 58, right: 58, bottom: 38, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 14, borderTop: '1px solid var(--line)', paddingTop: 12 }}>
         <div style={{ fontSize: 9.5, color: 'var(--slate)', maxWidth: 520, lineHeight: 1.5 }}>
-          Methodology: 15 indicators normalized 0-1, 2 hard gates (protected land {'>'} 25%, FEMA flood zone), 0.15 deg grid (~14 km). Sources: OSM (ODbL) · Census ACS · PRISM Climate Group · USGS NWIS + ASCE 7-22 · FEMA NFHL · EPA TRI · SSURGO SDM · IHFC 2024 GHFDB · SRTM1 · EIA Form 860. {M.VERSION}. All scoring code reproducible.
+          Methodology: 22 indicators normalized 0-1, 2 hard gates (protected land {'>'} 25%, FEMA flood zone), 0.15 deg grid (~14 km). Sources: OSM (ODbL) · Census ACS · PRISM Climate Group · USGS NWIS + ASCE 7-22 · FEMA NFHL · EPA TRI + Envirofacts NPL + RCRA · EPA Green Book · SSURGO SDM · IHFC 2024 GHFDB · SRTM1 · EIA Form 860 + 860M · WRI Aqueduct 3.0 · PeeringDB. {M.VERSION}. All scoring code reproducible.
           <div style={{ marginTop: 4, fontWeight: 700, color: 'var(--evergreen)' }}>◈ Same Score Promise — identical methodology, weights, and sources for every reader of this page.</div>
         </div>
         <div style={{ textAlign: 'center' }}>

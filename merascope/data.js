@@ -304,7 +304,14 @@ window.serverLog = function(eventType, fid, payload) {
     { k: 'slope', label: 'Slope suitability', def: 0, icon: 'wave' },
     { k: 'pop_exposure', label: 'Population exposure', def: 0, icon: 'pin' },
     { k: 'soil_profile', label: 'Soil profile chemistry', def: 0, icon: 'plumb' },
-    { k: 'ksat', label: 'Hydraulic K-sat', def: 0, icon: 'borehole' }
+    { k: 'ksat', label: 'Hydraulic K-sat', def: 0, icon: 'borehole' },
+    { k: 'substation', label: 'Substation proximity', def: 0, icon: 'pylon' },
+    { k: 'superfund', label: 'Superfund distance', def: 0, icon: 'borehole' },
+    { k: 'rcra', label: 'RCRA site distance', def: 0, icon: 'borehole' },
+    { k: 'air_quality', label: 'Air quality (NAAQS)', def: 0, icon: 'wave' },
+    { k: 'fiber', label: 'Fiber connectivity', def: 0, icon: 'pylon' },
+    { k: 'water_stress', label: 'Water stress', def: 0, icon: 'droplet' },
+    { k: 'grid_capacity', label: 'Grid capacity', def: 0, icon: 'pylon' }
   ];
   var DEFAULT_WEIGHTS = {};
   INDICATORS.forEach(function (m) { DEFAULT_WEIGHTS[m.k] = m.def; });
@@ -558,12 +565,12 @@ window.serverLog = function(eventType, fid, payload) {
     { k: 'Contamination Distance', g: 'C−', why: 'Hanford dominates the southeast quadrant: three of four proposed Tri-Cities-area campuses score under 0.25 on contamination distance. Statewide median is healthy; the growth corridor is not.' }
   ];
   var STATE_GRADE = 'C+';
-  var DATA_SOURCES = 'OSM (ODbL) · Census ACS · PRISM Climate Group · USGS NWIS + ASCE 7-22 · FEMA NFHL · EPA TRI · SSURGO SDM · IHFC 2024 GHFDB · SRTM1 · EIA Form 860';
+  var DATA_SOURCES = 'OSM (ODbL) · Census ACS · PRISM Climate Group · USGS NWIS + ASCE 7-22 · FEMA NFHL · EPA TRI + Envirofacts NPL + RCRA · EPA Green Book · SSURGO SDM · IHFC 2024 GHFDB · SRTM1 · EIA Form 860 + 860M · WRI Aqueduct 3.0 · PeeringDB';
   var PROMISE = {
     short: 'Same Score Promise',
     long: 'Our methodology, weights, and sources are public and identical for every user. Subscriptions buy resolution and workflow. They have never bought a friendlier number, and they never will — because a flattering score on a failing site bankrupts everyone who trusted it. The aquifer doesn\u2019t read press releases.'
   };
-  var VERSION = 'v2026.06.18';
+  var VERSION = 'v2026.06.23';
 
   /* ── additional states: synthetic aggregate models (public high-level layer) ── */
   function pip(poly, lon, lat) {

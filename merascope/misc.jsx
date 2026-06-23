@@ -271,6 +271,35 @@ const INDS = [
       src: 'SSURGO chorizon thickness-weighted mean K-sat (um/s); same query as soil profile',
       formula: '1 - clip(log1p(ksat_ums) / log1p(100), 0, 1)  [log-scaled]',
       why: 'Low saturated hydraulic conductivity means the subsurface resists lateral transport of dissolved contaminants. Datacenter campuses store hundreds of thousands of gallons of diesel fuel for emergency generators — 72-hour loads are standard at Tier III and IV facilities. Low K-sat soils slow groundwater transport of any fuel release, buying time for remediation and substantially limiting environmental liability exposure.' },
+    { n: 'Substation proximity', col: 'substation_score', wt: '0%',
+      src: 'EIA Form 860 Annual Electric Generator Report (2024 with 2023 fallback); plant capacity (MW) as voltage-class proxy; cached in data/shared/substations.csv',
+      formula: '0.6 * (1 - dist_m / max_dist) + 0.4 * capacity_weight(MW)',
+      why: 'Transmission line proximity tells you where the wire runs, not where you can actually tap it. Interconnection requires a substation — a physical facility that steps down voltage, provides protection equipment, and terminates the point-of-interconnect agreement. High-capacity substations (proxied here by large plant connections) reduce both construction cost and queue time by offering available spare capacity at an existing breaker position. The composite score weights proximity at 60% and estimated capacity at 40%.' },
+    { n: 'Superfund distance', col: 'superfund_score', wt: '0%',
+      src: 'EPA Envirofacts REST API — SEMS (Superfund Enterprise Management System) National Priorities List sites',
+      formula: 'clip(superfund_dist_m / p99, 0, 1)',
+      why: 'EPA Superfund National Priorities List sites represent the most contaminated locations in the United States. Proximity triggers mandatory review in Phase I environmental assessments, generates automatic flags in NEPA and state environmental review, and creates direct environmental liability risk through regulatory brownfield association. Unlike TRI, Superfund status indicates documented past contamination rather than ongoing releases — meaning the plume is already in the ground. A Superfund site within 2-5 km is typically disqualifying for institutional financing regardless of regulatory approval status.' },
+    { n: 'RCRA distance', col: 'rcra_score', wt: '0%',
+      src: 'EPA Envirofacts REST API — RCRAInfo corrective action facilities (active hazardous waste cleanup)',
+      formula: 'clip(rcra_dist_m / p99, 0, 1)',
+      why: 'RCRA corrective action facilities are actively remediating known hazardous waste releases under EPA or state oversight. Unlike Superfund, RCRA corrective action covers a much larger universe of industrial and commercial sites that handled hazardous materials and subsequently required cleanup. These sites carry ongoing compliance obligations and can restrict neighboring land use through institutional controls. Proximity to an active RCRA facility appears in Phase I reports and can trigger Phase II investigation requirements, adding months and material cost to site due diligence.' },
+    { n: 'Air quality (NAAQS)', col: 'air_quality_score', wt: '0%',
+      src: 'EPA Green Book non-attainment area GIS shapefile (PM2.5, PM10, Ozone); county-level spatial join',
+      formula: '0 if county is in non-attainment for PM2.5, PM10, or Ozone; 1 otherwise  [binary]',
+      gate: true,
+      why: 'Counties designated as non-attainment under the Clean Air Act face stricter permitting requirements for new stationary sources of air pollution. Datacenter campuses routinely operate 10 to 50+ diesel backup generators — a 100 MW facility may have 50,000 kW of emergency diesel capacity. In non-attainment areas, generator permits require offsets, enhanced controls, or face outright denial. Communities in non-attainment counties also tend to oppose new facilities more vigorously given documented air quality failure, increasing litigation exposure and public hearing complexity.' },
+    { n: 'Fiber connectivity', col: 'fiber_score', wt: '0%',
+      src: 'PeeringDB /api/fac (public JSON, no auth) — carrier-neutral colocation and data center facility locations; cached in data/shared/peeringdb_fac.csv',
+      formula: '1 - clip(fac_dist_m / p99, 0, 1)',
+      why: 'Long-haul fiber routes terminate at carrier-neutral colocation facilities — carrier hotels, internet exchange points, and neutral meet-me rooms. These are the physical locations where backbone providers, CDNs, and cloud networks hand off traffic. A campus close to one of these facilities benefits from shorter dark fiber spans, more competitive pricing from competing carriers, and lower latency to major peering fabrics. For latency-sensitive workloads (AI inference, financial services, gaming, video streaming), fiber proximity is as operationally constraining as transmission proximity. Even for hyperscale backfill campuses, distant fiber sites require bespoke builds at $30,000-80,000 per route mile.' },
+    { n: 'Water stress', col: 'water_stress_score', wt: '0%',
+      src: 'WRI Aqueduct Water Risk Atlas 3.0, baseline water stress score (bws_score, 0-5); watershed polygon spatial join; CONUS clip cached in data/shared/aqueduct_watersheds.gpkg',
+      formula: '1 - clip((bws_score - state_min) / (state_max - state_min), 0, 1)  [inverted: lower stress = higher score]',
+      why: 'Annual precipitation (water_score) captures supply potential over climatological timescales. Water stress captures whether that supply is actually accessible — accounting for existing withdrawals, water rights allocations, and regulatory closure risk. A watershed with high precipitation but over-appropriated rights offers no practical water budget for new large industrial users. WRI Aqueduct rates baseline water stress on a 0-5 scale: 0-1 is low stress, 3-4 is high stress, above 4 is extremely stressed. Many of the highest-scoring cells on precipitation are in the arid West, where paper water rights already exceed average annual flow. This indicator corrects for that mismatch.' },
+    { n: 'Grid capacity', col: 'grid_capacity_score', wt: '0%',
+      src: 'EIA Form 860M Monthly Electric Generator Report, Planned sheet (current month); state-level planned MW vs. operating MW ratio',
+      formula: '1 - clip(planned_mw / operating_mw / p75_ratio, 0, 1)  [state-level constant: all cells in a state share the same score]',
+      why: 'States with a high ratio of planned and proposed capacity to existing operating capacity face the longest interconnection queues. Each new large load application joins a queue behind every proposed generator — interconnection studies for load are bundled with generator studies and proceed at the same pace. A state where planned capacity is already two to three times the operating base signals multi-year queue congestion and elevated probability of project withdrawal or restudy due to upstream changes. This is a state-level indicator: all cells within a state receive the same score, making it useful for state comparison rather than within-state cell ranking.' },
 ];
 
 function MethodologyPage() {
@@ -299,7 +328,7 @@ function MethodologyPage() {
   ];
 
   const PIPELINE_STEPS = [
-    { label: 'Fetch', sub: '15 public APIs' },
+    { label: 'Fetch', sub: '20+ public sources' },
     { label: 'Interpolate', sub: 'IDW k=8, p=2' },
     { label: 'Score', sub: 'p01/p99 per state' },
     { label: 'Gate', sub: '2 hard exclusions' },
@@ -308,7 +337,8 @@ function MethodologyPage() {
 
   const SOURCES = [
     ['OSM power lines (voltage >= 230,000 V)', 'OpenStreetMap contributors (ODbL)', 'Overpass API', 'tx_score'],
-    ['EIA Form 860 2023 substations', 'US Energy Information Administration', 'eia.gov bulk download', 'tx_score'],
+    ['EIA Form 860 Annual (2024) — plant locations + capacity', 'US Energy Information Administration', 'eia.gov bulk download', 'tx_score, substation_score'],
+    ['EIA Form 860M Monthly — Planned sheet (current)', 'US Energy Information Administration', 'eia.gov/electricity/data/eia860m/', 'grid_capacity_score'],
     ['PRISM 30-yr precip normals (ppt, 1991-2020, 4 km)', 'PRISM Climate Group / Oregon State University', 'prism.oregonstate.edu/normals/', 'water_score'],
     ['ACS 5-yr B03002, B17020, B25003, B15003, B08301', 'US Census Bureau', 'census.gov/data/developers', 'ej_score, pop_exposure_score'],
     ['ASCE 7-22 seismic design maps API (PGAm)', 'US Geological Survey', 'earthquake.usgs.gov/ws/designmaps/', 'seismic_score'],
@@ -322,6 +352,11 @@ function MethodologyPage() {
     ['NWIS parameter 72019 (depth-to-water-table)', 'US Geological Survey', 'waterservices.usgs.gov OGC API', 'aquifer_score'],
     ['SSURGO mapunit / muaggatt / chorizon tables', 'USDA NRCS Soil Data Mart (SDM)', 'sdmdataaccess.nrcs.usda.gov', 'soil_score, soil_profile_score, ksat_score'],
     ['TIGER 2022 state boundaries (grid clip)', 'US Census Bureau', 'census.gov/geographies/mapping-files', 'all indicators'],
+    ['Superfund SEMS NPL site locations', 'US EPA Envirofacts REST API', 'enviro.epa.gov/envirofacts/sems/', 'superfund_score'],
+    ['RCRAInfo corrective action facilities', 'US EPA Envirofacts REST API', 'enviro.epa.gov/envirofacts/rcra/', 'rcra_score'],
+    ['Green Book GIS non-attainment areas (PM2.5, PM10, Ozone)', 'US EPA', 'epa.gov/green-book', 'air_quality_score'],
+    ['Aqueduct Water Risk Atlas 3.0 (bws_score, watershed polygons)', 'World Resources Institute', 'wri.org/data/aqueduct-water-risk-atlas', 'water_stress_score'],
+    ['PeeringDB /api/fac (carrier hotel and colo facility locations)', 'PeeringDB (community-managed)', 'peeringdb.com/api/fac', 'fiber_score'],
   ];
 
   const navBtnStyle = { display: 'block', width: '100%', textAlign: 'left', background: 'none',
@@ -377,9 +412,9 @@ function MethodologyPage() {
           </div>
 
           <div id="m-indicators" style={{ scrollMarginTop: 72 }}>
-            <h3 style={{ fontSize: 17, marginBottom: 8 }}>Fifteen indicators</h3>
+            <h3 style={{ fontSize: 17, marginBottom: 8 }}>Twenty-two indicators</h3>
             <p style={{ fontSize: 14.5, lineHeight: 1.65, marginBottom: 18 }}>
-              Every indicator is normalized 0-1 within the state (higher = more suitable). Three compose the default composite &#8212; transmission (40%), water availability (35%), community burden (25%). All fifteen are computed and published; users can assign non-zero weight to any of them. Two are hard gates that no weight combination can override.
+              Every indicator is normalized 0-1 within the state (higher = more suitable). Three compose the default composite &#8212; transmission (40%), water availability (35%), community burden (25%). All twenty-two are computed and published; users can assign non-zero weight to any of them. Two hard gates cannot be overridden by any weight configuration. Six supplemental indicators (substation proximity, Superfund distance, RCRA distance, air quality, fiber connectivity, water stress, grid capacity) default to zero weight and appear in the Explorer sliders for optional use.
             </p>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 8, marginBottom: 12 }}>
@@ -470,7 +505,7 @@ function MethodologyPage() {
               <b>State-level (pipeline output).</b> Percentile anchors are computed from the state's own cells and used to clip outliers before linear rescaling to [0, 1]. Continuous indicators use p01/p99 or p05/p95 depending on distribution shape. Binary indicators (flood_score, protected_score) skip percentile normalization. The soil HSG score uses an ordinal lookup table (A/B/C/D) and requires no clipping.
             </p>
             <p style={{ fontSize: 14.5, lineHeight: 1.65, marginBottom: 22 }}>
-              <b>National (post-pipeline).</b> After all 48 states are scored, a second pass computes p01/p99 percentile anchors from each raw physical-value column across the full 48-state dataset and rescales to produce <code>_nat</code> columns (e.g. <code>tx_score_nat</code>, <code>water_score_nat</code>). This enables cross-state comparison on a common scale. Binary gate indicators (flood_score, protected_score) are copied directly as their <code>_nat</code> column. Indicators without a single physical unit (ej_score, soil_score, soil_profile_score) are nationally normalized by ranking their state-level scores across all 48-state cells and rescaling linearly.
+              <b>National (post-pipeline).</b> After all 48 states are scored, a second pass computes p01/p99 percentile anchors from each raw physical-value column across the full 48-state dataset and rescales to produce <code>_nat</code> columns (e.g. <code>tx_score_nat</code>, <code>water_score_nat</code>). This enables cross-state comparison on a common scale. Binary indicators (flood_score, protected_score, air_quality_score) are copied directly as their <code>_nat</code> column. Indicators without a single physical unit (ej_score, soil_score, soil_profile_score, grid_capacity_score) are nationally normalized by ranking their state-level scores across all 48-state cells and rescaling linearly. All seven supplemental indicators have national (<code>_nat</code>) columns and contribute to state grade computation.
             </p>
           </div>
 
@@ -484,7 +519,7 @@ function MethodologyPage() {
           <div id="m-composite" style={{ scrollMarginTop: 72 }}>
             <h3 style={{ fontSize: 17, marginBottom: 8 }}>Composite score</h3>
             <p style={{ fontSize: 14.5, lineHeight: 1.65, marginBottom: 22 }}>
-              Composite = weighted sum of all indicator scores, with weights normalized to sum to 1.0. Default: transmission 40%, water 35%, community burden 25%. Builder and Steward workspaces expose all fifteen weight sliders. Hard-gated cells receive composite = 0 regardless of weight configuration.
+              Composite = weighted sum of all indicator scores, with weights normalized to sum to 1.0. Default: transmission 40%, water 35%, community burden 25% (all supplemental indicators at 0%). Builder and Steward workspaces expose all twenty-two weight sliders. Hard-gated cells receive composite = 0 regardless of weight configuration.
             </p>
           </div>
 

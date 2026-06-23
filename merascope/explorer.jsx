@@ -2,11 +2,11 @@
 
 /* ── national grade computation ── */
 const _GRADE_CATS = [
-  { k: 'Water Durability',       cols: ['water_score_nat', 'aquifer_score_nat', 'waterway_score_nat'] },
-  { k: 'Grid Access',            cols: ['tx_score_nat'] },
-  { k: 'Hazard Exposure',        cols: ['seismic_score_nat', 'flood_score_nat'] },
+  { k: 'Water Durability',       cols: ['water_score_nat', 'aquifer_score_nat', 'waterway_score_nat', 'water_stress_score_nat'] },
+  { k: 'Grid Access',            cols: ['tx_score_nat', 'substation_score_nat', 'fiber_score_nat', 'grid_capacity_score_nat'] },
+  { k: 'Hazard Exposure',        cols: ['seismic_score_nat', 'flood_score_nat', 'air_quality_score_nat'] },
   { k: 'Community Burden',       cols: ['ej_score_nat', 'pop_exposure_score_nat'] },
-  { k: 'Contamination Distance', cols: ['contamination_score_nat'] },
+  { k: 'Contamination Distance', cols: ['contamination_score_nat', 'superfund_score_nat', 'rcra_score_nat'] },
 ];
 
 function _rankToGrade(rank, total) {
@@ -45,19 +45,19 @@ function _catWhy(cat, grade, name, rank, n) {
   const rankStr = `${_ordinal(rank + 1)} of ${n} states`;
   const bank = {
     'Water Durability': {
-      high: `${name} ranks ${rankStr} for water durability. Precipitation levels, aquifer access, and river proximity are all favorable relative to the contiguous 48. Chronic water shortage is not a structural constraint here.`,
-      mid: `${name} ranks ${rankStr} for water durability — near the national median. Precipitation and aquifer depth are adequate in many cells, but some areas face seasonal or depth limitations.`,
-      low: `${name} ranks ${rankStr} for water durability. Precipitation deficits or deep aquifer drawdown are the primary structural risks for data-center siting, and the constraint is worse here than in most states.`,
+      high: `${name} ranks ${rankStr} for water durability. Precipitation levels, aquifer access, river proximity, and watershed-level water stress (WRI Aqueduct) are all favorable relative to the contiguous 48. Chronic water shortage is not a structural constraint here.`,
+      mid: `${name} ranks ${rankStr} for water durability — near the national median. Precipitation and aquifer depth are adequate in many cells, but watershed water stress or aquifer drawdown create seasonal or subregional limitations.`,
+      low: `${name} ranks ${rankStr} for water durability. Precipitation deficits, over-appropriated water rights, or documented watershed water stress are the primary structural risks for data-center siting, and the constraint is worse here than in most states.`,
     },
     'Grid Access': {
-      high: `${name} ranks ${rankStr} for grid access. Dense high-voltage infrastructure keeps median tie-line distance low across most viable cells. Interconnection queue time, not wire distance, is the binding constraint.`,
-      mid: `${name} ranks ${rankStr} for grid access — near the national median. Some cells require longer tie-line investments, consistent with the national average.`,
-      low: `${name} ranks ${rankStr} for grid access. Thin transmission build-out across much of the state elevates interconnection cost and timeline risk compared to most competing markets.`,
+      high: `${name} ranks ${rankStr} for grid access. Dense high-voltage transmission, favorable substation proximity, strong fiber interconnect density, and manageable interconnection queue pressure combine to make this one of the stronger grid environments in the contiguous 48.`,
+      mid: `${name} ranks ${rankStr} for grid access — near the national median. Transmission distances and substation access are adequate in most corridors, but some cells face thin fiber infrastructure or above-average queue pressure.`,
+      low: `${name} ranks ${rankStr} for grid access. Thin transmission build-out, limited substation density, constrained fiber infrastructure, or high interconnection queue pressure elevates cost and timeline risk compared to most competing markets.`,
     },
     'Hazard Exposure': {
-      high: `${name} ranks ${rankStr} for hazard exposure (lower is better). Most viable cells face neither meaningful seismic risk nor 100-year flood probability, making it one of the safer siting environments nationally.`,
-      mid: `${name} ranks ${rankStr} for hazard exposure — near the national median. Seismic risk varies regionally, and some alluvial areas carry elevated flood probability.`,
-      low: `${name} ranks ${rankStr} for hazard exposure. Above-average seismic or flood risk relative to the lower 48 means site-level geotechnical investigation should be treated as mandatory, not optional.`,
+      high: `${name} ranks ${rankStr} for hazard exposure (lower is better). Most viable cells face neither meaningful seismic risk, 100-year flood probability, nor air quality non-attainment — making it one of the safer permitting environments nationally.`,
+      mid: `${name} ranks ${rankStr} for hazard exposure — near the national median. Seismic risk varies regionally, some alluvial areas carry elevated flood probability, and scattered non-attainment counties add diesel generator permitting complexity.`,
+      low: `${name} ranks ${rankStr} for hazard exposure. Above-average seismic, flood, or air quality non-attainment risk relative to the lower 48 means site-level geotechnical and environmental review should be treated as mandatory, not optional.`,
     },
     'Community Burden': {
       high: `${name} ranks ${rankStr} for community burden (lower burden = higher rank). Environmental-justice scores and population-exposure indicators are favorable; new siting is less likely to compound existing community stress.`,
@@ -65,9 +65,9 @@ function _catWhy(cat, grade, name, rank, n) {
       low: `${name} ranks ${rankStr} for community burden. Proposed campuses in this state are more likely than in most states to overlap with stressed communities or high-density residential areas.`,
     },
     'Contamination Distance': {
-      high: `${name} ranks ${rankStr} for contamination distance. TRI facility density is low and buffer distances to the nearest high-priority emitters are favorable across most viable cells.`,
-      mid: `${name} ranks ${rankStr} for contamination distance — near the national median. Industrial corridors exist but most viable cells maintain adequate buffers from high-priority facilities.`,
-      low: `${name} ranks ${rankStr} for contamination distance. TRI facility density or proximity to high-priority emitters is a meaningful constraint across a significant share of viable cells.`,
+      high: `${name} ranks ${rankStr} for contamination distance. TRI facility density is low and buffer distances to EPA TRI, Superfund NPL, and RCRA corrective action sites are favorable across most viable cells.`,
+      mid: `${name} ranks ${rankStr} for contamination distance — near the national median. Industrial corridors exist and some cells are proximate to Superfund or RCRA sites, but most viable cells maintain adequate buffers.`,
+      low: `${name} ranks ${rankStr} for contamination distance. Proximity to TRI facilities, Superfund NPL sites, or active RCRA corrective action facilities is a meaningful constraint across a significant share of viable cells.`,
     },
   };
   return (bank[cat] || {})[tier] || '';

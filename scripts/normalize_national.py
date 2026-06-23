@@ -43,16 +43,24 @@ SCORE_MAP = [
     ("soil_score_nat",          None,               "direct"),   # rank state scores
     ("soil_profile_score_nat",  None,               "direct"),   # rank state scores
     ("ksat_score_nat",          "ksat_mean_ums",    "invert"),
+    # Supplemental indicators (scripts 11-16, added 2026-06-23)
+    ("substation_score_nat",    "substation_dist_m",  "invert"),  # closer = better
+    ("superfund_score_nat",     "superfund_dist_m",   "direct"),  # farther = better
+    ("rcra_score_nat",          "rcra_dist_m",        "direct"),  # farther = better
+    ("fiber_score_nat",         "fac_dist_m",         "invert"),  # closer carrier hotel = better
+    ("water_stress_score_nat",  "water_stress_raw",   "invert"),  # lower stress = better
+    ("grid_capacity_score_nat", None,                 "direct"),  # rank state queue scores
 ]
 
 # Binary — copy state value directly into _nat column, no re-ranking
-BINARY_COPY = ["flood_score", "protected_score"]
+BINARY_COPY = ["flood_score", "protected_score", "air_quality_score"]
 
 # Scores whose nat col is derived from state score (no raw); use base col name
 STATE_PROXY = {
-    "ej_score_nat":           "ej_score",
-    "soil_score_nat":         "soil_score",
-    "soil_profile_score_nat": "soil_profile_score",
+    "ej_score_nat":            "ej_score",
+    "soil_score_nat":          "soil_score",
+    "soil_profile_score_nat":  "soil_profile_score",
+    "grid_capacity_score_nat": "grid_capacity_score",
 }
 
 

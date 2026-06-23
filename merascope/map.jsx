@@ -122,6 +122,13 @@ function propsToInd(p, nat = false) {
     pop_exposure:  p[`pop_exposure_score${s}`]   || 0,
     soil_profile:  p[`soil_profile_score${s}`]   || 0,
     ksat:          p[`ksat_score${s}`]           || 0,
+    substation:    p[`substation_score${s}`]     || 0,
+    superfund:     p[`superfund_score${s}`]      || 0,
+    rcra:          p[`rcra_score${s}`]           || 0,
+    air_quality:   p[`air_quality_score${s}`]    || 0,
+    fiber:         p[`fiber_score${s}`]          || 0,
+    water_stress:  p[`water_stress_score${s}`]   || 0,
+    grid_capacity: p[`grid_capacity_score${s}`]  || 0,
   };
 }
 
