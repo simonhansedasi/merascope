@@ -22,7 +22,6 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import requests
-from shapely.geometry import Point
 
 sys.path.insert(0, str(Path(__file__).parent))
 from config import get_state, get_paths

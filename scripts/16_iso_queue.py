@@ -93,7 +93,6 @@ def fetch_eia860m_capacity(shared_dir):
 
         # 860M has multiple sheets: "Operating", "Planned", "Retired"
         xls = pd.ExcelFile(buf, engine="openpyxl")
-        sheet_names = [s.lower() for s in xls.sheet_names]
         print(f"  Sheets: {xls.sheet_names}")
 
         def _read_sheet(name_fragment):

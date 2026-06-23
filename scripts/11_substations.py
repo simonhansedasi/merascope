@@ -61,7 +61,8 @@ def fetch_substations(shared_dir):
             print(f"  Cached: {len(df)} grid nodes (EIA 860)")
             return df
 
-    import io, zipfile
+    import io
+    import zipfile
     for url in [EIA860_URL, EIA860_URL_FALLBACK]:
         print(f"  Downloading EIA Form 860 from {url}...")
         try:
