@@ -26,29 +26,42 @@ function WeightBars({ weights }) {
   );
 }
 
-/* ── weight editor: sliders for all 15 indicators ── */
+/* ── weight editor: sliders + number inputs for all indicators ── */
 function WeightEditor({ weights, onChange }) {
   var M = window.MERA;
   var total = M.INDICATORS.reduce(function(s, m) { return s + (weights[m.k] || 0); }, 0) || 1;
   return (
     <div style={{ display: 'grid', gap: 8 }}>
       {M.INDICATORS.map(function(m) {
-        var pct = Math.round((weights[m.k] || 0) / total * 100);
+        var raw = Math.round(weights[m.k] || 0);
+        var pct = Math.round(raw / total * 100);
         return (
           <div key={m.k}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 2 }}>
               <span style={{ display: 'inline-flex', gap: 5, alignItems: 'center', color: 'var(--ink)', fontWeight: 600 }}>
                 <Icon name={m.icon} color="var(--slate)" size={12} /> {m.label}
               </span>
-              <span className="score-serif" style={{ color: (weights[m.k] || 0) > 0 ? 'var(--basalt)' : 'var(--slate)', fontWeight: 600 }}>{pct}%</span>
+              <span className="score-serif" style={{ color: raw > 0 ? 'var(--basalt)' : 'var(--slate)', fontWeight: 600 }}>{pct}%</span>
             </div>
-            <input className="mslider" type="range" min="0" max="100" step="1"
-              value={Math.round(weights[m.k] || 0)} aria-label={m.label}
-              onChange={function(e) {
-                var next = Object.assign({}, weights, {});
-                next[m.k] = +e.target.value;
-                onChange(next);
-              }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input className="mslider" type="range" min="0" max="100" step="1"
+                style={{ flex: 1 }}
+                value={raw} aria-label={m.label}
+                onChange={function(e) {
+                  var next = Object.assign({}, weights);
+                  next[m.k] = +e.target.value;
+                  onChange(next);
+                }} />
+              <input type="number" min="0" max="100" step="1"
+                style={{ width: 52, padding: '3px 6px', borderRadius: 6, border: '1.5px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 13, fontFamily: 'inherit', textAlign: 'right' }}
+                value={raw}
+                onChange={function(e) {
+                  var v = Math.max(0, Math.min(100, parseInt(e.target.value) || 0));
+                  var next = Object.assign({}, weights);
+                  next[m.k] = v;
+                  onChange(next);
+                }} />
+            </div>
           </div>
         );
       })}
@@ -91,17 +104,54 @@ function PresetPickerModal({ presets, onPick, onClose }) {
 }
 
 /* ── zone detail panel ── */
-function ZoneDetailPanel({ zone, templates, presets, onSave, onDelete, onClose, onTemplateCreated }) {
+function ZoneDetailPanel({ zone, templates, presets, onSave, onDelete, onClose, onTemplateCreated, onTemplateUpdated }) {
   var isNew = !zone.id;
   var [draft, setDraft] = React.useState(function() { return Object.assign({}, zone); });
   var [showWeightEditor, setShowWeightEditor] = React.useState(false);
   var [showPresets, setShowPresets] = React.useState(false);
   var [saving, setSaving] = React.useState(false);
   var [err, setErr] = React.useState(null);
+  var [localWeights, setLocalWeights] = React.useState({});
+  var [localMinScore, setLocalMinScore] = React.useState(0);
+  var [history, setHistory] = React.useState([]);
 
   function set(k, v) { setDraft(function(d) { return Object.assign({}, d, {[k]: v}); }); }
 
   var selectedTemplate = templates.find(function(t) { return t.id === draft.template_id; }) || null;
+
+  React.useEffect(function() {
+    if (selectedTemplate) {
+      setLocalWeights(selectedTemplate.weights || {});
+      setLocalMinScore(selectedTemplate.min_score || 0);
+      fetch('/api/steward/templates/' + selectedTemplate.id + '/history')
+        .then(function(r) { return r.json(); })
+        .then(function(d) { if (Array.isArray(d)) setHistory(d); });
+    } else {
+      setHistory([]);
+    }
+  }, [selectedTemplate ? selectedTemplate.id : null]);
+
+  function refreshHistory(tmplId) {
+    fetch('/api/steward/templates/' + tmplId + '/history')
+      .then(function(r) { return r.json(); })
+      .then(function(d) { if (Array.isArray(d)) setHistory(d); });
+  }
+
+  function handleRollback(histId) {
+    if (!selectedTemplate) return;
+    fetch('/api/steward/templates/' + selectedTemplate.id + '/rollback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ history_id: histId })
+    }).then(function(r) { return r.json(); }).then(function(d) {
+      if (d.ok) {
+        if (onTemplateUpdated) onTemplateUpdated(selectedTemplate.id, { weights: d.weights, min_score: d.min_score, locked: d.locked });
+        setLocalWeights(d.weights);
+        setLocalMinScore(d.min_score);
+        refreshHistory(selectedTemplate.id);
+      }
+    });
+  }
 
   function applyPreset(p) {
     var name = p.name;
@@ -153,13 +203,20 @@ function ZoneDetailPanel({ zone, templates, presets, onSave, onDelete, onClose, 
 
   function handleLockToggle() {
     if (!selectedTemplate) return;
+    var newLocked = selectedTemplate.locked ? 0 : 1;
     fetch('/api/steward/templates/' + selectedTemplate.id, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ locked: selectedTemplate.locked ? 0 : 1 })
+      body: JSON.stringify({ locked: newLocked })
     })
       .then(function(r) { return r.json(); })
-      .then(function(d) { if (d.ok) onSave(); });
+      .then(function(d) {
+        if (d.ok) {
+          if (onTemplateUpdated) onTemplateUpdated(selectedTemplate.id, { locked: newLocked });
+          refreshHistory(selectedTemplate.id);
+          onSave();
+        }
+      });
   }
 
   var ztype = draft.zone_type || 'state';
@@ -290,7 +347,7 @@ function ZoneDetailPanel({ zone, templates, presets, onSave, onDelete, onClose, 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
                 <div>
                   <div style={{ fontWeight: 700, fontSize: 13.5 }}>{selectedTemplate.name}</div>
-                  <div className="microcopy" style={{ marginTop: 2 }}>Min score: <span className="score-serif">{(selectedTemplate.min_score || 0).toFixed(2)}</span></div>
+                  <div className="microcopy" style={{ marginTop: 2 }}>Min score: <span className="score-serif">{localMinScore.toFixed(2)}</span></div>
                 </div>
                 <button className={'btn btn-sm ' + (selectedTemplate.locked ? 'btn-primary' : 'btn-ghost')}
                         onClick={handleLockToggle}
@@ -299,7 +356,30 @@ function ZoneDetailPanel({ zone, templates, presets, onSave, onDelete, onClose, 
                 </button>
               </div>
 
-              <WeightBars weights={selectedTemplate.weights || {}} />
+              <WeightBars weights={localWeights} />
+
+              {history.length > 0 && (
+                <div style={{ marginTop: 14, borderTop: '1px solid var(--line)', paddingTop: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--slate)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Change log</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    {history.map(function(h) {
+                      var dt = (h.changed_at || '').slice(2, 10).replace(/-/g, '');
+                      var tm = (h.changed_at || '').slice(11, 16);
+                      var who = (h.changed_by || '').replace('@merascope.com', '').replace('@', '') || 'unknown';
+                      return (
+                        <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '5px 8px', background: 'var(--paper)', borderRadius: 7, border: '1px solid var(--line)' }}>
+                          <span className="score-serif" style={{ color: 'var(--slate)', flexShrink: 0 }}>{dt} {tm}</span>
+                          <span style={{ color: 'var(--basalt)', flexShrink: 0, fontWeight: 600 }}>{who}</span>
+                          <span style={{ color: 'var(--ink)', flex: 1 }}>{h.summary}</span>
+                          <button className="btn btn-ghost btn-xs" style={{ flexShrink: 0 }}
+                                  onClick={function() { handleRollback(h.id); }}
+                                  title="Revert template to this state">Revert</button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <button className="btn btn-quiet btn-xs" style={{ marginTop: 10 }}
                       onClick={function() { setShowWeightEditor(function(v) { return !v; }); }}>
@@ -308,31 +388,46 @@ function ZoneDetailPanel({ zone, templates, presets, onSave, onDelete, onClose, 
 
               {showWeightEditor && (
                 <div style={{ marginTop: 12 }}>
-                  <WeightEditor weights={selectedTemplate.weights || {}}
-                    onChange={function(w) {
-                      fetch('/api/steward/templates/' + selectedTemplate.id, {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ weights: w })
-                      }).then(function(r) { return r.json(); }).then(function(d) { if (d.ok) onSave(); });
-                    }} />
-                  <div style={{ marginTop: 12 }}>
+                  <WeightEditor weights={localWeights} onChange={function(w) { setLocalWeights(w); }} />
+                  <div style={{ marginTop: 14 }}>
                     <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--slate)', display: 'block', marginBottom: 5 }}>
-                      Minimum score <span className="score-serif">{(selectedTemplate.min_score || 0).toFixed(2)}</span>
+                      Minimum score
                     </label>
-                    <input className="mslider" type="range" min="0" max="1" step="0.01"
-                      value={selectedTemplate.min_score || 0}
-                      onChange={function(e) {
-                        fetch('/api/steward/templates/' + selectedTemplate.id, {
-                          method: 'PATCH',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ min_score: +e.target.value })
-                        }).then(function(r) { return r.json(); }).then(function(d) { if (d.ok) onSave(); });
-                      }} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <input className="mslider" type="range" min="0" max="1" step="0.01"
+                        style={{ flex: 1 }}
+                        value={localMinScore}
+                        onChange={function(e) { setLocalMinScore(+e.target.value); }} />
+                      <input type="number" min="0" max="1" step="0.01"
+                        style={{ width: 62, padding: '3px 6px', borderRadius: 6, border: '1.5px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 13, fontFamily: 'inherit', textAlign: 'right' }}
+                        value={localMinScore}
+                        onChange={function(e) {
+                          var v = Math.max(0, Math.min(1, parseFloat(e.target.value) || 0));
+                          setLocalMinScore(v);
+                        }} />
+                    </div>
                     <p className="microcopy" style={{ margin: '6px 0 0' }}>
-                      Cells in this zone that score below this threshold under the template weights are gated for builders.
+                      Cells scoring below this threshold under these weights are gated for builders.
                     </p>
                   </div>
+                  <button className="btn btn-primary btn-sm" style={{ marginTop: 14 }}
+                          onClick={function() {
+                            var w = localWeights;
+                            var ms = localMinScore;
+                            fetch('/api/steward/templates/' + selectedTemplate.id, {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ weights: w, min_score: ms })
+                            }).then(function(r) { return r.json(); }).then(function(d) {
+                              if (d.ok) {
+                                if (onTemplateUpdated) onTemplateUpdated(selectedTemplate.id, { weights: w, min_score: ms });
+                                refreshHistory(selectedTemplate.id);
+                                if (window.refreshActiveZones) window.refreshActiveZones();
+                              }
+                            });
+                          }}>
+                    Save template
+                  </button>
                 </div>
               )}
             </div>
@@ -430,12 +525,17 @@ function StewardTemplatesPage() {
   var selectedZone = zones.find(function(z) { return z.id === selectedId; }) || null;
   var panelZone = showNew ? { name: '', zone_type: 'state', state_code: '' } : selectedZone;
 
-  function handleSave() { setShowNew(false); reload(); }
+  function handleSave() { setShowNew(false); reload(); if (window.refreshActiveZones) window.refreshActiveZones(); }
   function handleDelete() { setSelectedId(null); setShowNew(false); reload(); }
   function handleNew() { setSelectedId(null); setShowNew(true); }
   function handleSelect(id) { setShowNew(false); setSelectedId(id); }
   function handleClose() { setShowNew(false); setSelectedId(null); }
   function handleTemplateCreated(t) { setTemplates(function(prev) { return prev.concat(t); }); }
+  function handleTemplateUpdated(id, patch) {
+    setTemplates(function(prev) {
+      return prev.map(function(t) { return t.id === id ? Object.assign({}, t, patch) : t; });
+    });
+  }
 
   // Sync template data into zones for display
   var enrichedZones = zones.map(function(z) {
@@ -479,7 +579,8 @@ function StewardTemplatesPage() {
                 onSave={handleSave}
                 onDelete={handleDelete}
                 onClose={handleClose}
-                onTemplateCreated={handleTemplateCreated} />
+                onTemplateCreated={handleTemplateCreated}
+                onTemplateUpdated={handleTemplateUpdated} />
             ) : (
               <div style={{ padding: '40px 0', color: 'var(--slate)', fontSize: 14, lineHeight: 1.7 }}>
                 <p>Select a zone on the left to edit it, or click <b>+ New zone</b> to get started.</p>
