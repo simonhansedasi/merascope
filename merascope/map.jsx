@@ -531,7 +531,7 @@ function WeightPanel({ weights, setWeights, dock = false }) {
       </button>
       {!collapsed && (
         <div style={{ padding: '12px 15px 14px' }}>
-          <p className="microcopy" style={{ margin: '0 0 8px' }}>15 indicators, equal weight by default. Percentages show each indicator's share of the total. The map recolors as you drag.</p>
+          <p className="microcopy" style={{ margin: '0 0 8px' }}>22 indicators, equal weight by default. Percentages show each indicator's share of the total. The map recolors as you drag.</p>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 11 }}>
             {[['Default', null],
               ['Builder lens', { transmission: 50, water: 20, community: 10, seismic: 5, flood: 5, contamination: 5, flatness: 5 }],

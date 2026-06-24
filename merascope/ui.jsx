@@ -286,7 +286,7 @@ var TOUR_STEPS = [
   },
   {
     title: 'Explorer — suitability map',
-    body: 'All 48 contiguous states are scored. Each cell shows a composite score across 15 physical indicators — transmission access, water availability, community burden, seismic risk, terrain, protected land, aquifer depth, soil permeability, and more. Use the weight sliders to shift what matters most — scores update live. Click any cell to see its full indicator breakdown. Save cells to your workspace with the star button.',
+    body: 'All 48 contiguous states are scored. Each cell shows a composite score across 22 indicators — transmission access, water availability, community burden, seismic risk, terrain, soil permeability, fiber connectivity, water stress, and more. Use the weight sliders to shift what matters most — scores update live. Save cells to your workspace with the star button.',
     action: 'Try adjusting a weight slider, then click a cell.',
     nav: '#/explorer', role: null
   },
@@ -388,7 +388,7 @@ var STEWARD_TOUR_STEPS = [
   },
   {
     title: 'National siting data — 48 states',
-    body: 'Merascope covers all 48 contiguous states. Each ~14 km cell is scored on 15 physical and social indicators: transmission proximity, water availability, community burden, seismic risk, flood zones, terrain, protected land, aquifer depth, soil permeability, and more. Your jurisdiction lives inside this national dataset.',
+    body: 'Merascope covers all 48 contiguous states. Each ~14 km cell is scored on 22 indicators: transmission proximity, water availability, community burden, seismic risk, flood zones, terrain, soil permeability, fiber connectivity, water stress, Superfund distance, and more. Your jurisdiction lives inside this national dataset.',
     action: 'Pan to your state and click a few cells to see their indicator breakdowns.',
     nav: '#/explorer', role: 'steward'
   },
