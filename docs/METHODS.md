@@ -1,4 +1,4 @@
-# datacenter_siting — Methods Reference
+# Merascope — Methods Reference
 
 ## Framework
 
@@ -106,7 +106,7 @@ Hard gates (terrain flatness, protected lands) are applied at the fishnet tier; 
 
 ---
 
-## Full-Column Soil Profile (Phase 3 extension)
+## Full-Column Soil Profile
 
 **Source:** SSURGO `chorizon` table via Soil Data Access; SoilGrids 2.0 250m global modeled data (Poggio et al., 2021) reserved as gap-fill for sparse-coverage regions.
 **Method:** All horizons with top depth < 150 cm queried per map unit. Three indicators:
@@ -126,6 +126,54 @@ Composite `soil_profile_score` = 0.40 × CaCO3 score + 0.35 × K-sat score + 0.2
 
 ---
 
+## Supplemental Indicators (scripts 11-16, all 48 states as of 2026-06-23)
+
+Supplemental indicators extend the 16-score core with infrastructure, contamination, and resource-risk signals not available in the initial pipeline. All 7 carry `*_nat` columns after national normalization. Default weight is 0 in the Explorer; users and stewards enable them via weight sliders or template presets.
+
+### 14. Substation Proximity (`substation_score`)
+
+**Source:** EIA Form 860 Annual Electric Generator Report, plant-level file (2024 with 2023 fallback). Each plant is treated as a grid interconnection node — it is substation-connected by definition. Plant capacity (MW) proxies for voltage class. Cached as `data/shared/substations.csv`.
+**Method:** KDTree nearest-neighbor lookup. `proximity_component = 1 - (dist / max_dist)`. `capacity_component` = stepped function from 0.10 (<1 MW) to 1.0 (≥500 MW). `substation_score = 0.6 × proximity + 0.4 × capacity`. National normalization via `substation_dist_m` raw column.
+**Rationale:** Transmission line proximity (core score 1) captures the wire; substation proximity captures the point-of-interconnection node — the grid element that actually constrains new-load connection cost and timeline.
+
+### 15. Superfund NPL Proximity (`superfund_score`)
+
+**Source:** EPA Envirofacts REST API, `SEMS.SEMS_SITES_VIEW` table (National Priorities List). Same coordinate-parsing logic as `04_environment.py` (`pref_latitude`/`pref_longitude`, DDMMSS fallback). Per-state cache in `data/{STATE}/raw/superfund_sites.csv`.
+**Method:** KDTree proximity. p01–p99 normalized within state. Inverted (1 = farthest from NPL site).
+**Rationale:** NPL Superfund designation signals documented soil and groundwater contamination with active EPA remediation orders. Proximity increases likelihood of an adjacent plume intersecting the development footprint, triggering Phase I/II ESA requirements and potentially blocking financing.
+
+### 16. RCRA Corrective Action Proximity (`rcra_score`)
+
+**Source:** EPA Envirofacts REST API, `RCRAINFO.BR_REPORTING` table. Per-state cache in `data/{STATE}/raw/rcra_sites.csv`.
+**Method:** Same KDTree + normalization pattern as `superfund_score`.
+**Rationale:** RCRA corrective action sites carry documented hazardous waste history and active cleanup obligations under 40 CFR Part 264/265. Distinct from NPL in severity and regulatory pathway; both are checked in standard NEPA and environmental due diligence review.
+
+### 17. NAAQS Air Quality Attainment (`air_quality_score`)
+
+**Source:** EPA Green Book GIS non-attainment area shapefiles (national, PM2.5 / PM10 / Ozone designations). Cached as `data/shared/naaqs_nonattainment.geojson`. One-time download on first state run.
+**Method:** Binary spatial join of cell centroid to non-attainment polygons. `air_quality_score = 1.0` (attainment) or `0.0` (non-attainment). Also writes raw binary column `naaqs_nonattainment`.
+**Rationale:** Non-attainment designation increases permitting burden for backup diesel generation, creates cumulative-impact exposure for EJ-adjacent communities, and is a leading indicator of NAAQS-triggered offset requirements. CAA permitting friction is a material data center siting risk in certain corridors (Central Valley CA, Front Range CO, Houston TX).
+
+### 18. Fiber Infrastructure Proximity (`fiber_score`)
+
+**Source:** PeeringDB `/api/fac` JSON endpoint (free, no auth required). Each record is a carrier-neutral colocation facility — the physical points where long-haul fiber routes terminate and interconnect. Cached as `data/shared/peeringdb_fac.csv`.
+**Method:** KDTree proximity. p01–p99 normalized. `fiber_score = 1 - (dist / p99_dist)`.
+**Rationale:** Colocation proximity is a strong proxy for fiber route density and long-haul latency. Latency-sensitive workloads (financial services, CDN edge) require sub-5ms access to major peering points. Remote cells with high physical suitability scores may be disqualified by fiber access cost.
+
+### 19. Watershed Water Stress (`water_stress_score`)
+
+**Source:** WRI Aqueduct Water Risk Atlas 3.0 (Hofste et al., 2019), `bws_score` column (baseline water stress, 0–5 scale, where 5 = extremely high). Global dataset; streamed from WRI, extracted, clipped to CONUS (~4,231 watersheds), cached as `data/shared/aqueduct_watersheds.gpkg` (~27 MB). The source ZIP (614 MB) is deleted after extraction to prevent OOM on memory-constrained hosts.
+**Method:** Spatial join of cell centroid to Aqueduct watershed polygon. Cells with no match (rare ocean border cases) receive the state median. Inverted normalization: `1 - (bws - min) / (max - min)`. High score = low stress.
+**Rationale:** `water_score` (PRISM) captures precipitation supply; `water_stress_score` captures the demand-and-rights side — withdrawal competition, drought curtailment probability, and regulatory restriction risk. The two are complementary: a cell can have high precipitation but high stress if it is in a heavily over-allocated basin (Colorado River system).
+
+### 20. Grid Interconnection Queue Capacity (`grid_capacity_score`)
+
+**Source:** EIA Form 860M (Monthly Electric Generator Report), Planned sheet (monthly release). `iso_queue_mw` = state total MW in planned/proposed status. `operating_mw` = state operating capacity. Cached as `data/shared/eia860m_state_capacity.csv`.
+**Method:** `queue_ratio = planned_mw / max(operating_mw, 1)`. State-level metric — all cells in a state receive the same value. `grid_capacity_score = 1 - clip(queue_ratio / p75_ratio_national, 0, 1)`.
+**Rationale:** States with high interconnection queue ratios (TX ERCOT, CA CAISO, TX PJM interties) impose 3–7+ year wait times for new large-load interconnection agreements. Queue pressure is a leading indicator of curtailment risk and cost-of-delay. State-level granularity is appropriate because ISO queue backlogs reflect the regulatory authority level, not individual site proximity.
+
+---
+
 ## Composite Scoring
 
 All indicator scores are 0–1. Composite suitability = user-weighted sum:
@@ -134,26 +182,19 @@ All indicator scores are 0–1. Composite suitability = user-weighted sum:
 S = Σ wᵢ × scoreᵢ,   Σ wᵢ = 1
 ```
 
-Three preset weight profiles are available in the Explorer weight panel alongside the default equal-weight baseline. Unspecified indicators receive weight 0 under a preset; percentages are normalized shares of the total weight assigned.
+Five steward preset templates are available, returning named weight configurations from `GET /api/steward/presets`. The Explorer also exposes individual weight sliders across all 23 indicators. Unspecified indicators receive weight 0 under a preset; percentages are shares of the 100-point total.
 
-| Indicator | Default | Builder lens | Steward lens | Net benefit |
-|---|---|---|---|---|
-| Transmission proximity | 8.3% | 50% | 10% | 20% |
-| Water availability | 8.3% | 20% | 40% | 25% |
-| Community burden | 8.3% | 10% | 25% | 15% |
-| Seismic safety | 8.3% | 5% | 0% | 0% |
-| Flood safety | 8.3% | 5% | 0% | 0% |
-| Contamination distance | 8.3% | 5% | 10% | 0% |
-| Waterway sensitivity | 8.3% | 0% | 15% | 0% |
-| Geothermal opportunity | 8.3% | 0% | 0% | 25% |
-| Terrain flatness | 8.3% | 5% | 0% | 15% |
-| Aquifer depth | 8.3% | 0% | 0% | 0% |
-| Soil suitability | 8.3% | 0% | 0% | 0% |
-| Slope suitability | 8.3% | 0% | 0% | 0% |
+| Preset | Core weights | Supplemental weights | min_score |
+|---|---|---|---|
+| **Balanced** (default) | tx 40%, water 35%, community 25% | none | 0.40 |
+| **Grid-Complete** | tx 25%, water 15%, community 5% | substation 20%, grid_capacity 20%, fiber 15% | 0.40 |
+| **Water Durability** | water 45%, tx 20%, community 10% | water_stress 25% | 0.50 |
+| **Contamination Screen** | contamination 20%, community 15%, water 10% | superfund 20%, rcra 20%, air_quality 15% | 0.50 |
+| **EJ Forward** | community 30%, contamination 15%, water 10%, tx 5% | air_quality 20%, superfund 10%, rcra 10% | 0.55 |
 
-Preset rationale: Builder lens prioritizes transmission and water access — the cost-driving physical constraints for a developer. Steward lens emphasizes community burden, waterway sensitivity, and contamination distance — the indicators most likely to trigger regulatory scrutiny or mitigation conditions. Net benefit weights geothermal opportunity and water availability alongside transmission and flatness, reflecting a co-benefit framing where heat reuse and low water consumption are positive externalities rather than neutral.
+Preset rationale: Balanced is the default screening view and reflects Merascope's Same Score Promise starting point. Grid-Complete targets developers prioritizing shovel-ready interconnection. Water Durability addresses drought-stressed or water-rights-constrained jurisdictions. Contamination Screen front-loads NEPA/EJ due diligence by emphasizing TRI, NPL, RCRA, and air quality together. EJ Forward is designed for jurisdictions with cumulative-impact mandates or health-based siting ordinances, and carries the highest minimum score threshold.
 
-These values are defined in `merascope/map.jsx` (WeightPanel component) and applied client-side via normalized weighted sum. Any user can inspect or modify them through the weight sliders; presets are convenience starting points, not locked configurations.
+These presets are defined as Python constants in `server.py` (`PRESET_TEMPLATES`). Stewards can also create named custom templates via the `#/steward/templates` interface, which can be locked to geographic zones to gate builder composite scores.
 
 Hard-gated cells (protected_score = 0 or flood_score = 0) receive composite = 0 regardless of weight configuration.
 
@@ -207,11 +248,15 @@ Default: k=8 nearest neighbors, power p=2. Exact-coincidence handling: if d=0, a
 - Global Heat Flow Data Assessment Group, et al. (2024). *The Global Heat Flow Database: Release 2024*. GFZ Data Services. https://doi.org/10.5880/fidgeo.2024.014
 - Soil Survey Staff, Natural Resources Conservation Service, United States Department of Agriculture. Soil Survey Geographic (SSURGO) Database. Available online at https://sdmdataaccess.sc.egov.usda.gov. Accessed 2026.
 - U.S. Environmental Protection Agency. (2024). *EJScreen Technical Documentation Version 2.3*. Office of Environmental Justice and External Civil Rights, Washington, DC. https://www.epa.gov/system/files/documents/2024-07/ejscreen-tech-doc-version-2-3.pdf
-- Hersbach, H., et al. (2023). ERA5 hourly data on single levels from 1940 to present. ECMWF. https://doi.org/10.24381/cds.adbb2d47
-- Zippenfenig, P. (2023). Open-Meteo Weather API. https://open-meteo.com
 - U.S. Census Bureau. (2022). *American Community Survey 5-Year Estimates*. Tables B01003, B02001, B17001. https://www.census.gov/data/developers/data-sets/acs-5year.html
-- U.S. Geological Survey. National Water Information System (NWIS). https://waterdata.usgs.gov
-- U.S. Energy Information Administration. (2023). *Form EIA-860 Annual Electric Generator Report*. https://www.eia.gov/electricity/data/eia860/
+- U.S. Geological Survey. National Water Information System (NWIS), OGC API. https://api.waterdata.usgs.gov
+- U.S. Energy Information Administration. (2024). *Form EIA-860 Annual Electric Generator Report*. https://www.eia.gov/electricity/data/eia860/
+- U.S. Energy Information Administration. *Form EIA-860M Monthly Electric Generator Report*. https://www.eia.gov/electricity/data/eia860m/
 - Federal Emergency Management Agency. National Flood Hazard Layer (NFHL). https://msc.fema.gov/portal/
 - U.S. Environmental Protection Agency. Toxics Release Inventory (TRI) Program. https://www.epa.gov/toxics-release-inventory-tri-program
+- U.S. Environmental Protection Agency. Superfund National Priorities List (NPL) via Envirofacts. https://www.epa.gov/superfund/superfund-national-priorities-list-npl
+- U.S. Environmental Protection Agency. RCRA Corrective Action Sites via Envirofacts. https://www.epa.gov/hwcorrectiveactionsites
+- U.S. Environmental Protection Agency. *Green Book: Nonattainment Areas for Criteria Pollutants*. https://www.epa.gov/green-book
+- Hofste, R. W., et al. (2019). Aqueduct 3.0: Updated Decision-Relevant Global Water Risk Indicators. *Technical Note*. World Resources Institute, Washington, DC. https://www.wri.org/research/aqueduct-30
+- PeeringDB. Carrier-Neutral Colocation Facility Database. https://www.peeringdb.com/api/fac (Accessed 2026).
 - OpenStreetMap contributors. (2024). OpenStreetMap. https://www.openstreetmap.org (Accessed 2024–2026). License: ODbL 1.0.

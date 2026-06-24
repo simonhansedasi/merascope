@@ -2,8 +2,10 @@
 
 This guide covers running the `scripts/` pipeline to produce a siting suitability grid
 for any US state. The pipeline downloads all data from public APIs, scores a 0.15-degree
-fishnet grid on 16 indicators (plus raw physical values), and writes
-`data/{STATE}/grid_scores.geojson` as the output artifact.
+fishnet grid on 23 indicators (16 core + 7 supplemental), and writes
+`data/{STATE}/grid_scores.geojson` as the output artifact. Raw physical-value columns are
+included in every output to support national and sub-state renormalization without re-running
+the pipeline.
 
 ---
 
@@ -81,7 +83,7 @@ All commands run from the project root (`~/coding/merascope/`). Set `PYTHON` fir
 $PYTHON -u scripts/run_pipeline.py WA
 ```
 
-Runs all 10 steps in sequence. Stops on the first non-zero exit code. First run for a
+Runs the 10 core steps in sequence. Stops on the first non-zero exit code. First run for a
 new state takes 60-180 minutes depending on state size and API response times.
 
 **Resume from a step:**
@@ -126,6 +128,43 @@ Typical sizes: WA ~45 tiles (~2.3 GB), NV ~30 tiles (~1.6 GB), MT ~78 tiles (~4 
 TX is the worst at ~168 tiles (~8.7 GB). The tiles are re-downloaded from AWS if you
 ever need to re-run step 06.
 
+### Supplemental steps (scripts 11-16)
+
+The supplemental indicators run after the 10 core steps. They are idempotent (skip columns
+that already exist) and can run in any order. On the Hetzner VPS, use system Python:
+
+```bash
+VPS_PYTHON=/usr/bin/python3
+for SCRIPT in 11_substations 12_superfund 13_air_quality 14_fiber 15_water_stress 16_iso_queue; do
+  $VPS_PYTHON -u scripts/${SCRIPT}.py WA
+done
+```
+
+Shared data downloads (PeeringDB, WRI Aqueduct, EPA Green Book, EIA 860M) land in
+`data/shared/` on first run and are reused for all states.
+
+**Memory note for `15_water_stress.py`:** The WRI Aqueduct ZIP is 614 MB. The script
+streams it to disk, never to RAM. Do not revert to in-memory download — it OOMs on any
+host with under 2 GB free.
+
+| Script | Adds | Shared cache |
+|---|---|---|
+| `11_substations.py` | `substation_dist_m`, `substation_score` | `data/shared/substations.csv` |
+| `12_superfund.py` | `superfund_dist_m`, `superfund_score`, `rcra_dist_m`, `rcra_score` | per-state raw/ |
+| `13_air_quality.py` | `naaqs_nonattainment`, `air_quality_score` | `data/shared/naaqs_nonattainment.geojson` |
+| `14_fiber.py` | `fac_dist_m`, `fiber_score` | `data/shared/peeringdb_fac.csv` |
+| `15_water_stress.py` | `water_stress_raw`, `water_stress_score` | `data/shared/aqueduct_watersheds.gpkg` |
+| `16_iso_queue.py` | `iso_queue_mw`, `grid_capacity_score` | `data/shared/eia860m_state_capacity.csv` |
+
+### National normalization
+
+After all 48 states are processed, run the cross-state normalization pass to add `*_nat`
+columns for national comparisons:
+
+```bash
+$PYTHON -u scripts/normalize_national.py
+```
+
 ---
 
 ## Output structure
@@ -162,7 +201,14 @@ data/{STATE}/
         aquifer.png
         soil.png
         soil_profile.png
-    grid_scores.geojson           — Final scored grid
+    grid_scores.geojson           — Final scored grid (core + supplemental columns)
+data/shared/                      — Shared downloads reused across all states
+    substations.csv               — EIA Form 860 plant locations (substation proxies)
+    naaqs_nonattainment.geojson   — EPA Green Book non-attainment areas (national)
+    peeringdb_fac.csv             — PeeringDB carrier hotel/colo facilities
+    aqueduct_watersheds.gpkg      — WRI Aqueduct CONUS watershed clip (~27 MB)
+    eia860m_state_capacity.csv    — EIA 860M state-level queue capacity ratios
+    transmission_national.geojson — 345kV+ lines for map overlay (built by build_transmission_national.py)
 ```
 
 All raw files are treated as permanent cache. To force a re-download of any layer, delete
@@ -215,6 +261,27 @@ re-running the pipeline. To retrofit them on an already-completed state:
 ```bash
 $PYTHON -u scripts/patch_raws.py WA OR TX CA NV UT ID MT AZ
 ```
+
+**Supplemental score columns (scripts 11-16, all 48 states as of 2026-06-23):**
+
+| Column | Description |
+|---|---|
+| substation_dist_m | Distance to nearest EIA Form 860 power plant (m) |
+| substation_score | Proximity + capacity composite (1 = nearest high-capacity node) |
+| superfund_dist_m | Distance to nearest EPA NPL Superfund site (m) |
+| superfund_score | Inverted distance (1 = farthest from NPL site) |
+| rcra_dist_m | Distance to nearest RCRA corrective action site (m) |
+| rcra_score | Inverted distance (1 = farthest from RCRA site) |
+| naaqs_nonattainment | 1 = non-attainment county, 0 = attainment |
+| air_quality_score | 1 = attainment, 0 = non-attainment (inverted binary) |
+| fac_dist_m | Distance to nearest PeeringDB carrier hotel/colo facility (m) |
+| fiber_score | Inverted proximity to fiber exchange point (1 = nearest) |
+| water_stress_raw | WRI Aqueduct baseline water stress (0 = low, 5 = high) |
+| water_stress_score | Inverted stress (1 = low stress = better for long-term use) |
+| iso_queue_mw | State total planned/proposed MW in EIA 860M (state-level, same per cell) |
+| grid_capacity_score | Inverse queue pressure (1 = least interconnection congestion) |
+
+National `*_nat` variants of all supplemental scores are added by `normalize_national.py`.
 
 ---
 
@@ -364,8 +431,9 @@ const GRID_URLS = [
 ];
 ```
 
-Then reload the dev server (`python3 -m http.server 8877`) and confirm the state
-appears on the national map.
+Then reload the dev server (`python3 server.py`) and confirm the state appears on the
+national map. Use `server.py` (Flask), not `python3 -m http.server` — the Flask server
+provides the `/api/log` and other API routes the frontend depends on.
 
 ---
 

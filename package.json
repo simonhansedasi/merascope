@@ -1,0 +1,29 @@
+{
+  "name": "merascope",
+  "version": "1.0.0",
+  "description": "National data center site suitability intelligence and permitting coordination platform. GIS-MCDA across 0.15-degree fishnet cells, 23 scored indicators (16 core + 7 supplemental), raw physical values included in every output for multi-scale renormalization.",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "build": "babel merascope/ --extensions .jsx --out-dir merascope/dist/ --out-file-extension .js && cat merascope/dist/tweaks-panel.js merascope/dist/ui.js merascope/dist/map.js merascope/dist/landing.js merascope/dist/explorer.js merascope/dist/builder.js merascope/dist/builder2.js merascope/dist/steward.js merascope/dist/steward2.js merascope/dist/steward-templates.js merascope/dist/coparty.js merascope/dist/factsheets.js merascope/dist/tracker.js merascope/dist/misc.js merascope/dist/app.js > merascope/dist/bundle.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/simonhansedasi/merascope.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/simonhansedasi/merascope/issues"
+  },
+  "homepage": "https://github.com/simonhansedasi/merascope#readme",
+  "devDependencies": {
+    "@babel/cli": "^8.0.1",
+    "@babel/core": "^8.0.1",
+    "@babel/preset-react": "^8.0.1"
+  }
+}

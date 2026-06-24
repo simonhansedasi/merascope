@@ -415,139 +415,16 @@ window.serverLog = function(eventType, fid, payload) {
 
   /* ── steward docket ── */
   var STAGES = ['Site Inquiry', 'Intake', 'Analysis', 'Findings Exchange', 'Negotiation', 'Rebuttal Cycle', 'Resolution'];
-  var CASES = [
-    { id: '26-0187', site: 'Goldendale Plateau', applicant: 'Klickitat Energy Partners', score: 0.69, stage: 'Intake', days: 4, parties: ['KC', 'YN', 'PUD'], dot: '#7DBB6C' },
-    { id: '26-0171', site: 'Moses Lake North', applicant: 'Columbia Compute Co.', score: 0.64, stage: 'Analysis', days: 11, parties: ['GC', 'PUD'], dot: '#F1C40F' },
-    { id: '26-0168', site: 'Richland–Horn Rapids', applicant: 'Atlas Data Infrastructure', score: 0.583, stage: 'Analysis', days: 19, parties: ['BC', 'AG', 'PUD'], dot: '#F1C40F' },
-    { id: '26-0154', site: 'West Richland–Lewis & Clark', applicant: 'Cascade Hyperscale LLC', score: 0.556, stage: 'Findings Exchange', days: 8, parties: ['BC', 'CT', 'PUD', 'AG'], dot: '#E67E22' },
-    { id: '26-0142', site: 'Wallula Gap Campus — Burbank, WA', applicant: 'Skyline Infrastructure Partners', score: 0.506, stage: 'Negotiation', days: 23, parties: ['WW', 'CT', 'PUD', 'UT', 'AG'], dot: '#C0392B' },
-    { id: '26-0139', site: 'Quincy Expansion — Bay 4', applicant: 'NorthPeak Cloud', score: 0.599, stage: 'Rebuttal Cycle', days: 6, parties: ['GC', 'PUD'], dot: '#E67E22' },
-    { id: '26-0103', site: 'Liberty Lake East', applicant: 'Inland Compute Partners', score: 0.703, stage: 'Resolution', days: 2, parties: ['SC', 'PUD', 'UT'], dot: '#1F8A4C', resolution: 'Approved with conditions' }
-  ];
+  var CASES = [];
   var PARTY_NAMES = { KC: 'Klickitat County', YN: 'Yakama Nation', PUD: 'Public Utility District', GC: 'Grant County', BC: 'Benton County', AG: 'Attorney General', CT: 'CTUIR', WW: 'Walla Walla County', UT: 'Serving utility', SC: 'Spokane County' };
 
-  var CASE_DETAIL = {
-    id: '26-0142', title: 'Wallula Gap Campus — Burbank, WA', applicant: 'Skyline Infrastructure Partners',
-    score: 0.506, stage: 'Negotiation', daysToRebuttal: 9,
-    leadParty: 'Dept. of Ecology',
-    invitedParties: ['WW', 'CT', 'PUD', 'UT', 'AG'],
-    findings: [
-      { k: 'Water availability', v: '0.000', ver: 'v2', contested: true, evidence: 'Ecology well-log series WW-114; Open-Meteo ERA5 1991-2025' },
-      { k: 'Contamination distance', v: '0.014', ver: 'v1', contested: false, evidence: 'EPA NPL — Hanford 200 Area, 38.2 km' },
-      { k: 'Waterway sensitivity', v: '0.015', ver: 'v1', contested: true, evidence: 'Columbia mainstem reach WB-26; salmonid critical habitat' },
-      { k: 'Terrain flatness', v: '1.000', ver: 'v1', contested: false, evidence: 'USGS 3DEP 10 m DEM' },
-      { k: 'Transmission proximity', v: '0.910', ver: 'v2', contested: false, evidence: 'OSM power=line >=230 kV; 2.8 km to McNary-Franklin' },
-      { k: 'Community burden', v: '0.580', ver: 'v1', contested: false, evidence: 'Census ACS 2024 5-yr, ZCTA 99323' }
-    ],
-    conditions: [
-      { text: 'Water replenishment at 3:4 ratio, metered at wellhead', by: 'Applicant', type: 'Water', status: 'Under review', submittedByRole: 'builder', pendingApproval: false },
-      { text: 'Closed-loop cooling required above 85F ambient', by: 'Ecology', type: 'Water', status: 'Accepted', submittedByRole: 'lead', pendingApproval: false },
-      { text: 'Heat supply to greenhouse co-op (12 MW thermal, 20-yr term)', by: 'Community benefit', type: 'Heat reuse', status: 'Countered', submittedByRole: 'co-party', pendingApproval: false },
-      { text: 'Curtailment compact: 72-hr load shed at PUD request', by: 'PUD', type: 'Grid', status: 'Accepted', submittedByRole: 'co-party', pendingApproval: false },
-      { text: 'Aquifer monitoring wells x6, public telemetry', by: 'Ecology', type: 'Water', status: 'Under review', submittedByRole: 'lead', pendingApproval: false },
-      { text: 'Construction water trucked — zero local draw before COD', by: 'CTUIR', type: 'Water', status: 'Impasse', submittedByRole: 'co-party', pendingApproval: false },
-      { text: 'Stormwater plan — Walla Walla River tributary buffer (150 ft setback)', by: 'Walla Walla County', type: 'Environmental', status: 'Proposed', submittedByRole: 'co-party', pendingApproval: true }
-    ],
-    consultation: { party: 'CTUIR', status: 'Consultation: meeting held 5/22 — written response pending' },
-    docs: [
-      { name: 'Application v3 + site control affidavits', date: 'Apr 14' },
-      { name: 'Ecology findings memo v2 (water)', date: 'May 9' },
-      { name: 'Applicant rebuttal — water model', date: 'May 27' },
-      { name: 'CTUIR consultation record 5/22', date: 'May 29' }
-    ],
-    coParties: [
-      ['CTUIR', 'Consultation: meeting held 5/22 — written response pending', 'med'],
-      ['Walla Walla County', 'Findings v2 acknowledged', 'lo'],
-      ['Franklin PUD', 'Rate impact memo filed', 'lo'],
-      ['Attorney General', 'Observer status', 'slate'],
-      ['Serving utility', 'Interconnection study shared', 'lo']
-    ]
-  };
+  var CASE_DETAIL = {};
+  var CASE_DETAIL_MAP = {};
 
-  var CASE_DETAIL_MAP = {
-    '26-0142': CASE_DETAIL,
-    '26-0171': {
-      id: '26-0171', title: 'Moses Lake North', applicant: 'Columbia Compute Co.',
-      score: 0.64, stage: 'Analysis', daysToRebuttal: null,
-      leadParty: 'Dept. of Ecology',
-      invitedParties: ['GC', 'PUD'],
-      findings: [
-        { k: 'Water availability', v: '0.310', ver: 'v1', contested: true, evidence: 'USGS GW-2025-WA-044; Odessa aquifer in documented decline; active monitoring curtailment' },
-        { k: 'Transmission proximity', v: '0.860', ver: 'v1', contested: false, evidence: 'OSM power=line; 2.2 km to 230 kV; Grant PUD service territory' },
-        { k: 'Community burden', v: '0.610', ver: 'v1', contested: false, evidence: 'Census ACS 2024 5-yr, ZCTA 98837; pop. 25,900; moderate EJ exposure' },
-        { k: 'Contamination distance', v: '0.740', ver: 'v1', contested: false, evidence: 'EPA TRI; nearest facility 8.2 km; no Superfund within 40 km' },
-        { k: 'Seismic safety', v: '0.840', ver: 'v1', contested: false, evidence: 'USGS ASCE 7-22 PGAm; low hazard eastern WA craton' }
-      ],
-      conditions: [
-        { text: 'Closed-loop cooling required above 85F ambient', by: 'Ecology', type: 'Water', status: 'Proposed', submittedByRole: 'lead', pendingApproval: false },
-        { text: 'Independent hydrogeologist — aquifer impact assessment before COD', by: 'Grant County', type: 'Water', status: 'Under review', submittedByRole: 'co-party', pendingApproval: false },
-        { text: 'Community benefit agreement — job training fund ($2M over 5 yr)', by: 'Community benefit', type: 'Economic', status: 'Proposed', submittedByRole: 'co-party', pendingApproval: true }
-      ],
-      docs: [
-        { name: 'Application v1 + site control letter', date: 'Mar 28' },
-        { name: 'Preliminary intake findings', date: 'Apr 15' },
-        { name: 'Odessa aquifer baseline report', date: 'May 3' }
-      ],
-      coParties: [
-        ['Grant County', 'Preliminary findings — aquifer assessment requested', 'med'],
-        ['Grant PUD', 'Interconnection study ordered', 'lo'],
-        ['DNR', 'Parcel land use classification pending', 'slate']
-      ]
-    },
-    '26-0168': {
-      id: '26-0168', title: 'Richland — Horn Rapids', applicant: 'Atlas Data Infrastructure',
-      score: 0.583, stage: 'Analysis', daysToRebuttal: null,
-      leadParty: 'Dept. of Ecology',
-      invitedParties: ['BC', 'AG', 'PUD'],
-      findings: [
-        { k: 'Contamination distance', v: '0.200', ver: 'v1', contested: true, evidence: 'EPA NPL — Hanford 200 Area, 38.2 km; radiological exclusion zone' },
-        { k: 'Water availability', v: '0.350', ver: 'v1', contested: false, evidence: 'Columbia River junior rights; curtailment risk in dry years per Ecology WR-2024' },
-        { k: 'Transmission proximity', v: '0.850', ver: 'v1', contested: false, evidence: 'OSM power=line; 1.1 km to 230 kV; Benton County PUD' },
-        { k: 'Community burden', v: '0.480', ver: 'v1', contested: true, evidence: 'Census ACS 2024 5-yr, ZCTA 99352; elevated EJ burden; cumulative impact concern' },
-        { k: 'Flood safety', v: '0.650', ver: 'v1', contested: false, evidence: 'FEMA NFHL; 500-yr fringe; minor SFHA exposure' }
-      ],
-      conditions: [
-        { text: 'EJ cumulative impact assessment — independent consultant required', by: 'Attorney General', type: 'Community', status: 'Proposed', submittedByRole: 'co-party', pendingApproval: true },
-        { text: 'Radiological monitoring protocol — quarterly public reports', by: 'Ecology', type: 'Environmental', status: 'Under review', submittedByRole: 'lead', pendingApproval: false },
-        { text: 'Water rights priority documentation — junior right curtailment plan', by: 'Ecology', type: 'Water', status: 'Proposed', submittedByRole: 'lead', pendingApproval: false }
-      ],
-      docs: [
-        { name: 'Application v2 + environmental exhibit', date: 'Feb 19' },
-        { name: 'Benton County preliminary findings', date: 'Mar 22' },
-        { name: 'EPA Hanford proximity memo', date: 'Apr 8' },
-        { name: 'AG cumulative impact notice', date: 'May 14' }
-      ],
-      coParties: [
-        ['Benton County', 'Initial review in progress', 'med'],
-        ['Attorney General', 'Cumulative impact notice filed', 'hi'],
-        ['Benton County PUD', 'Interconnection study ordered', 'lo'],
-        ['EPA', 'Observer — Hanford proximity monitoring', 'slate']
-      ]
-    }
-  };
-
-  var IMPASSES = [
-    { caseId: '26-0142', site: 'Wallula Gap Campus', cat: 'Water rights', item: 'Construction-phase water sourcing', days: 12, parties: 'Applicant / CTUIR / Ecology' },
-    { caseId: '26-0154', site: 'West Richland', cat: 'EJ burden', item: 'Diesel genset siting vs. school buffer', days: 7, parties: 'Applicant / Benton Co.' },
-    { caseId: '26-0139', site: 'Quincy Expansion', cat: 'Rate allocation', item: 'Transmission upgrade cost share', days: 19, parties: 'Applicant / Grant PUD' },
-    { caseId: '26-0168', site: 'Horn Rapids', cat: 'Discharge', item: 'Blowdown TDS limit — winter window', days: 4, parties: 'Applicant / Ecology' }
-  ];
-  var IMPASSE_UNLOCKS = {
-    'Water rights': [{ c: 'Trucked construction water + 3:4 replenishment', p: 71 }, { c: 'Seasonal draw cap with public telemetry', p: 58 }, { c: 'Purchase + retirement of senior right', p: 44 }],
-    'EJ burden': [{ c: 'Genset relocation + Tier-4 retrofit', p: 66 }, { c: 'Community benefit agreement w/ air monitoring', p: 52 }],
-    'Rate allocation': [{ c: 'Contribution-in-aid w/ refund mechanism', p: 74 }, { c: 'Take-or-pay minimum demand charge', p: 61 }],
-    'Discharge': [{ c: 'Closed-loop conversion', p: 80 }, { c: 'Winter holding + summer discharge window', p: 49 }]
-  };
-
-  var LITIGATION = [
-    { name: 'Friends of the Lower Snake v. Dept. of Ecology', court: 'Franklin Co. Superior Court', no: '26-2-00891-11', status: 'Stayed pending mediation', filed: 'Mar 2026' },
-    { name: 'Skyline Infrastructure Partners — permit appeal', court: 'Pollution Control Hearings Board', no: 'PCHB 26-041', status: 'Briefing', filed: 'May 2026' }
-  ];
-
-  var STUDIES = [
-    { name: 'Moratorium impact study — NY-style', body: 'Office of the Governor', progress: 62, due: '2026-09-01', sections: '14 of 22 sections drafted' },
-    { name: 'Application review scorecard', body: 'Klickitat County', progress: 30, due: '2026-07-15', sections: '4 of 12 sections drafted' }
-  ];
+  var IMPASSES = [];
+  var IMPASSE_UNLOCKS = {};
+  var LITIGATION = [];
+  var STUDIES = [];
 
   /* ── shared context ── */
   var STATS = [
@@ -701,7 +578,8 @@ window.serverLog = function(eventType, fid, payload) {
   };
 
   var AGENCY_DIRECTORY = [
-    /* WA state */
+    /* WA state + city */
+    { key: 'OPCD',   name: 'Seattle OPCD',                             type: 'city',    state: 'WA' },
     { key: 'ECO',    name: 'WA Dept. of Ecology',                     type: 'state',   state: 'WA' },
     { key: 'AG',     name: 'WA Attorney General',                      type: 'state',   state: 'WA' },
     { key: 'DNR',    name: 'WA Dept. of Natural Resources',            type: 'state',   state: 'WA' },

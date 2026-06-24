@@ -56,6 +56,13 @@ function _shapeDynamic(c) {
   return { id: c.case_id, site: c.site, applicant: c.applicant, score: c.score, stage: c.stage || 'Site Inquiry', dot: '#888', days: c.days || 0, parties: [], resolution: null, _dynamic: true };
 }
 
+function _agencyLabel(authUser) {
+  const M = window.MERA;
+  if (!authUser || !authUser.agency_key) return 'Lead Agency';
+  var entry = (M.AGENCY_DIRECTORY || []).find(function(a) { return a.key === authUser.agency_key; });
+  return entry ? entry.name : authUser.agency_key;
+}
+
 function DocketPage() {
   const M = window.MERA;
   const { authUser } = React.useContext(AuthCtx);
@@ -146,7 +153,7 @@ function DocketPage() {
       )}
       <StewardSubNav active="docket" />
       <PageHead title="The Docket"
-        sub={<span><span className="score-serif">{allCases.length}</span>{total > dynamicCases.length ? ' of ' + (M.CASES.length + total) : ''} active cases · Dept. of Ecology · findings versioned from intake.</span>}
+        sub={<span><span className="score-serif">{allCases.length}</span>{total > dynamicCases.length ? ' of ' + (M.CASES.length + total) : ''} active cases · {_agencyLabel(authUser)} · findings versioned from intake.</span>}
         right={<React.Fragment><button className="btn btn-ghost btn-sm" onClick={() => setShowNewCase(true)}>New case file</button><PromiseBadge /></React.Fragment>} />
       <div className="kanban">
         {M.STAGES.map(function(stage) {
@@ -200,7 +207,7 @@ function CaseFilePage({ id }) {
   const isDynamic = !(M.CASE_DETAIL_MAP && M.CASE_DETAIL_MAP[id]);
   const C = isDynamic ? M.CASE_DETAIL : M.CASE_DETAIL_MAP[id];
   const { ramp } = React.useContext(MeraCtx);
-  const { role, partyKey } = React.useContext(AuthCtx);
+  const { role, partyKey, authUser } = React.useContext(AuthCtx);
   const isLead = role === 'steward';
   const isCoParty = role === 'co-party';
 
@@ -337,7 +344,7 @@ function CaseFilePage({ id }) {
 
   const submitCondition = () => {
     if (!draft.text.trim()) return;
-    const by = isCoParty ? (partyName || 'Co-party') : 'Dept. of Ecology';
+    const by = isCoParty ? (partyName || 'Co-party') : _agencyLabel(authUser);
     const payload = {
       text: draft.text.trim(), by, type: draft.type, status: 'Proposed',
       submitted_by_role: isCoParty ? 'co-party' : 'lead',
@@ -498,7 +505,7 @@ function CaseFilePage({ id }) {
               <h2 style={{ fontSize: 22 }}>{dc.site}</h2>
               <div className="microcopy">
                 Applicant: {dc.applicant}
-                {dc.lead_agency ? ' · Lead agency: ' + dc.lead_agency : ''}
+                {dc.lead_agency ? ' · Lead agency: ' + (_agencyLabel({ agency_key: dc.lead_agency })) : ''}
                 {' · Stage: '}<b>{dc.stage || 'Site Inquiry'}</b>
               </div>
             </div>
@@ -664,7 +671,7 @@ function CaseFilePage({ id }) {
           <div>
             <div className="eyebrow">Case {C.id}</div>
             <h2 style={{ fontSize: 23 }}>{C.title}</h2>
-            <div className="microcopy">Applicant: {C.applicant} · Lead agency: {C.leadParty || 'Dept. of Ecology'}
+            <div className="microcopy">Applicant: {C.applicant} · Lead agency: {C.leadParty || _agencyLabel(authUser)}
               {isCoParty && partyName && <span> · Viewing as: <b>{partyName}</b></span>}
             </div>
           </div>

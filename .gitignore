@@ -1,4 +1,10 @@
 data/
+node_modules/
+merascope/dist/
+vendor/
+outreach_opcd_draft.md
+suggestions_*.md
+merascope_assessment.md
 __pycache__/
 *.pyc
 *.pyo

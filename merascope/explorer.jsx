@@ -497,6 +497,7 @@ function ExplorerPage({ query }) {
   const [selectedState, setSelectedState] = React.useState(null);
   const [gradeData, setGradeData] = React.useState(null);
   const [selectedCells, setSelectedCells] = React.useState(new Set());
+  const [showGrid, setShowGrid] = React.useState(false);
   const isMobile = window.innerWidth < 900;
 
   const hasSelection = selectedCells.size > 0;
@@ -550,7 +551,13 @@ function ExplorerPage({ query }) {
                 <span className="microcopy" style={{ marginLeft: 4 }}>Click any tile to compare it nationally</span>
               )}
             </div>
-            <WAMap weights={weights} selectedState={selectedState} selectedCells={selectedCells} onCellToggle={handleCellToggle} markers={false} pins={null} />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
+              <button className={'btn btn-sm ' + (showGrid ? 'btn-primary' : 'btn-ghost')}
+                onClick={() => setShowGrid(g => !g)}>
+                {showGrid ? 'Hide power grid' : 'Show power grid'}
+              </button>
+            </div>
+            <WAMap weights={weights} selectedState={selectedState} selectedCells={selectedCells} onCellToggle={handleCellToggle} markers={false} pins={null} showGrid={showGrid} />
             <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line-soft)' }}>
               <MapLegend />
             </div>

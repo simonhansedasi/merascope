@@ -27,14 +27,6 @@ function useHashRoute() {
   return route;
 }
 
-const DEMO_CO_PARTIES = window.DEMO_CO_PARTIES = [
-  { key: 'WW', name: 'Walla Walla County' },
-  { key: 'CT', name: 'CTUIR' },
-  { key: 'AG', name: 'Attorney General' },
-  { key: 'PUD', name: 'Franklin PUD' },
-  { key: 'GC', name: 'Grant County' }
-];
-
 /* sign-in wall for gated surfaces */
 function AuthWall({ need, setRole }) {
   if (need === 'co-party') {
@@ -45,25 +37,14 @@ function AuthWall({ need, setRole }) {
         </span>
         <h2 style={{ fontSize: 24, marginTop: 14 }}>Co-party sign-in</h2>
         <p style={{ color: 'var(--slate)', fontSize: 14.5, lineHeight: 1.6, margin: '10px 0 22px' }}>
-          The lead agency has added your organization to a case. Sign in, or pick a demo agency below.
+          The lead agency has added your organization to a case. Sign in to access it.
         </p>
-        <div style={{ display: 'grid', gap: 8, margin: '0 auto 18px', maxWidth: 320 }}>
-          {DEMO_CO_PARTIES.map(p => (
-            <button key={p.key} className="btn btn-ghost" style={{ justifyContent: 'flex-start', gap: 10 }}
-              onClick={() => {
-                setRole('co-party');
-                try { localStorage.setItem('mera_party_key', p.key); } catch (e) { }
-              }}>
-              <Icon name="rings" size={14} color="var(--evergreen)" /> Demo SSO — {p.name}
-            </button>
-          ))}
-        </div>
-        <p className="microcopy">Your views are scoped to cases where your agency is listed. Your scores are not.</p>
+        <a className="btn btn-primary" href="#/login">Sign in</a>
+        <p className="microcopy" style={{ marginTop: 16 }}>Your views are scoped to cases where your agency is listed.</p>
       </div>
     );
   }
   const label = need === 'builder' ? 'Builder workspace' : 'Steward console';
-  const persona = need === 'builder' ? 'Sarah Chen — Skyline Infrastructure Partners' : 'Dept. of Ecology — lead reviewer';
   return (
     <div style={{ maxWidth: 480, margin: '64px auto 80px', padding: '0 24px', textAlign: 'center' }} data-screen-label="Sign-in wall">
       <span style={{ width: 54, height: 54, borderRadius: '50%', background: 'var(--mist)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -71,12 +52,9 @@ function AuthWall({ need, setRole }) {
       </span>
       <h2 style={{ fontSize: 24, marginTop: 14 }}>Sign in to open the {label}.</h2>
       <p style={{ color: 'var(--slate)', fontSize: 14.5, lineHeight: 1.6, margin: '10px 0 22px' }}>
-        The map is public. Your workspace is not. Sign in, or demo the reviewer console below.
+        The map is public. Your workspace is not.
       </p>
-      <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
-        <a className="btn btn-primary" href="#/login">Sign in</a>
-        <button className="btn btn-ghost" onClick={() => setRole(need)}>Demo SSO — {persona}</button>
-      </div>
+      <a className="btn btn-primary" href="#/login">Sign in</a>
       <p className="microcopy" style={{ marginTop: 16 }}>Views and permissions are organization-scoped. Scores are not.</p>
     </div>
   );

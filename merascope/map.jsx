@@ -67,6 +67,28 @@ const GRID_URLS = [
 ];
 let _gridCache = null;
 let _gridCachePromise = null;
+let _txCache = null;
+let _txCachePromise = null;
+let _subCache = null;
+
+function loadTxCache() {
+  if (_txCache) return Promise.resolve(_txCache);
+  if (_txCachePromise) return _txCachePromise;
+  _txCachePromise = fetch('data/shared/transmission_national.geojson')
+    .then(r => r.json())
+    .then(gj => { _txCache = gj; _txCachePromise = null; return gj; });
+  return _txCachePromise;
+}
+
+function loadSubCache() {
+  if (_subCache) return Promise.resolve(_subCache);
+  return fetch('data/shared/substations.csv')
+    .then(r => r.text())
+    .then(text => {
+      _subCache = text;
+      return text;
+    });
+}
 
 function loadGridCache() {
   if (_gridCache) return Promise.resolve(_gridCache);
@@ -195,7 +217,7 @@ function _checkStewardGateLocal(p) {
   return gates;
 }
 
-function WAMap({ weights, selectedState = null, selectedCells = null, onCellToggle = null, stateData = null, interactive = true, markers = true, pins = null, onPinClick = null, dimmed = false, highlight = null, onStewardLockIn = null, style }) {
+function WAMap({ weights, selectedState = null, selectedCells = null, onCellToggle = null, stateData = null, interactive = true, markers = true, pins = null, onPinClick = null, dimmed = false, highlight = null, onStewardLockIn = null, showGrid = false, style }) {
   const M = window.MERA;
   const { ramp } = React.useContext(MeraCtx);
   const containerRef = React.useRef(null);
@@ -326,35 +348,6 @@ function WAMap({ weights, selectedState = null, selectedCells = null, onCellTogg
 
     const txColor = v => v >= 500000 ? '#f59e0b' : v >= 345000 ? '#fb923c' : v >= 230000 ? '#6ee7b7' : '#94a3b8';
 
-    fetch('data/shared/transmission_national.geojson')
-      .then(r => r.json())
-      .then(gj => {
-        const layer = L.geoJSON(gj, {
-          renderer,
-          style: feat => {
-            const c = txColor(feat.properties.v || 0);
-            return { color: c, weight: feat.properties.v >= 345000 ? 1.5 : 1, opacity: 0.7, interactive: false };
-          },
-          interactive: false,
-        }).addTo(map);
-        substationLayerRef.current = layer;
-      });
-
-    fetch('data/shared/substations.csv')
-      .then(r => r.text())
-      .then(text => {
-        const lines = text.trim().split('\n').slice(1);
-        lines.forEach(line => {
-          const [lat, lon, kv] = line.split(',').map(Number);
-          if (!lat || !lon || kv < 345) return;
-          const color = kv >= 500 ? '#f59e0b' : '#fb923c';
-          L.circleMarker([lat, lon], {
-            renderer, radius: kv >= 345 ? 2.5 : 1.5, color, fillColor: color,
-            fillOpacity: 0.9, weight: 0, interactive: false,
-          }).addTo(map);
-        });
-      });
-
     clusterLayerRef.current = L.layerGroup().addTo(map);
     pinLayerRef.current     = L.layerGroup().addTo(map);
     mapRef.current = map;
@@ -424,6 +417,46 @@ function WAMap({ weights, selectedState = null, selectedCells = null, onCellTogg
     obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     return () => obs.disconnect();
   }, []);
+
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (!showGrid) {
+      if (substationLayerRef.current) { map.removeLayer(substationLayerRef.current); substationLayerRef.current = null; }
+      return;
+    }
+    const renderer = L.canvas({ padding: 0.5 });
+    const txColor = v => v >= 500000 ? '#f59e0b' : v >= 345000 ? '#fb923c' : v >= 230000 ? '#6ee7b7' : '#94a3b8';
+    const group = L.layerGroup().addTo(map);
+    substationLayerRef.current = group;
+    loadTxCache().then(gj => {
+      if (!substationLayerRef.current) return;
+      L.geoJSON(gj, {
+        renderer,
+        style: feat => {
+          const c = txColor(feat.properties.v || 0);
+          return { color: c, weight: feat.properties.v >= 345000 ? 1.5 : 1, opacity: 0.7, interactive: false };
+        },
+        interactive: false,
+      }).addTo(group);
+    });
+    loadSubCache().then(text => {
+      if (!substationLayerRef.current) return;
+      const lines = text.trim().split('\n').slice(1);
+      lines.forEach(line => {
+        const [lat, lon, kv] = line.split(',').map(Number);
+        if (!lat || !lon || kv < 345) return;
+        const color = kv >= 500 ? '#f59e0b' : '#fb923c';
+        L.circleMarker([lat, lon], {
+          renderer, radius: kv >= 345 ? 2.5 : 1.5, color, fillColor: color,
+          fillOpacity: 0.9, weight: 0, interactive: false,
+        }).addTo(group);
+      });
+    });
+    return () => {
+      if (substationLayerRef.current) { map.removeLayer(substationLayerRef.current); substationLayerRef.current = null; }
+    };
+  }, [showGrid]);
 
   React.useEffect(() => {
     applyColors(weightsRef.current, rampRef.current);

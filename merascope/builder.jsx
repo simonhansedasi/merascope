@@ -1,5 +1,12 @@
 /* -- Surface B: Builder workspace -- saved cells + comparison */
 
+function _resolveAgency(key) {
+  if (!key) return '';
+  var M = window.MERA;
+  var entry = (M.AGENCY_DIRECTORY || []).find(function(a) { return a.key === key; });
+  return entry ? entry.name : key;
+}
+
 function BuilderSubNav({ active }) {
   const tabs = [['search', 'Workspace', '#/builder'], ['status', 'Status', '#/builder/status'], ['portfolio', 'Portfolio screening', '#/builder/portfolio'], ['mycase', 'My Inquiry', '#/builder/case/']];
   return (
@@ -403,11 +410,11 @@ function BuilderSearch() {
 }
 
 var AFFILIATED_AGENCIES = [
-  { match: 'Seattle',     label: 'Seattle OPCD',           partner: true  },
-  { match: 'King County', label: 'King County DPER',        partner: true  },
-  { match: 'Snohomish',   label: 'Snohomish County PDS',    partner: false },
-  { match: 'Pierce',      label: 'Pierce County Planning',  partner: false },
-  { match: 'Washington',  label: 'WA Dept. of Ecology',     partner: true  },
+  { match: 'Seattle',     key: 'OPCD', label: 'Seattle OPCD',           partner: true  },
+  { match: 'King County', key: 'KCDER', label: 'King County DPER',       partner: true  },
+  { match: 'Snohomish',   key: 'SN-PDS', label: 'Snohomish County PDS', partner: false },
+  { match: 'Pierce',      key: 'PC-PLAN', label: 'Pierce County Planning', partner: false },
+  { match: 'Washington',  key: 'ECO', label: 'WA Dept. of Ecology',     partner: true  },
 ];
 
 function deriveJurisdictions(addr) {
@@ -588,7 +595,7 @@ function BuilderCaseView({ id }) {
       score:         parseFloat(form.score) || 0.5,
       contact_name:  form.contactName.trim(),
       contact_email: form.contactEmail.trim(),
-      lead_agency:   selJur ? selJur.label : (jurisdictions[0] ? jurisdictions[0].label : ''),
+      lead_agency:   selJur ? (selJur.key || selJur.label) : (jurisdictions[0] ? (jurisdictions[0].key || jurisdictions[0].label) : ''),
       notes:         form.notes.trim(),
     };
     if (selCell) {
@@ -743,7 +750,7 @@ function BuilderCaseView({ id }) {
           {dynCase.confirmed_at ? (
             <div className="callout" style={{ padding: '12px 16px', marginBottom: 16, display: 'flex', gap: 12, alignItems: 'flex-start', background: 'var(--lo-bg)', border: '1px solid var(--lo-tx)' }}>
               <div style={{ fontSize: 13.5, color: 'var(--lo-tx)' }}>
-                <b>Case accepted{dynCase.lead_agency ? ' by ' + dynCase.lead_agency : ''}.</b>
+                <b>Case accepted{dynCase.lead_agency ? ' by ' + _resolveAgency(dynCase.lead_agency) : ''}.</b>
                 {dynCase.agency_tracking_id
                   ? <span> Agency reference: <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{dynCase.agency_tracking_id}</span>. This is your shared record — both you and the agency see the same file.</span>
                   : <span> Your case is now under active review. Both you and the agency see the same file.</span>}
@@ -776,7 +783,7 @@ function BuilderCaseView({ id }) {
                 <h2 style={{ fontSize: 22 }}>{dynCase.site}</h2>
                 <div className="microcopy">
                   Applicant: {dynCase.applicant}
-                  {dynCase.lead_agency ? ' · Lead agency: ' + dynCase.lead_agency : ''}
+                  {dynCase.lead_agency ? ' · Lead agency: ' + _resolveAgency(dynCase.lead_agency) : ''}
                   {' · Stage: '}<b>{dynCase.stage || 'Site Inquiry'}</b>
                 </div>
               </div>

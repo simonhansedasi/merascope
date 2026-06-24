@@ -1,12 +1,9 @@
 #!/bin/bash
-# Run on Hetzner VPS (Ubuntu 22.04) as root or sudo to install PostgreSQL
+# Run on Hetzner VPS (Ubuntu 22.04) as root to install PostgreSQL
 # and create the merascope database + role.
 #
 # Usage:
 #   sudo bash setup_pg.sh
-#
-# After this runs, add to /etc/merascope.env:
-#   DATABASE_URL=postgresql://merascope:CHANGEME@localhost/merascope
 
 set -e
 
@@ -18,7 +15,6 @@ systemctl enable postgresql
 systemctl start postgresql
 
 # ── create role + database ────────────────────────────────────────────────────
-# Prompt for password so it doesn't end up in shell history
 read -rsp "Enter password for merascope DB user: " PG_PASS
 echo
 
@@ -41,19 +37,20 @@ DATABASE_URL="postgresql://merascope:${PG_PASS}@localhost/merascope"
 psql "$DATABASE_URL" -f "$SCRIPT_DIR/schema.sql"
 
 echo ""
-echo "Done. Add these lines to /etc/merascope.env:"
+echo "Done. Create /etc/merascope.env with:"
+echo ""
 echo "  DATABASE_URL=postgresql://merascope:${PG_PASS}@localhost/merascope"
-echo "  S3_ENDPOINT=https://<region>.your-objectstorage.com"
-echo "  S3_ACCESS_KEY=<hetzner-access-key>"
-echo "  S3_SECRET_KEY=<hetzner-secret-key>"
-echo "  S3_BUCKET=merascope-docs"
-echo "  SMTP_USER=vitruviansandwich@gmail.com"
-echo "  SMTP_PASS=<gmail-app-password>"
 echo "  APP_URL=https://merascope.com"
 echo "  APP_ENV=production"
+echo "  SMTP_HOST=smtp.sendgrid.net"
+echo "  SMTP_PORT=587"
+echo "  SMTP_USER=apikey"
+echo "  SMTP_PASS=SG.<sendgrid-api-key>"
+echo "  FROM_EMAIL=noreply@merascope.com"
+echo "  S3_ENDPOINT=https://<region>.your-objectstorage.com"
+echo "  S3_ACCESS_KEY=<key>"
+echo "  S3_SECRET_KEY=<secret>"
+echo "  S3_BUCKET=merascopedocs"
 echo ""
-echo "Then restart the gunicorn service:"
+echo "Then restart the service:"
 echo "  systemctl restart merascope"
-echo ""
-echo "Create the S3 bucket in Hetzner console, then test with:"
-echo "  aws --endpoint-url \$S3_ENDPOINT s3 ls s3://merascope-docs"

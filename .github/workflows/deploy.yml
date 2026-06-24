@@ -26,6 +26,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - run: npm ci
+
+      - run: bash scripts/fetch_vendor.sh
+
+      - run: npm run build
+
       - name: Deploy to Hetzner
         env:
           SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}

@@ -13,7 +13,7 @@ from functools import wraps
 import psycopg2
 import psycopg2.extras
 import psycopg2.pool
-import json, csv, io, os, secrets, smtplib
+import json, csv, io, os, secrets, smtplib, time, threading
 
 try:
     import boto3
@@ -22,6 +22,22 @@ except ImportError:
     boto3 = None
 
 app = Flask(__name__)
+
+# Simple in-process rate limiter: max 3 magic link requests per IP per 15 minutes
+_rl_lock   = threading.Lock()
+_rl_store  = {}   # ip -> list of timestamps
+_RL_WINDOW = 900  # seconds
+_RL_LIMIT  = 3
+
+def _check_rate_limit(ip):
+    now = time.time()
+    with _rl_lock:
+        hits = [t for t in _rl_store.get(ip, []) if now - t < _RL_WINDOW]
+        if len(hits) >= _RL_LIMIT:
+            return False
+        hits.append(now)
+        _rl_store[ip] = hits
+    return True
 ROOT     = os.path.dirname(os.path.abspath(__file__))
 DOCS_DIR = os.path.join(ROOT, 'data', 'docs')
 
@@ -232,6 +248,24 @@ def init_db():
             section_idx INTEGER NOT NULL,
             ts          TIMESTAMP DEFAULT NOW(),
             UNIQUE(study_name, section_idx)
+        )''')
+
+        db.execute('''CREATE TABLE IF NOT EXISTS studies (
+            id    SERIAL PRIMARY KEY,
+            name  TEXT NOT NULL UNIQUE,
+            body  TEXT,
+            due   TEXT,
+            ts    TIMESTAMP DEFAULT NOW()
+        )''')
+
+        db.execute('''CREATE TABLE IF NOT EXISTS litigation (
+            id     SERIAL PRIMARY KEY,
+            name   TEXT NOT NULL,
+            court  TEXT,
+            no     TEXT,
+            status TEXT DEFAULT 'Active',
+            filed  TEXT,
+            ts     TIMESTAMP DEFAULT NOW()
         )''')
 
         db.execute('''CREATE TABLE IF NOT EXISTS case_rebuttals (
@@ -807,6 +841,80 @@ def add_impasse_route():
     return jsonify({'ok': True})
 
 
+# ── impasse items (conditions with status='Impasse') ─────────────────────────
+
+@app.route('/api/impasse/items')
+def get_impasse_items():
+    with get_db() as db:
+        rows = db.execute(
+            '''SELECT cc.id, cc.case_id, cc.text, cc.type, cc.by, cc.ts,
+                      c.site, c.lead_agency
+               FROM case_conditions cc
+               JOIN cases c ON c.case_id = cc.case_id
+               WHERE cc.status = 'Impasse'
+               ORDER BY cc.ts DESC'''
+        ).fetchall()
+    return jsonify(rows)
+
+
+# ── studies ────────────────────────────────────────────────────────────────────
+
+@app.route('/api/studies')
+def get_studies():
+    with get_db() as db:
+        rows = db.execute('SELECT * FROM studies ORDER BY ts DESC').fetchall()
+    return jsonify(rows)
+
+@app.route('/api/studies', methods=['POST'])
+def add_study():
+    data = request.get_json(silent=True) or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'ok': False, 'err': 'name required'}), 400
+    with get_db() as db:
+        cur = db.execute(
+            'INSERT INTO studies (name, body, due) VALUES (?,?,?) ON CONFLICT (name) DO NOTHING RETURNING id',
+            (name, data.get('body', ''), data.get('due', ''))
+        )
+        new_id = cur.lastrowid
+    return jsonify({'ok': True, 'id': new_id})
+
+@app.route('/api/studies/<int:study_id>', methods=['DELETE'])
+def delete_study(study_id):
+    with get_db() as db:
+        db.execute('DELETE FROM studies WHERE id=?', (study_id,))
+    return jsonify({'ok': True})
+
+
+# ── litigation ─────────────────────────────────────────────────────────────────
+
+@app.route('/api/litigation')
+def get_litigation():
+    with get_db() as db:
+        rows = db.execute('SELECT * FROM litigation ORDER BY ts DESC').fetchall()
+    return jsonify(rows)
+
+@app.route('/api/litigation', methods=['POST'])
+def add_litigation():
+    data = request.get_json(silent=True) or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'ok': False, 'err': 'name required'}), 400
+    with get_db() as db:
+        cur = db.execute(
+            'INSERT INTO litigation (name, court, no, status, filed) VALUES (?,?,?,?,?) RETURNING id',
+            (name, data.get('court', ''), data.get('no', ''), data.get('status', 'Active'), data.get('filed', ''))
+        )
+        new_id = cur.lastrowid
+    return jsonify({'ok': True, 'id': new_id})
+
+@app.route('/api/litigation/<int:lit_id>', methods=['DELETE'])
+def delete_litigation(lit_id):
+    with get_db() as db:
+        db.execute('DELETE FROM litigation WHERE id=?', (lit_id,))
+    return jsonify({'ok': True})
+
+
 # ── rebuttals ─────────────────────────────────────────────────────────────────
 
 @app.route('/api/case/<case_id>/rebuttals')
@@ -881,13 +989,48 @@ def _send_magic_email(to_email, token):
     msg['From']    = 'Merascope <{}>'.format(sender)
     msg['To']      = to_email
 
-    text = 'Click the link below to sign in to Merascope (expires in 1 hour):\n\n{}\n\nIf you did not request this, ignore this email.'.format(link)
-    html = '''<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px">
-  <h2 style="font-size:20px;margin:0 0 8px">Sign in to Merascope</h2>
-  <p style="color:#555;font-size:14px;margin:0 0 24px">Click below to sign in. This link expires in 1 hour.</p>
-  <a href="{link}" style="display:inline-block;padding:12px 22px;background:#2d5a27;color:#fff;text-decoration:none;border-radius:7px;font-size:14px">Sign in to Merascope</a>
-  <p style="color:#999;font-size:12px;margin:24px 0 0">If you did not request this, ignore this email.<br>Link: {link}</p>
-</div>'''.format(link=link)
+    text = (
+        'Sign in to Merascope\n\n'
+        'Click the link below to access your Merascope account. '
+        'This link expires in 1 hour and can only be used once.\n\n'
+        '{}\n\n'
+        'Merascope is a national data center site suitability and permitting '
+        'coordination platform. If you did not request this link, you can safely ignore this email.\n\n'
+        '-- The Merascope team\n'
+        'merascope.com'
+    ).format(link)
+    html = '''<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background:#f4f4f0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f0;padding:40px 0">
+  <tr><td align="center">
+    <table width="480" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08)">
+      <tr><td style="background:#1a2e1a;padding:24px 32px">
+        <span style="color:#a8c5a0;font-size:11px;letter-spacing:.15em;text-transform:uppercase;font-weight:700">Merascope</span>
+      </td></tr>
+      <tr><td style="padding:36px 32px 28px">
+        <h1 style="margin:0 0 12px;font-size:22px;font-weight:700;color:#1a1a1a">Sign in to your account</h1>
+        <p style="margin:0 0 28px;font-size:15px;color:#555;line-height:1.6">
+          Click the button below to sign in to Merascope. This link expires in <strong>1 hour</strong> and can only be used once.
+        </p>
+        <table cellpadding="0" cellspacing="0"><tr><td>
+          <a href="{link}" style="display:inline-block;padding:14px 28px;background:#2d5a27;color:#ffffff;text-decoration:none;border-radius:6px;font-size:15px;font-weight:600;letter-spacing:.01em">Sign in to Merascope &rarr;</a>
+        </td></tr></table>
+        <p style="margin:28px 0 0;font-size:13px;color:#888;line-height:1.6">
+          Merascope is a national data center site suitability and permitting coordination platform.<br>
+          If you did not request this link, you can safely ignore this email.
+        </p>
+      </td></tr>
+      <tr><td style="padding:16px 32px;border-top:1px solid #eee;background:#fafaf8">
+        <p style="margin:0;font-size:12px;color:#aaa">
+          &copy; 2026 Merascope &middot; <a href="https://merascope.com" style="color:#aaa">merascope.com</a>
+        </p>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>'''.format(link=link)
 
     msg.attach(MIMEText(text, 'plain'))
     msg.attach(MIMEText(html, 'html'))
@@ -899,32 +1042,12 @@ def _send_magic_email(to_email, token):
         s.sendmail(sender, [to_email], msg.as_string())
 
 
-def require_auth(f):
-    """Decorator — attaches g.user_email, g.user_role, g.agency_key or returns 401."""
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        token = request.cookies.get('mera_sess', '')
-        if not token:
-            return jsonify({'ok': False, 'err': 'unauthorized'}), 401
-        with get_db() as db:
-            row = db.execute(
-                '''SELECT s.email, r.role, r.agency_key
-                   FROM sessions s
-                   LEFT JOIN user_roles r ON r.email = s.email
-                   WHERE s.token = ? AND s.expires_at > NOW()''',
-                (token,)
-            ).fetchone()
-        if not row:
-            return jsonify({'ok': False, 'err': 'unauthorized'}), 401
-        g.user_email  = row['email']
-        g.user_role   = row['role'] or 'builder'
-        g.agency_key  = row['agency_key']
-        return f(*args, **kwargs)
-    return decorated
-
 
 @app.route('/api/auth/request', methods=['POST'])
 def auth_request():
+    ip = request.headers.get('X-Real-IP') or request.remote_addr
+    if not _check_rate_limit(ip):
+        return jsonify({'ok': False, 'err': 'Too many requests. Try again in 15 minutes.'}), 429
     data  = request.get_json(silent=True) or {}
     email = (data.get('email') or '').strip().lower()
     if not email or '@' not in email:
@@ -1149,10 +1272,7 @@ def require_steward(f):
     def decorated(*args, **kwargs):
         token = request.cookies.get('mera_sess', '')
         if not token:
-            g.user_email = 'demo@merascope.com'
-            g.user_role  = 'steward'
-            g.agency_key = 'DEMO'
-            return f(*args, **kwargs)
+            return jsonify({'ok': False, 'err': 'authentication required'}), 401
         with get_db() as db:
             row = db.execute(
                 '''SELECT s.email, r.role, r.agency_key

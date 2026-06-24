@@ -1,7 +1,7 @@
 # Merascope
 
 National data center site suitability intelligence and permitting coordination platform.
-GIS-MCDA across 0.15-degree fishnet cells, 22 scored indicators (16 core + 6 supplemental),
+GIS-MCDA across 0.15-degree fishnet cells, 23 scored indicators (16 core + 7 supplemental),
 raw physical values included in every output for multi-scale renormalization.
 
 Built for three audiences:
@@ -16,14 +16,18 @@ Same Score Promise: methodology is public and identical for all users. No party 
 ```bash
 # Activate the pipeline environment (Python 3.7, geopandas 0.10.x)
 conda activate merascope
+PYTHON=/home/simonhans/anaconda3/envs/merascope/bin/python3
 
-# Run a single state end-to-end
-python -u scripts/run_pipeline.py WA
+# Run a single state end-to-end (core steps 01-10)
+$PYTHON -u scripts/run_pipeline.py WA
 
-# Or run steps individually
-python -u scripts/01_basemap.py WA
-python -u scripts/02_indicators.py WA
-# ... through 10_soilprofile.py
+# After steps 01-10, run supplemental indicators (VPS has system Python with geopandas)
+for SCRIPT in 11_substations 12_superfund 13_air_quality 14_fiber 15_water_stress 16_iso_queue; do
+  /usr/bin/python3 -u scripts/${SCRIPT}.py WA
+done
+
+# National normalization pass (run once after all 48 states are complete)
+$PYTHON -u scripts/normalize_national.py
 ```
 
 See [PIPELINE_GUIDE.md](PIPELINE_GUIDE.md) for full setup, step descriptions, and troubleshooting.
@@ -58,7 +62,7 @@ All scores normalized 0-1 within state (1 = most favorable for siting).
 
 ### Supplemental indicators (scripts 11-16, default weight 0)
 
-These are added to all 48 states as of 2026-06-23. Weights default to 0 in the Explorer (sliders must be turned up to include them in the composite score).
+All 7 supplemental indicators are present in every state's `grid_scores.geojson` as of 2026-06-23. Weights default to 0 in the Explorer; sliders must be turned up to include them in the composite score.
 
 | Script | Score column | Source | Notes |
 |---|---|---|---|
@@ -94,12 +98,14 @@ renormalization without re-running the pipeline:
 
 All 48 contiguous states complete (AK/HI excluded).
 
-| Schema | States | Raws |
-|---|---|---|
-| 10-raw (early) | WA OR TX CA NV UT ID MT AZ | no flat_frac/slope_mean_deg |
-| 12-raw (full) | CO WY NM ND SD NE KS OK MN IA MO AR LA MI WI IL IN KY TN MS GA OH AL FL SC NC VA WV PA NY NJ CT RI MA VT NH ME DE MD | full set |
+All 48 contiguous states complete as of 2026-06-23 with 7 supplemental indicators.
 
-Raw columns are now added automatically by `run_pipeline.py` at the end of every full run (`patch_raws.py` is called as a post-processing step). For early states already in the dataset, run once manually: `python scripts/patch_raws.py WA OR TX CA NV UT ID MT AZ`
+| Raw column coverage | States |
+|---|---|
+| 10-raw (no flat_frac/slope_mean_deg) | WA OR TX CA NV UT ID MT AZ |
+| 12-raw (full set) | CO WY NM ND SD NE KS OK MN IA MO AR LA MI WI IL IN KY TN MS GA OH AL FL SC NC VA WV PA NY NJ CT RI MA VT NH ME DE MD |
+
+All 48 states carry the 7 supplemental score columns added by scripts 11-16. Raw columns are added automatically by `run_pipeline.py` at the end of every full run (`patch_raws.py` is called as a post-processing step). For early states already in the dataset, run once manually: `python scripts/patch_raws.py WA OR TX CA NV UT ID MT AZ`
 
 ## Product surfaces
 
@@ -181,7 +187,7 @@ In local dev, omit `S3_ENDPOINT` (falls back to disk) and omit SMTP vars (magic 
 
 **Go-live checklist**: Tom adds SendGrid CNAMEs (DKIM + domain auth) to Namecheap → verify sender domain in SendGrid dashboard → seed steward emails in `user_roles`.
 
-## Testing
+## Testing and deploy
 
 ```bash
 # Unit + pipeline tests (143 tests)
@@ -189,6 +195,9 @@ In local dev, omit `S3_ENDPOINT` (falls back to disk) and omit SMTP vars (magic 
 
 # Browser smoke test (26 checks — starts its own server, headless Chromium)
 /home/simonhans/anaconda3/envs/merascope/bin/python3 tests/smoke_test.py
+
+# Deploy (runs lint + tests + build before rsync — aborts on failure)
+bash scripts/deploy_hetzner.sh
 ```
 
 `tests/test_server.py` — 64 tests covering all server API routes including steward templates/zones CRUD and gate check. Requires PostgreSQL (`TEST_DATABASE_URL`); skips cleanly if unavailable.
@@ -197,7 +206,16 @@ In local dev, omit `S3_ENDPOINT` (falls back to disk) and omit SMTP vars (magic 
 
 ## Frontend
 
-React + Leaflet, served statically. Add a completed state to `merascope/map.jsx`:
+React + Leaflet, pre-compiled via Babel CLI. All 16 JSX source files compile to `merascope/dist/bundle.js` — no Babel standalone CDN, no runtime compilation. React, ReactDOM, Leaflet, and fonts (IBM Plex Sans, Source Sans 3, Source Serif 4) are vendored locally in `vendor/`; no external calls on page load.
+
+Build the bundle (runs automatically in `deploy_hetzner.sh`):
+
+```bash
+npm install   # first time only
+npm run build
+```
+
+Add a completed state to `merascope/map.jsx`:
 
 ```js
 const GRID_URLS = [
@@ -206,7 +224,7 @@ const GRID_URLS = [
 ];
 ```
 
-Dev server: `cd ~/coding/merascope && python3 server.py` (Flask, port 8877 — NOT python3 -m http.server; Flask provides /api/log and /api/export/* routes)
+Dev server: `cd ~/coding/merascope && python3 server.py` (Flask, port 8877 — NOT python3 -m http.server; Flask provides /api routes)
 
 ## Repo structure
 
@@ -227,6 +245,14 @@ merascope/
     08_aquifer.py         — aquifer score (USGS NWIS depth to water)
     09_soil.py            — soil score (SSURGO hydrologic group)
     10_soilprofile.py     — soil_profile, ksat scores (SSURGO horizons)
+    11_substations.py     — substation/grid-node proximity score (EIA Form 860)
+    12_superfund.py       — Superfund NPL + RCRA corrective action distance scores
+    13_air_quality.py     — NAAQS attainment score (EPA Green Book)
+    14_fiber.py           — carrier-hotel/colo proximity score (PeeringDB)
+    15_water_stress.py    — watershed water stress score (WRI Aqueduct 3.0)
+    16_iso_queue.py       — grid interconnection queue capacity score (EIA 860M)
+    normalize_national.py — cross-state *_nat normalization pass (run after all 48)
+    grade_states.py       — relative letter grade computation + data.js patcher
     patch_water_score.py  — retrofit PRISM water_score in-place
     patch_raws.py         — retrofit raw physical columns on completed states
   data/                   — generated GeoJSON + CSVs (not in git; rsync separately)
