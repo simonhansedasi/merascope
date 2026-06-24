@@ -30,7 +30,7 @@ done
 $PYTHON -u scripts/normalize_national.py
 ```
 
-See [PIPELINE_GUIDE.md](PIPELINE_GUIDE.md) for full setup, step descriptions, and troubleshooting.
+See [PIPELINE_GUIDE.md](contexts/PIPELINE_GUIDE.md) for full setup, step descriptions, and troubleshooting.
 
 ## Indicators
 
@@ -230,13 +230,21 @@ Dev server: `cd ~/coding/merascope && python3 server.py` (Flask, port 8877 — N
 
 ```
 merascope/
-  index.html              — React frontend entry point (Tom)
-  merascope/              — JSX, CSS, JS components
-  scripts/                — 10-step pipeline + patch scripts
-    config.py             — State bboxes, FIPS, UTM zones for all 50 states
-    run_pipeline.py       — Orchestrator (calls steps 01-10 in sequence)
-    01_basemap.py         — State boundary, data centers, transmission, EIA plants
-    02_indicators.py      — Fishnet grid + tx, water, ej, pop_exposure scores
+  index.html              — frontend entry point
+  merascope/              — JSX source files + compiled dist/ (gitignored, built on deploy)
+  server.py               — Flask app (port 8877)
+  package.json            — Babel build config
+  babel.config.json       — JSX compile settings (classic runtime)
+  scripts/                — pipeline scripts + shell scripts
+    deploy_hetzner.sh     — manual deploy (lint + tests + build + rsync)
+    fetch_vendor.sh       — download pinned vendor assets (React, Leaflet, fonts)
+    setup_pg.sh           — VPS PostgreSQL install + schema bootstrap
+    setup_env.sh          — conda environment setup
+    sync_data_hetzner.sh  — push GeoJSON data to VPS (run separately from code deploy)
+    config.py             — state bboxes, FIPS, UTM zones for all 50 states
+    run_pipeline.py       — orchestrator (steps 01-10 in sequence)
+    01_basemap.py         — state boundary, data centers, transmission, EIA plants
+    02_indicators.py      — fishnet grid + tx, water, ej, pop_exposure scores
     03_risk.py            — seismic, flood scores
     04_environment.py     — contamination, waterway scores
     05_geothermal.py      — geothermal score (IHFC heat flow)
@@ -251,14 +259,20 @@ merascope/
     14_fiber.py           — carrier-hotel/colo proximity score (PeeringDB)
     15_water_stress.py    — watershed water stress score (WRI Aqueduct 3.0)
     16_iso_queue.py       — grid interconnection queue capacity score (EIA 860M)
-    normalize_national.py — cross-state *_nat normalization pass (run after all 48)
-    grade_states.py       — relative letter grade computation + data.js patcher
-    patch_water_score.py  — retrofit PRISM water_score in-place
+    normalize_national.py — cross-state normalization pass (run after all 48 states)
+    grade_states.py       — letter grade computation + data.js patcher
     patch_raws.py         — retrofit raw physical columns on completed states
-  data/                   — generated GeoJSON + CSVs (not in git; rsync separately)
-  METHODS.md              — full indicator methodology with citations
-  PIPELINE_GUIDE.md       — running and troubleshooting the pipeline
+  data/                   — generated GeoJSON + CSVs (gitignored; sync with sync_data_hetzner.sh)
+  vendor/                 — React, Leaflet, fonts (gitignored; built by fetch_vendor.sh)
+  tests/                  — pytest suite (79 pipeline + 64 server tests)
 ```
+
+Full developer docs live in `~/coding/contexts/merascope/` (symlinked to repo root):
+- `CONTEXT.md` — architecture, server schema, API routes, known limitations
+- `CLAUDE.md` — dev environment, gotchas, deploy instructions
+- `DOCS.md` — comprehensive technical reference
+- `METHODS.md` — indicator methodology with citations
+- `PIPELINE_GUIDE.md` — running and troubleshooting the pipeline
 
 ## Data sources
 
