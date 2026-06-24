@@ -204,7 +204,7 @@ function WAMap({ weights, selectedState = null, selectedCells = null, onCellTogg
   const clusterLayerRef = React.useRef(null);
   const pinLayerRef = React.useRef(null);
   const tileLayerRef = React.useRef(null);
-  const powerLayerRef = React.useRef(null);
+  const substationLayerRef = React.useRef(null);
   const weightsRef = React.useRef(weights);
   const rampRef = React.useRef(ramp);
   const [hover, setHover] = React.useState(null);
@@ -321,10 +321,39 @@ function WAMap({ weights, selectedState = null, selectedCells = null, onCellTogg
       ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
       : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
     tileLayerRef.current = L.tileLayer(tileUrl, { maxZoom: 14, subdomains: 'abcd' }).addTo(map);
-    powerLayerRef.current = L.tileLayer(
-      'https://tiles.openinframap.org/power/{z}/{x}/{y}.png',
-      { maxZoom: 14, opacity: 0.7 }
-    ).addTo(map);
+
+    const renderer = L.canvas({ padding: 0.5 });
+
+    const txColor = v => v >= 500000 ? '#f59e0b' : v >= 345000 ? '#fb923c' : v >= 230000 ? '#6ee7b7' : '#94a3b8';
+
+    fetch('data/shared/transmission_national.geojson')
+      .then(r => r.json())
+      .then(gj => {
+        const layer = L.geoJSON(gj, {
+          renderer,
+          style: feat => {
+            const c = txColor(feat.properties.v || 0);
+            return { color: c, weight: feat.properties.v >= 345000 ? 1.5 : 1, opacity: 0.7, interactive: false };
+          },
+          interactive: false,
+        }).addTo(map);
+        substationLayerRef.current = layer;
+      });
+
+    fetch('data/shared/substations.csv')
+      .then(r => r.text())
+      .then(text => {
+        const lines = text.trim().split('\n').slice(1);
+        lines.forEach(line => {
+          const [lat, lon, kv] = line.split(',').map(Number);
+          if (!lat || !lon || kv < 345) return;
+          const color = kv >= 500 ? '#f59e0b' : '#fb923c';
+          L.circleMarker([lat, lon], {
+            renderer, radius: kv >= 345 ? 2.5 : 1.5, color, fillColor: color,
+            fillOpacity: 0.9, weight: 0, interactive: false,
+          }).addTo(map);
+        });
+      });
 
     clusterLayerRef.current = L.layerGroup().addTo(map);
     pinLayerRef.current     = L.layerGroup().addTo(map);
@@ -417,38 +446,29 @@ function WAMap({ weights, selectedState = null, selectedCells = null, onCellTogg
     const score = M.composite(ind, weights);
     const cw = containerRef.current ? containerRef.current.clientWidth  : 800;
     const ch = containerRef.current ? containerRef.current.clientHeight : 480;
-    const flipX = mousePos.x > cw - 260;
-    const flipY = mousePos.y > ch - 270;
+    const flipX = mousePos.x > cw - 180;
+    const flipY = mousePos.y > ch - 110;
     return (
-      <div style={{ position: 'absolute', left: flipX ? mousePos.x - 252 : mousePos.x + 14, top: flipY ? mousePos.y - 248 : mousePos.y + 12, width: 238, background: 'var(--mist)', border: '1px solid var(--line)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.55)', padding: '11px 13px', zIndex: 40, pointerEvents: 'none' }}>
-        <div style={{ marginBottom: 4 }}>
-          <span className="microcopy">{p.cell_id || ''}</span>
-        </div>
+      <div style={{ position: 'absolute', left: flipX ? mousePos.x - 172 : mousePos.x + 14, top: flipY ? mousePos.y - 90 : mousePos.y + 12, width: 158, background: 'var(--mist)', border: '1px solid var(--line)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.55)', padding: '10px 12px', zIndex: 40, pointerEvents: 'none' }}>
         {isGated ? (
           <div>
-            <div className="score-serif" style={{ fontSize: 26, color: 'var(--slate)' }}>gated</div>
-            <div style={{ fontSize: 12.5, color: 'var(--slate)', marginTop: 4 }}>
-              Hard gate: protected or sovereign land exceeds 25%. Gate applies regardless of weights.
-            </div>
+            <div className="score-serif" style={{ fontSize: 24, color: 'var(--slate)' }}>gated</div>
+            <div style={{ fontSize: 11.5, color: 'var(--slate)', marginTop: 4 }}>Protected or sovereign land &gt;25%</div>
           </div>
         ) : (
           <div>
-            <div className="score-serif" style={{ fontSize: 30, lineHeight: 1.1, color: M.rampColor(score, ramp) }}>{score.toFixed(3)}</div>
-            <div className="microcopy" style={{ marginBottom: 6 }}>composite suitability</div>
+            <div className="score-serif" style={{ fontSize: 32, lineHeight: 1.1, color: M.rampColor(score, ramp) }}>{score.toFixed(3)}</div>
+            <div className="microcopy">composite suitability</div>
             {stewardGates.length > 0 && stewardGates.map(function(g, i) {
               return (
-                <div key={i} style={{ background: 'rgba(180,95,29,0.13)', border: '1px solid rgba(180,95,29,0.35)', borderRadius: 6, padding: '5px 7px', marginBottom: 6 }}>
-                  <div style={{ fontSize: 11.5, fontWeight: 700, color: '#b45f1d', marginBottom: 2 }}>Steward gate: {g.zone.zone_name || g.zone.name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--slate)', lineHeight: 1.5 }}>
-                    {g.zone.agency_key} requires min. {g.zone.min_score.toFixed(2)} under {g.zone.template_name || 'steward'} weights.
-                    {g.score != null ? (' This cell scores ' + g.score.toFixed(3) + '.') : ''}
+                <div key={i} style={{ background: 'rgba(180,95,29,0.13)', border: '1px solid rgba(180,95,29,0.35)', borderRadius: 6, padding: '5px 7px', marginTop: 6 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#b45f1d' }}>Steward gate: {g.zone.zone_name || g.zone.name}</div>
+                  <div style={{ fontSize: 10.5, color: 'var(--slate)', marginTop: 2 }}>
+                    Min. {g.zone.min_score.toFixed(2)} — this cell: {g.score != null ? g.score.toFixed(3) : '—'}
                   </div>
                 </div>
               );
             })}
-            <div style={{ display: 'grid', gap: 3 }}>
-              {M.INDICATORS.map(m => <BarRow key={m.k} label={m.label.replace(' proximity', '').replace(' availability', '').replace(' opportunity', '').replace(' sensitivity', '').replace(' distance', '')} value={ind[m.k]} width={92} />)}
-            </div>
           </div>
         )}
       </div>
