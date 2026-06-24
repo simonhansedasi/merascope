@@ -572,7 +572,7 @@ function CaseFilePage({ id }) {
 
           <div className="card" style={{ padding: '16px 20px' }}>
             <b style={{ fontSize: 14 }}>Advance stage</b>
-            <p className="microcopy" style={{ margin: '4px 0 10px' }}>Move this case to the next stage in the review process.</p>
+            <p className="microcopy" style={{ margin: '4px 0 10px' }}>Each stage advance updates the case record and notifies all parties.</p>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {M.STAGES.filter(function(s) { return s !== (dc.stage || 'Site Inquiry'); }).map(function(s) {
                 return (

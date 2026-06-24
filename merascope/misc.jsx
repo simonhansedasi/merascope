@@ -21,7 +21,7 @@ function PricingPage() {
   return (
     <div style={{ maxWidth: 1080, margin: '0 auto', padding: '36px 24px 60px' }} data-screen-label="Pricing">
       <PageHead eyebrow="Pricing" title="Two workspaces. One engine."
-        sub="Builder and Steward are priced separately because they buy different work — never different numbers." />
+        sub="Builder and Steward are priced separately because they buy different work, never different numbers." />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 18, alignItems: 'stretch' }}>
         {/* Builder mode */}
         <div className="card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
@@ -81,7 +81,7 @@ function PricingPage() {
         <button className="btn btn-quiet btn-sm">Talk to us</button>
       </div>
       <p className="microcopy" style={{ textAlign: 'center', marginTop: 22 }}>
-        ◈ Every tier sees the same scores. Paid tiers buy resolution and workflow — never outcomes.
+        ◈ Every tier sees the same scores. Paid tiers buy resolution and workflow, never outcomes.
       </p>
     </div>
   );
@@ -414,7 +414,7 @@ function MethodologyPage() {
           <div id="m-indicators" style={{ scrollMarginTop: 72 }}>
             <h3 style={{ fontSize: 17, marginBottom: 8 }}>Twenty-two indicators</h3>
             <p style={{ fontSize: 14.5, lineHeight: 1.65, marginBottom: 18 }}>
-              Every indicator is normalized 0-1 within the state (higher = more suitable). Three compose the default composite &#8212; transmission (40%), water availability (35%), community burden (25%). All twenty-two are computed and published; users can assign non-zero weight to any of them. Two hard gates cannot be overridden by any weight configuration. Six supplemental indicators (substation proximity, Superfund distance, RCRA distance, air quality, fiber connectivity, water stress, grid capacity) default to zero weight and appear in the Explorer sliders for optional use.
+              Every indicator is normalized 0-1 within the state (higher = more suitable). Three compose the default composite &#8212; transmission (40%), water availability (35%), community burden (25%). All twenty-two are computed and published; users can assign non-zero weight to any of them. Two hard gates cannot be overridden by any weight configuration. Seven supplemental indicators (substation proximity, Superfund distance, RCRA distance, air quality, fiber connectivity, water stress, grid capacity) default to zero weight and appear in the Explorer sliders for optional use.
             </p>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 8, marginBottom: 12 }}>
@@ -625,7 +625,7 @@ function EvidencePage({ caseId }) {
         </div>
       )}
       <PageHead eyebrow="Evidence Record" title={title}
-        sub="Sources, formulae, and data origins. How scores are computed" />
+        sub="Source citations, formulas, and data provenance for each indicator. The record that backs the score." />
 
       {!C && (
         <div className="callout" style={{ padding: '20px 24px', marginBottom: 24 }}>
@@ -666,7 +666,7 @@ function EvidencePage({ caseId }) {
       <div className="card" style={{ padding: '24px 28px' }}>
         <h3 style={{ fontSize: 17, marginBottom: 6 }}>Commission a study</h3>
         <p style={{ color: 'var(--slate)', fontSize: 14, margin: '0 0 20px', lineHeight: 1.6 }}>
-          To refer a contested indicator to an independent consultant, you may file a request below. Merascope will coordinate the study and maintain chain of custody for any new study. Merascope will take a 1-2% fee from the consultant side.
+          To refer a contested indicator to independent review, file a request below. Merascope coordinates the commission, maintains chain of custody, and takes a 1-2% fee from the consultant side.
         </p>
         {submitted ? (
           <div style={{ padding: '14px 18px', background: 'var(--lo-bg)', borderRadius: 8, color: 'var(--lo-tx)', fontWeight: 600 }}>

@@ -24,7 +24,7 @@ function ImpassePage() {
   return (
     <div style={{ maxWidth: 1140, margin: '0 auto', padding: '22px 24px 50px' }} data-screen-label="Steward — Impasse register">
       <StewardSubNav active="impasse" />
-      <PageHead title="Impasse register" sub="Deadlocked items across all active cases, categorized and time-stamped. What has resolved each category historically is on the right." />
+      <PageHead title="Impasse register" sub="Deadlocked items, categorized and time-stamped. Historical resolutions by category are on the right." />
       <div style={{ display: 'flex', gap: 18, alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div className="card" style={{ flex: '2 1 540px', overflow: 'auto' }}>
           <table className="mtable">
@@ -53,7 +53,7 @@ function ImpassePage() {
         </div>
         <div className="panel" style={{ flex: '1 1 300px', padding: '16px 18px' }}>
           <b style={{ fontSize: 12, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--slate)' }}>What historically unlocks "{cat}"</b>
-          <p className="microcopy" style={{ margin: '4px 0 12px' }}>Past conditions that broke this deadlock type. Select a row to switch category.</p>
+          <p className="microcopy" style={{ margin: '4px 0 12px' }}>Conditions that have unlocked this deadlock type historically. Select a row above to change category.</p>
           <div style={{ display: 'grid', gap: 10 }}>
             {(M.IMPASSE_UNLOCKS[cat] || []).map(u => (
               <div key={u.c}>
@@ -82,9 +82,8 @@ function LitigationPage() {
       'Filed: ' + l.filed + ' | Status: ' + l.status,
       'Exported: ' + new Date().toISOString(),
       '',
-      'Versioned scores, findings, and chain-of-custody events since intake are',
-      'maintained in the Merascope evidentiary database. Contact the lead agency',
-      'reviewer to obtain the full signed export for court or administrative record.'
+      'Versioned scores, findings, and chain-of-custody events since intake are maintained in the Merascope evidentiary database.',
+      'Contact the lead agency reviewer to obtain the full signed export for court or administrative record.'
     ];
     const a = document.createElement('a');
     a.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(lines.join('\n'));

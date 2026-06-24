@@ -652,7 +652,7 @@ function BuilderCaseView({ id }) {
           <div className="callout" style={{ padding: '12px 16px', marginBottom: 16, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
             <Icon name="lock" size={16} color="var(--basalt)" />
             <div style={{ fontSize: 13.5 }}>
-              <b>Your site inquiry is under active review.</b> You can see all conditions as they are proposed — including those pending lead agency approval. This is your real-time view of the process.
+              <b>Your site inquiry is under active review.</b> Conditions appear as proposed, including those pending lead agency approval.
             </div>
           </div>
 
@@ -842,7 +842,7 @@ function BuilderCaseView({ id }) {
               </div>
               {searched && caseId && !C && !dynCase && !dynLoading && (
                 <p style={{ marginTop: 12, color: '#C0392B', fontSize: 13.5 }}>
-                  Case {caseId} not found. Check the ID or submit a new inquiry above.
+                  Case {caseId} not found. Check the ID, or use the Submit tab to file a new inquiry.
                 </p>
               )}
             </div>
@@ -851,7 +851,7 @@ function BuilderCaseView({ id }) {
             <div>
               <h2 style={{ fontSize: 21, marginBottom: 4 }}>Register an existing permit</h2>
               <p style={{ color: 'var(--slate)', fontSize: 14, marginBottom: 20, lineHeight: 1.6 }}>
-                Already in permitting somewhere? Register it here. Use your own terminology — Merascope tracks from wherever you are.
+                Already in permitting somewhere? Register it here. Use your own terminology; Merascope tracks from wherever you are.
               </p>
 
               <div style={{ display: 'grid', gap: 16, maxWidth: 600 }}>
@@ -879,7 +879,7 @@ function BuilderCaseView({ id }) {
                 <div>
                   <div style={{ fontSize: 12.5, fontWeight: 650, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--slate)' }}>Current stage</div>
                   <p style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 8, lineHeight: 1.5 }}>
-                    Use your own terminology — or pick from suggestions.
+                    Use your own terminology, or pick from suggestions.
                   </p>
                   <datalist id="imp-stage-suggestions">
                     {(M.STAGES || []).map(function(s) { return <option key={s} value={s} />; })}
@@ -963,7 +963,7 @@ function BuilderCaseView({ id }) {
             <div>
               <h2 style={{ fontSize: 21, marginBottom: 4 }}>Submit a site inquiry</h2>
               <p style={{ color: 'var(--slate)', fontSize: 14, marginBottom: 20, lineHeight: 1.6 }}>
-                Select a saved site to auto-fill scores and detect the lead agency. Add your contact details and submit — the agency will reach out to begin their review process.
+                Select a saved site to auto-fill scores and detect the lead agency. Add your contact details and submit; the agency will contact you to open the review.
               </p>
 
               {/* saved cell picker */}

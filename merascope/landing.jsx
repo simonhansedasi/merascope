@@ -46,7 +46,7 @@ function EngineVisual() {
               <span style={{ fontSize: 11, color: 'var(--slate)' }}>{s.sub}</span>
             </div>
           ))}
-          <div style={{ fontSize: 11.5, color: 'var(--slate)', marginTop: 5 }}>+ 9 more · all public domain</div>
+          <div style={{ fontSize: 11.5, color: 'var(--slate)', marginTop: 5 }}>+ 14 more · all public domain</div>
         </div>
 
         <Arrow />
@@ -62,7 +62,7 @@ function EngineVisual() {
               <span className="score-serif" style={{ fontSize: 12, width: 32, textAlign: 'right', color: 'var(--ink)' }}>{ind.v.toFixed(2)}</span>
             </div>
           ))}
-          <div style={{ fontSize: 11.5, color: 'var(--slate)', marginTop: 5 }}>+ 9 more indicators</div>
+          <div style={{ fontSize: 11.5, color: 'var(--slate)', marginTop: 5 }}>+ 15 more indicators</div>
         </div>
 
         <Arrow />
@@ -121,7 +121,7 @@ function LandingPage() {
               One engine. One score.<br />For everyone.
             </h1>
             <p style={{ fontSize: 17, lineHeight: 1.6, color: 'var(--slate)', margin: '18px auto 28px', maxWidth: 560 }}>
-              Sixteen public data sources. Sixteen normalized indicators. One composite score per cell — methodology published, weights adjustable, scores identical for everyone in the room.
+              Twenty-one public sources. Twenty-two normalized indicators. One composite score per cell; methodology published, weights adjustable, scores identical for everyone in the room.
             </p>
             <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
               <a className="btn btn-primary" href="#/explorer" style={{ fontSize: 15, padding: '11px 22px' }}>Explore the live map — free</a>
@@ -139,12 +139,12 @@ function LandingPage() {
       <section style={{ padding: '30px 24px 0', maxWidth: 980, margin: '0 auto' }}>
         <div className="dual-doors" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 22 }}>
           <Door icon="gavel" h3="I review and approve projects"
-            body="You're staffing a moratorium study, reviewing an application, or writing the bill. The applicant arrives with consultants. You should arrive with more. Independent scoring, mandated-study workbenches, and a case system that turns hearings into records — built for agencies, counties, commissions, and tribal governments."
-            bullets={['Statewide atlases & report cards', 'The Docket: findings, conditions, rebuttals — versioned', 'Expert testimony backed by a scientific bench']}
+            body="You're staffing a moratorium study, reviewing an application, or writing the bill. The applicant arrives with consultants. You should arrive with more. Independent scoring, mandated-study workbenches, and a case system that turns hearings into records; built for agencies, counties, commissions, and tribal governments."
+            bullets={['Statewide atlases & report cards', 'The Docket: findings, conditions, rebuttals, versioned', 'Expert testimony backed by a scientific bench']}
             cta="Enter the Steward console" ctaHref="#/steward"
             micro="Entra ID single sign-on · procurement-friendly contracting" />
           <Door icon="pylon" h3="I site and build projects"
-            body="A siting mistake is a nine-figure mistake. Browse land the way Zillow browses homes — every parcel scored for water rights, grid access, hazard and insurance posture, community sentiment, and heat-reuse upside. The fastest path to power is the site nobody has to fight about."
+            body="A siting mistake is a nine-figure mistake. Browse land the way Zillow browses homes: every parcel scored for water rights, grid access, hazard and insurance posture, community sentiment, and heat-reuse upside. The fastest path to power is the site nobody has to fight about."
             bullets={['Parcel-grade listing cards & comparables', 'Watchlists with bill, rate-case & moratorium alerts', 'One-click board-ready dossiers']}
             cta="Enter the Builder workspace" ctaHref="#/builder"
             micro="Portfolio screening · field surveys proctored & tracked" />
@@ -185,9 +185,9 @@ function LandingPage() {
       <section style={{ padding: '58px 24px 10px', maxWidth: 1000, margin: '0 auto' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 26 }}>
           {[
-            ['1', 'SCORE', 'Nine indicators, normalized 0–1, weighted your way. Two hard gates no slider can override: unbuildable terrain and protected or sovereign land.'],
+            ['1', 'SCORE', 'Twenty-two indicators, normalized 0–1, weighted your way. Two hard gates no slider can override: FEMA flood zones and protected or sovereign land.'],
             ['2', 'SEE', 'From state report cards down to the parcel. Existing, proposed, and recommended sites on one continuous surface.'],
-            ['3', 'DECIDE', 'Dossiers for builders. Dockets for stewards. Fact sheets for everyone at the hearing — same numbers on every page.']
+            ['3', 'DECIDE', 'Dossiers for builders. Dockets for stewards. Fact sheets for everyone at the hearing; same numbers on every page.']
           ].map(([n, t, b]) => (
             <div key={n}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
@@ -206,7 +206,7 @@ function LandingPage() {
           <div style={{ flex: '1 1 380px' }}>
             <h3 style={{ fontSize: 22 }}>Every state gets a grade. Every claim gets checked.</h3>
             <p style={{ fontSize: 14.5, lineHeight: 1.65, color: 'var(--ink)', margin: '12px 0 16px' }}>
-              Our public report cards grade each state's data-center footprint on water durability, hazard exposure, grid posture, and community burden — and compare what companies claim against where they actually build. When a fleet advertises record water efficiency while its newest campuses cluster in the driest cells of the state, the map says so. Quotably.
+              Our public report cards grade each state's data-center footprint on water durability, hazard exposure, grid posture, and community burden, and compare what companies claim against where they actually build. When a fleet advertises record water efficiency while its newest campuses cluster in the driest cells of the state, the map says so. Quotably.
             </p>
             <a className="btn btn-ghost" href="#/explorer">See Washington's report card</a>
           </div>
@@ -225,7 +225,7 @@ function LandingPage() {
         <div className="callout" style={{ padding: '30px 34px' }}>
           <h3 style={{ fontSize: 22 }}>Not just where to avoid. Where it actually works.</h3>
           <p style={{ fontSize: 14.5, lineHeight: 1.65, margin: '12px 0 16px', maxWidth: 720 }}>
-            A data center is a furnace that happens to compute. Sited well, the heat warms greenhouses, drives carbon capture, and comes back as value instead of grievance. We score the upside too: energy additionality, heat-reuse radius, sequestration suitability — the map of where a data center makes its host community better off.
+            A data center is a furnace that happens to compute. Sited well, the heat warms greenhouses, drives carbon capture, and comes back as value instead of grievance. We score the upside too: energy additionality, heat-reuse radius, sequestration suitability; the map of where a data center makes its host community better off.
           </p>
           <a className="btn btn-quiet" href="#/explorer">Explore the opportunity layers</a>
         </div>
@@ -235,7 +235,7 @@ function LandingPage() {
       <section style={{ background: 'var(--evergreen)', color: '#fff', padding: '44px 24px', textAlign: 'center' }}>
         <h3 style={{ fontSize: 24 }}>Start with the public map. It's free, and it stays free.</h3>
         <p style={{ maxWidth: 620, margin: '12px auto 22px', fontSize: 14.5, lineHeight: 1.6, opacity: 0.92 }}>
-          The explorer, the indicators, the report cards, and the methodology are public — they're the point. Accounts add resolution, parcels, alerts, and workflow when you need them.
+          The explorer, the indicators, the report cards, and the methodology are public; they are the point. Accounts add resolution, parcels, alerts, and workflow when you need them.
         </p>
         <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
           <a className="btn" href="#/explorer" style={{ background: '#fff', color: 'var(--evergreen)' }}>Open the Explorer</a>
