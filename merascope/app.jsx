@@ -70,7 +70,14 @@ function App() {
 
   const DEMO_TTL_MS = 20 * 60 * 1000;
   const [demoActive, setDemoActive] = React.useState(function() {
-    try { var ts = parseInt(localStorage.getItem('mera_demo_ts') || '0'); return ts > 0 && (Date.now() - ts) < DEMO_TTL_MS; } catch (e) { return false; }
+    try {
+      var ts = parseInt(localStorage.getItem('mera_demo_ts') || '0');
+      if (ts > 0 && (Date.now() - ts) < DEMO_TTL_MS) return true;
+      if (ts > 0) {
+        ['mera_demo_ts','mera_saved_v1','mera_crm_v1','mera_tour_done','mera_steward_tour_done'].forEach(function(k) { localStorage.removeItem(k); });
+      }
+      return false;
+    } catch (e) { return false; }
   });
   React.useEffect(function() { window._setDemoActive = setDemoActive; }, []);
 

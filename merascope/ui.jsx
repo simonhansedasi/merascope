@@ -241,7 +241,7 @@ function FooterMain() {
         <hr className="hr-soft" style={{ margin: '26px 0 14px' }} />
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'space-between', alignItems: 'center' }}>
           <span className="microcopy">{M.DATA_SOURCES} · All scoring code reproducible — see the public repository.</span>
-          <span className="microcopy">© 2026 Merascope, Inc. · Delaware C Corp · {M.VERSION}</span>
+          <span className="microcopy">© 2026 Merascope · Edasi Mõtlev LLC · Washington · {M.VERSION}</span>
         </div>
       </div>
     </footer>
