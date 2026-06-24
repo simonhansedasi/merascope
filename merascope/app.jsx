@@ -72,6 +72,7 @@ function App() {
   const [demoActive, setDemoActive] = React.useState(function() {
     try { var ts = parseInt(localStorage.getItem('mera_demo_ts') || '0'); return ts > 0 && (Date.now() - ts) < DEMO_TTL_MS; } catch (e) { return false; }
   });
+  React.useEffect(function() { window._setDemoActive = setDemoActive; }, []);
 
   const [authUser, setAuthUser] = React.useState(null);
   React.useEffect(function() {
@@ -105,6 +106,7 @@ function App() {
   const [tourStep, setTourStep] = React.useState(() => {
     try { return localStorage.getItem('mera_tour_done') ? null : 0; } catch (e) { return null; }
   });
+  React.useEffect(function() { window._inTour = function() { return tourStep !== null; }; }, [tourStep]);
   const applyTourStep = step => {
     if (step.role === 'public') setRole('public');
     else if (step.role) setRole(step.role);
@@ -132,7 +134,7 @@ function App() {
 
   const [stewardTourStep, setStewardTourStep] = React.useState(null);
   React.useEffect(function() {
-    if (role === 'steward' && tourStep === null) {
+    if (role === 'steward' && authUser && tourStep === null) {
       try {
         if (!localStorage.getItem('mera_steward_tour_done')) setStewardTourStep(0);
       } catch (e) {}
@@ -197,10 +199,7 @@ function App() {
     : path.startsWith('/co-party') ? 'co-party'
     : null;
   if (need && role !== need) {
-    if (need === 'steward' && demoActive) {
-      if (path.startsWith('/steward/case/')) page = <CaseFilePage id={path.split('/')[3]} />;
-      else page = <DemoStewardDocket />;
-    } else {
+    if (!(need === 'steward' && demoActive)) {
       page = <AuthWall need={need} setRole={setRole} />;
     }
   }

@@ -20,7 +20,7 @@ echo "Building JSX..."
 npm run build
 
 echo "Syncing code to Hetzner..."
-rsync -av --checksum \
+rsync -av --checksum --delete \
   -e "ssh -i $HOME/.ssh/id_ed25519" \
   --exclude='.git/' \
   --exclude='__pycache__/' \
@@ -30,6 +30,7 @@ rsync -av --checksum \
   --exclude='merascope_log.db' \
   --exclude='merascope_test.db' \
   --exclude='data/' \
+  --exclude='docs/' \
   ./ \
   "$HETZNER:$REMOTE_DIR/"
 

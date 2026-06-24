@@ -39,16 +39,6 @@ def _check_rate_limit(ip):
         _rl_store[ip] = hits
     return True
 
-# In-memory demo case store — unauthenticated builder submissions land here
-# Each entry expires 20 minutes after creation (TTL enforced on read)
-DEMO_CASES    = []
-_demo_lock    = threading.Lock()
-DEMO_TTL_SEC  = 20 * 60
-
-def _clean_demo_cases():
-    cutoff = time.time() - DEMO_TTL_SEC
-    with _demo_lock:
-        DEMO_CASES[:] = [c for c in DEMO_CASES if c.get('_ts', 0) > cutoff]
 
 ROOT     = os.path.dirname(os.path.abspath(__file__))
 DOCS_DIR = os.path.join(ROOT, 'data', 'docs')
@@ -346,6 +336,23 @@ def init_db():
             zcta_code    TEXT,
             template_id  INTEGER REFERENCES steward_templates(id) ON DELETE SET NULL,
             created_at   TIMESTAMP DEFAULT NOW()
+        )''')
+
+        db.execute('''CREATE TABLE IF NOT EXISTS demo_cases (
+            id            SERIAL PRIMARY KEY,
+            case_id       TEXT UNIQUE NOT NULL,
+            site          TEXT,
+            applicant     TEXT,
+            score         REAL DEFAULT 0.5,
+            stage         TEXT DEFAULT 'Site Inquiry',
+            state_code    TEXT,
+            lat           REAL,
+            lon           REAL,
+            contact_name  TEXT,
+            contact_email TEXT,
+            lead_agency   TEXT,
+            notes         TEXT,
+            created_at    TIMESTAMP DEFAULT NOW()
         )''')
 
 
@@ -740,21 +747,21 @@ def builder_submit():
     stage              = (data.get('stage') or 'Site Inquiry').strip()
     imported    = 1 if data.get('imported') else 0
     user        = _session_user()
-    owner_email = user['email'] if user else None
 
     if not user:
-        _clean_demo_cases()
-        demo_id    = 'demo-{}'.format(secrets.token_hex(4))
-        session_id = (data.get('session_id') or '').strip()
-        with _demo_lock:
-            DEMO_CASES.append({
-                'case_id': demo_id, 'site': site, 'applicant': applicant,
-                'score': score, 'stage': stage, 'state_code': state_code,
-                'lat': lat, 'lon': lon, 'contact_name': contact_name,
-                'contact_email': contact_email, 'lead_agency': lead_agency,
-                'notes': notes, '_session': session_id, '_ts': time.time(),
-            })
+        demo_id = 'demo-{}'.format(secrets.token_hex(4))
+        with get_db() as db:
+            db.execute(
+                '''INSERT INTO demo_cases
+                   (case_id, site, applicant, score, stage, state_code, lat, lon,
+                    contact_name, contact_email, lead_agency, notes)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)''',
+                (demo_id, site, applicant, score, stage, state_code, lat, lon,
+                 contact_name, contact_email, lead_agency, notes)
+            )
         return jsonify({'ok': True, 'case_id': demo_id, 'is_demo': True})
+
+    owner_email = user['email']
 
     with get_db() as db:
         count   = db.execute('SELECT COUNT(*) as n FROM cases').fetchone()['n']
@@ -1663,31 +1670,55 @@ def gate_check():
     return jsonify(gates)
 
 
-# ── demo case store ───────────────────────────────────────────────────────────
+# ── demo case store (PostgreSQL — shared across all gunicorn workers) ──────────
 
 @app.route('/api/demo/cases')
 def demo_cases_list():
-    session_id = request.args.get('session', '')
-    _clean_demo_cases()
-    with _demo_lock:
-        cases = [{k: v for k, v in c.items() if not k.startswith('_')}
-                 for c in DEMO_CASES if c.get('_session') == session_id]
+    with get_db() as db:
+        cases = db.execute(
+            "SELECT * FROM demo_cases WHERE created_at > NOW() - INTERVAL '20 minutes' ORDER BY created_at DESC"
+        ).fetchall()
     return jsonify({'cases': cases, 'total': len(cases)})
+
+@app.route('/api/demo/case/<case_id>/stage', methods=['PATCH'])
+def demo_case_stage(case_id):
+    data  = request.get_json(silent=True) or {}
+    stage = (data.get('stage') or '').strip()
+    if not stage:
+        return jsonify({'ok': False, 'err': 'stage required'}), 400
+    with get_db() as db:
+        db.execute('UPDATE demo_cases SET stage=? WHERE case_id=?', (stage, case_id))
+    return jsonify({'ok': True})
 
 @app.route('/api/demo/case/<case_id>')
 def demo_case_get(case_id):
-    _clean_demo_cases()
-    with _demo_lock:
-        c = next((c for c in DEMO_CASES if c['case_id'] == case_id), None)
+    with get_db() as db:
+        c = db.execute(
+            "SELECT * FROM demo_cases WHERE case_id=? AND created_at > NOW() - INTERVAL '20 minutes'",
+            (case_id,)
+        ).fetchone()
     if not c:
         return jsonify({'ok': False, 'err': 'Demo case not found or expired (20-min TTL)'}), 404
-    return jsonify({k: v for k, v in c.items() if not k.startswith('_')})
+    return jsonify(c)
 
 # ── static file serving ────────────────────────────────────────────────────────
 
+def _bundle_version():
+    try:
+        return str(int(os.path.getmtime(os.path.join(ROOT, 'merascope', 'dist', 'bundle.js'))))
+    except Exception:
+        return '1'
+
 @app.route('/')
 def index():
-    return send_from_directory(ROOT, 'index.html')
+    with open(os.path.join(ROOT, 'index.html'), 'r') as f:
+        html = f.read().replace(
+            'merascope/dist/bundle.js"',
+            'merascope/dist/bundle.js?v=' + _bundle_version() + '"'
+        )
+    resp = Response(html, mimetype='text/html')
+    resp.headers['Cache-Control'] = 'no-store'
+    return resp
 
 @app.route('/<path:path>')
 def static_files(path):

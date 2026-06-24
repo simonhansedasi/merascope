@@ -65,7 +65,7 @@ function _agencyLabel(authUser) {
 
 function DocketPage() {
   const M = window.MERA;
-  const { authUser } = React.useContext(AuthCtx);
+  const { authUser, demoActive } = React.useContext(AuthCtx);
   const loading = useFakeLoad(700);
   const [dynamicCases, setDynamicCases] = React.useState([]);
   const [total, setTotal] = React.useState(0);
@@ -86,6 +86,16 @@ function DocketPage() {
   };
 
   React.useEffect(function() {
+    if (demoActive) {
+      fetch('/api/demo/cases')
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(d) {
+          var shaped = (d ? (d.cases || []) : []).map(_shapeDynamic);
+          setDynamicCases(shaped);
+          setTotal(shaped.length);
+        });
+      return;
+    }
     fetchCases(0, false);
     var detailIds = Object.keys(M.CASE_DETAIL_MAP || {});
     Promise.all(detailIds.map(function(cid) {
@@ -95,7 +105,7 @@ function DocketPage() {
       pairs.forEach(function(p) { if (p[1]) map[p[0]] = p[1]; });
       setStageOverrides(map);
     });
-  }, []);
+  }, [demoActive]);
 
   var loadMore = function() {
     setLoadingMore(true);
@@ -152,9 +162,14 @@ function DocketPage() {
         </div>
       )}
       <StewardSubNav active="docket" />
+      {demoActive && (
+        <div style={{ background: 'rgba(255,180,0,0.07)', border: '1.5px solid var(--amber)', borderRadius: 8, padding: '10px 16px', marginBottom: 16, fontSize: 13.5, color: 'var(--amber)' }}>
+          <b>Demo mode</b> — this is what your agency contact sees when you submit a site inquiry. <a href="#/login" style={{ color: 'var(--basalt)', fontWeight: 600 }}>Sign in</a> for a live account. Demo data resets every 20 minutes.
+        </div>
+      )}
       <PageHead title="The Docket"
-        sub={<span><span className="score-serif">{allCases.length}</span>{total > dynamicCases.length ? ' of ' + (M.CASES.length + total) : ''} active cases · {_agencyLabel(authUser)} · findings versioned from intake.</span>}
-        right={<React.Fragment><button className="btn btn-ghost btn-sm" onClick={() => setShowNewCase(true)}>New case file</button><PromiseBadge /></React.Fragment>} />
+        sub={<span><span className="score-serif">{allCases.length}</span>{total > dynamicCases.length ? ' of ' + (M.CASES.length + total) : ''} active cases · {demoActive ? 'Demo Agency' : _agencyLabel(authUser)} · findings versioned from intake.</span>}
+        right={demoActive ? null : <React.Fragment><button className="btn btn-ghost btn-sm" onClick={() => setShowNewCase(true)}>New case file</button><PromiseBadge /></React.Fragment>} />
       <div className="kanban">
         {M.STAGES.map(function(stage) {
           var cards = allCases.filter(function(c) { return c.stage === stage; });
@@ -286,7 +301,8 @@ function CaseFilePage({ id }) {
   };
 
   const advanceStage = stage => {
-    fetch('/api/case/' + id + '/stage', {
+    var stageUrl = isDemo ? '/api/demo/case/' + id + '/stage' : '/api/case/' + id + '/stage';
+    fetch(stageUrl, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ stage })
@@ -865,43 +881,4 @@ function CaseFilePage({ id }) {
   );
 }
 
-function DemoStewardDocket() {
-  const { ramp } = React.useContext(MeraCtx);
-  const M = window.MERA;
-  const [cases, setCases] = React.useState(null);
-
-  React.useEffect(function() {
-    var sid = window.MERA_SESSION || '';
-    fetch('/api/demo/cases?session=' + encodeURIComponent(sid))
-      .then(function(r) { return r.ok ? r.json() : null; })
-      .then(function(d) { setCases(d ? (d.cases || []) : []); });
-  }, []);
-
-  return (
-    <div style={{ maxWidth: 860, margin: '0 auto', padding: '32px 24px' }}>
-      <div style={{ background: 'rgba(255,180,0,0.07)', border: '1.5px solid var(--amber)', borderRadius: 8, padding: '12px 16px', marginBottom: 24, fontSize: 13.5, color: 'var(--amber)' }}>
-        <b>Demo mode</b> — this is what your agency contact sees when you submit a site inquiry. <a href="#/login" style={{ color: 'var(--basalt)', fontWeight: 600 }}>Sign in</a> for a live account. Demo data resets every 20 minutes.
-      </div>
-      <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16, color: 'var(--ink)' }}>Agency Docket <span style={{ fontSize: 13, fontWeight: 400, color: 'var(--slate)', marginLeft: 8 }}>Demo</span></h2>
-      {cases === null ? (
-        <div style={{ color: 'var(--slate)', fontSize: 14 }}>Loading…</div>
-      ) : cases.length === 0 ? (
-        <div style={{ color: 'var(--slate)', fontSize: 14 }}>No demo cases yet. <a href="#/builder" style={{ color: 'var(--basalt)' }}>Submit a site inquiry from the builder</a> to see it here.</div>
-      ) : cases.map(function(c) {
-        return (
-          <a key={c.case_id} href={'#/steward/case/' + c.case_id} style={{ display: 'block', textDecoration: 'none', background: 'var(--mist)', border: '1.5px solid var(--line)', borderRadius: 8, padding: '14px 18px', marginBottom: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-              <span style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--slate)' }}>{c.case_id}</span>
-              <span className="score-badge" style={{ background: M.rampColor(c.score, ramp), color: M.rampText(c.score, ramp), fontSize: 12 }}>{(c.score || 0).toFixed(3)}</span>
-            </div>
-            <div style={{ fontWeight: 650, fontSize: 15, color: 'var(--ink)' }}>{c.site}</div>
-            <div style={{ fontSize: 13, color: 'var(--slate)', marginTop: 3 }}>{c.applicant} &middot; {c.stage}</div>
-            <div style={{ marginTop: 8, fontSize: 12, fontWeight: 650, color: 'var(--basalt)' }}>Open the record &rarr;</div>
-          </a>
-        );
-      })}
-    </div>
-  );
-}
-
-Object.assign(window, { DocketPage, CaseFilePage, StewardSubNav, StageStepper, DemoStewardDocket });
+Object.assign(window, { DocketPage, CaseFilePage, StewardSubNav, StageStepper });

@@ -446,7 +446,7 @@ function BuilderCaseView({ id }) {
   const [rebuttalSent, setRebuttalSent] = React.useState(false);
   const [liveConditions, setLiveConditions] = React.useState(null);
   const [liveStage, setLiveStage] = React.useState(null);
-  const [mode, setMode] = React.useState('lookup');
+  const [mode, setMode] = React.useState(id ? 'lookup' : 'submit');
   const [dynCase, setDynCase] = React.useState(null);
   const [dynLoading, setDynLoading] = React.useState(false);
 
@@ -553,6 +553,7 @@ function BuilderCaseView({ id }) {
             .then(function(d) { if (d && d.case_id) setDynCase(d); });
           if (data.is_demo) {
             try { localStorage.setItem('mera_demo_ts', String(Date.now())); } catch (e) {}
+            if (typeof window._setDemoActive === 'function') window._setDemoActive(true);
           }
           location.hash = '#/builder/case/' + data.case_id;
           setToast(data.is_demo ? 'Demo submitted — sign in to file a real inquiry.' : 'Permit registered — Case ' + data.case_id + ' created.');
@@ -630,6 +631,7 @@ function BuilderCaseView({ id }) {
             .then(function(d) { if (d && d.case_id) setDynCase(d); });
           if (data.is_demo) {
             try { localStorage.setItem('mera_demo_ts', String(Date.now())); } catch (e) {}
+            if (typeof window._setDemoActive === 'function') window._setDemoActive(true);
           }
           location.hash = '#/builder/case/' + data.case_id;
           setToast(data.is_demo ? 'Demo submitted — sign in to file a real inquiry.' : 'Site inquiry submitted — Case ' + data.case_id + ' created.');

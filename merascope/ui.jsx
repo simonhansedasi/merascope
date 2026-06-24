@@ -283,43 +283,38 @@ function NotifyToast({ message, onDone }) {
 
 var TOUR_STEPS = [
   {
-    title: 'Welcome to Merascope',
-    body: 'Site suitability intelligence and permitting coordination for data centers. Three roles: Builder (applicant), Steward (lead regulatory agency), and Co-party (invited agencies: tribes, counties, utilities, AG). All three surfaces show identical scores. This tour takes about 3 minutes.',
-    action: null, nav: null, role: null
+    title: 'The siting map',
+    body: 'All 48 contiguous states scored across 22 indicators — transmission access, water availability, community burden, seismic risk, flood zones, soil chemistry, fiber connectivity, and more. Click any cell to see its composite score and indicator breakdown. Adjust the weight sliders to match your project priorities.',
+    action: 'Click a few cells. When you find a promising site, use the save button to add it to your workspace.',
+    nav: '#/explorer', role: 'builder'
   },
   {
-    title: 'Explorer — suitability map',
-    body: 'All 48 contiguous states are scored. Each cell shows a composite score across 22 indicators — transmission access, water availability, community burden, seismic risk, terrain, soil permeability, fiber connectivity, water stress, and more. Use the weight sliders to shift what matters most — scores update live. Save cells to your workspace with the star button.',
-    action: 'Try adjusting a weight slider, then click a cell.',
-    nav: '#/explorer', role: null
+    title: 'Your workspace',
+    body: 'Every site you save lands here. Select two or more cards and click Compare to see a full indicator-by-indicator breakdown — 16 signals, side by side, with the best score in each row highlighted.',
+    action: 'Toggle Compare on two or more cards to activate the comparison table.',
+    nav: '#/builder', role: 'builder'
   },
   {
-    title: 'Builder — application transparency',
-    body: 'Applicants look up their assigned case ID to see a read-only view of their regulatory review — every condition proposed, every finding versioned, the rebuttal clock, and the full document chain. Same numbers the agency sees. This is case 26-0142.',
-    action: 'Review the findings and conditions table.',
-    nav: '#/builder/case/26-0142', role: 'builder'
+    title: 'Submit a site inquiry',
+    body: 'Pick a saved site, fill in your contact details, and select a lead agency. Merascope routes your inquiry to the right permitting contact. No account needed — anonymous submissions go through as a demo so you can see the full workflow.',
+    action: "Fill out the form and click 'Submit site inquiry', then click Next →",
+    nav: '#/builder/case/', role: 'builder'
   },
   {
-    title: 'Steward — The Docket',
-    body: 'Lead agency view. You are now logged in as Dept. of Ecology. The kanban shows all active case files by stage. New case files can be created from the top right. Cases advance when you click the stage labels in the case file.',
-    action: 'Click the "26-0142" card to enter the case.',
+    title: 'The agency docket',
+    body: 'This is your submission, exactly as an agency reviewer sees it — scored, timestamped, and routed. Your inquiry landed here the moment you clicked submit. In a live account the reviewer gets a notification immediately.',
+    action: 'Click your case to open the shared case file.',
     nav: '#/steward', role: 'steward'
   },
   {
-    title: 'Case file — conditions and coordination',
-    body: 'Versioned findings, a live conditions table with inline status editing, a rebuttal clock with a date picker, document upload, and a co-party tracker derived from invited agencies. Click any stage label to advance the case. "Invite co-parties" opens a searchable national directory — filter by state and agency type.',
-    action: 'Try changing a condition status or clicking a stage label.',
-    nav: '#/steward/case/26-0142', role: 'steward'
+    title: 'The shared case file',
+    body: 'From here, an agency reviewer can confirm intake with a tracking number, invite co-parties, propose conditions, and advance the case through permitting stages. The builder and all invited parties see every update in real time.',
+    action: 'Explore the case details, or use the tabs at the top to see other steward surfaces.',
+    nav: null, role: null
   },
   {
-    title: 'Co-party view — CTUIR',
-    body: 'You are now logged in as CTUIR, a tribal co-party on this case. The docket shows only cases where CTUIR is invited. Open case 26-0142 and propose a condition — it lands in the lead agency queue as "Pending lead approval." Switch back to steward to approve it.',
-    action: 'Open the case and use "Propose condition."',
-    nav: '#/co-party', role: 'co-party', partyKey: 'CT'
-  },
-  {
-    title: 'Tour complete',
-    body: "That's the full loop. Builder sees the process transparently. Co-parties propose conditions. Steward coordinates, negotiates, and advances the case through permitting stages. All three surfaces show the same score. No party gets a friendlier number.",
+    title: "You've seen the full loop",
+    body: "Builder submits → Merascope scores and routes → Agency opens a shared case → All parties coordinate conditions in one place. Sign in to file a real site inquiry.",
     action: null, nav: null, role: null, done: true
   }
 ];
@@ -335,7 +330,7 @@ function TourOverlay({ tourStep, onStart, onNext, onBack, onSkip }) {
             <Icon name="rings" size={26} color="var(--basalt)" />
           </div>
           <h2 style={{ fontSize: 22, marginBottom: 10 }}>Welcome to Merascope</h2>
-          <p style={{ color: 'var(--slate)', fontSize: 14.5, lineHeight: 1.65, marginBottom: 26 }}>A guided 3-minute tour walks through all three surfaces — Builder, Steward, and Co-party — and the conditions negotiation loop that connects them.</p>
+          <p style={{ color: 'var(--slate)', fontSize: 14.5, lineHeight: 1.65, marginBottom: 26 }}>A 3-minute walkthrough of a complete siting workflow — explore the map, save and compare sites, submit a site inquiry, and watch it land on the agency docket in real time.</p>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
             <button className="btn btn-primary" onClick={onStart}>Take the tour</button>
             <button className="btn btn-quiet" onClick={onSkip}>Explore on my own</button>
