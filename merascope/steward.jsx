@@ -250,6 +250,10 @@ function CaseFilePage({ id }) {
   const [dynLoading, setDynLoading] = React.useState(isDynamic);
   const [trackingInput, setTrackingInput] = React.useState('');
   const [confirming, setConfirming] = React.useState(false);
+  const [caseStudies, setCaseStudies] = React.useState([]);
+  const [mandateForm, setMandateForm] = React.useState(false);
+  const [mandateTemplate, setMandateTemplate] = React.useState('Water-availability assessment');
+  const MANDATE_TEMPLATES = ['Moratorium impact study — NY-style', 'Application review scorecard', 'Water-availability assessment', 'Rate-impact memorandum'];
 
   var handleConfirm = function() {
     setConfirming(true);
@@ -349,6 +353,7 @@ function CaseFilePage({ id }) {
     fetch('/api/case/' + id + '/deadline').then(r => r.json()).then(d => { if (d) setDeadline(d); });
     fetch('/api/case/' + id + '/stage').then(r => r.json()).then(s => { if (s) setCaseStage(s); });
     fetch('/api/case/' + id + '/rebuttals').then(r => r.json()).then(setServerRebuttals);
+    fetch('/api/studies?case_id=' + id).then(r => r.json()).then(setCaseStudies);
   }, [id]);
 
   React.useEffect(() => {
@@ -378,6 +383,21 @@ function CaseFilePage({ id }) {
       setDraft({ text: '', type: 'Water' });
       setShowForm(false);
       notify(isCoParty ? 'Sent to lead agency for review' : 'Co-parties notified');
+    });
+  };
+
+  const mandateStudy = function() {
+    const due = new Date(Date.now() + 180 * 86400000).toISOString().slice(0, 10);
+    fetch('/api/studies', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: mandateTemplate, case_id: id, body: 'Mandated', due })
+    }).then(r => r.json()).then(function(res) {
+      if (res.ok) {
+        setCaseStudies(ss => [...ss, { id: res.id, name: mandateTemplate, body: 'Mandated', due }]);
+        setMandateForm(false);
+        notify('Study mandated — 180-day deadline set.');
+      }
     });
   };
 
@@ -875,6 +895,39 @@ function CaseFilePage({ id }) {
             )}
             <button className="btn btn-quiet btn-xs" style={{ marginTop: 6, width: '100%' }} onClick={exportEvidentiary}>Export evidentiary record</button>
           </div>
+
+          {isLead && !isDemo && (
+            <div className="panel" style={{ padding: '14px 16px' }}>
+              <b style={{ fontSize: 12, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--slate)' }}>Mandated studies</b>
+              {caseStudies.length > 0 && (
+                <div style={{ display: 'grid', gap: 8, marginTop: 9 }}>
+                  {caseStudies.map(function(s) {
+                    var days = Math.round((new Date(s.due) - Date.now()) / 86400000);
+                    return (
+                      <div key={s.id}>
+                        <div style={{ fontSize: 13, fontWeight: 600 }}>{s.name}</div>
+                        <div className="microcopy" style={{ color: days < 30 ? '#C0392B' : 'var(--slate)' }}>{days} days to deadline</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {mandateForm ? (
+                <div style={{ marginTop: 10, display: 'grid', gap: 7 }}>
+                  <select value={mandateTemplate} onChange={e => setMandateTemplate(e.target.value)}
+                    style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--sand)', color: 'inherit', fontSize: 12, fontFamily: 'inherit' }}>
+                    {MANDATE_TEMPLATES.map(t => <option key={t}>{t}</option>)}
+                  </select>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button className="btn btn-primary btn-xs" onClick={mandateStudy}>Mandate</button>
+                    <button className="btn btn-quiet btn-xs" onClick={() => setMandateForm(false)}>Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <button className="btn btn-quiet btn-xs" style={{ marginTop: caseStudies.length > 0 ? 10 : 9, width: '100%' }} onClick={() => setMandateForm(true)}>+ Mandate a study</button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

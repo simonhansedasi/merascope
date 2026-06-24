@@ -414,7 +414,7 @@ window.serverLog = function(eventType, fid, payload) {
   ];
 
   /* ── steward docket ── */
-  var STAGES = ['Site Inquiry', 'Intake', 'Analysis', 'Findings Exchange', 'Negotiation', 'Rebuttal Cycle', 'Resolution'];
+  var STAGES = ['Site Inquiry', 'Intake', 'Analysis', 'Findings Exchange', 'Negotiation', 'Rebuttal Cycle', 'Mediation', 'Resolution'];
   var CASES = [];
   var PARTY_NAMES = { KC: 'Klickitat County', YN: 'Yakama Nation', PUD: 'Public Utility District', GC: 'Grant County', BC: 'Benton County', AG: 'Attorney General', CT: 'CTUIR', WW: 'Walla Walla County', UT: 'Serving utility', SC: 'Spokane County' };
 

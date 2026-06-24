@@ -338,6 +338,9 @@ def init_db():
             created_at   TIMESTAMP DEFAULT NOW()
         )''')
 
+        db.execute("ALTER TABLE studies ADD COLUMN IF NOT EXISTS case_id TEXT")
+        db.execute("ALTER TABLE studies DROP CONSTRAINT IF EXISTS studies_name_key")
+
         db.execute('''CREATE TABLE IF NOT EXISTS demo_cases (
             id            SERIAL PRIMARY KEY,
             case_id       TEXT UNIQUE NOT NULL,
@@ -864,14 +867,26 @@ def get_impasse_routes():
 
 @app.route('/api/impasse/route', methods=['POST'])
 def add_impasse_route():
-    data = request.get_json(silent=True) or {}
-    key  = (data.get('key') or '').strip()
+    data    = request.get_json(silent=True) or {}
+    key     = (data.get('key') or '').strip()
+    case_id = (data.get('case_id') or '').strip()
     if not key:
         return jsonify({'ok': False, 'err': 'key required'}), 400
     with get_db() as db:
         db.execute(
             'INSERT INTO case_impasse_routes (item_key) VALUES (?) ON CONFLICT DO NOTHING', (key,)
         )
+        if case_id:
+            db.execute(
+                "UPDATE cases SET stage='Mediation' WHERE case_id=? AND stage != 'Mediation'",
+                (case_id,)
+            )
+            db.execute(
+                '''INSERT INTO event_log (session_id, fid, event_type, payload_json)
+                   VALUES (?,?,?,?)''',
+                ('', case_id, 'status_change',
+                 json.dumps({'stage': 'Mediation', 'note': 'Routed to mediation via impasse register'}))
+            )
     return jsonify({'ok': True})
 
 
@@ -895,20 +910,29 @@ def get_impasse_items():
 
 @app.route('/api/studies')
 def get_studies():
+    case_id = request.args.get('case_id') or None
     with get_db() as db:
-        rows = db.execute('SELECT * FROM studies ORDER BY ts DESC').fetchall()
+        if case_id:
+            rows = db.execute(
+                'SELECT * FROM studies WHERE case_id=? ORDER BY ts DESC', (case_id,)
+            ).fetchall()
+        else:
+            rows = db.execute(
+                'SELECT * FROM studies WHERE case_id IS NULL ORDER BY ts DESC'
+            ).fetchall()
     return jsonify(rows)
 
 @app.route('/api/studies', methods=['POST'])
 def add_study():
-    data = request.get_json(silent=True) or {}
-    name = (data.get('name') or '').strip()
+    data    = request.get_json(silent=True) or {}
+    name    = (data.get('name') or '').strip()
+    case_id = (data.get('case_id') or None)
     if not name:
         return jsonify({'ok': False, 'err': 'name required'}), 400
     with get_db() as db:
         cur = db.execute(
-            'INSERT INTO studies (name, body, due) VALUES (?,?,?) ON CONFLICT (name) DO NOTHING RETURNING id',
-            (name, data.get('body', ''), data.get('due', ''))
+            'INSERT INTO studies (name, body, due, case_id) VALUES (?,?,?,?) RETURNING id',
+            (name, data.get('body', ''), data.get('due', ''), case_id)
         )
         new_id = cur.lastrowid
     return jsonify({'ok': True, 'id': new_id})

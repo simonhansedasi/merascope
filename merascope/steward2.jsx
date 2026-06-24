@@ -15,11 +15,11 @@ function ImpassePage() {
     });
   }, []);
 
-  const routeToMediation = key => {
+  const routeToMediation = (key, caseId) => {
     fetch('/api/impasse/route', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key })
+      body: JSON.stringify({ key, case_id: caseId })
     });
     setRouted(r => Object.assign({}, r, { [key]: true }));
   };
@@ -60,7 +60,7 @@ function ImpassePage() {
                       <td>
                         {done
                           ? <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--evergreen)' }}>Routed</span>
-                          : <button className="btn btn-quiet btn-xs" onClick={e => { e.stopPropagation(); routeToMediation(key); }}>Route to mediation</button>}
+                          : <button className="btn btn-quiet btn-xs" onClick={e => { e.stopPropagation(); routeToMediation(key, im.case_id); }}>Route to mediation</button>}
                       </td>
                     </tr>
                   );
