@@ -1,1 +1,0 @@
-../contexts/merascope/CONTEXT.md

@@ -1,1 +1,0 @@
-../contexts/merascope/CLAUDE.md
