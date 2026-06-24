@@ -475,7 +475,7 @@ function WAMap({ weights, selectedState = null, selectedCells = null, onCellTogg
   const tooltip = hover && interactive && (() => {
     const p = hover;
     const isGated = p.protected_score === 0;
-    const ind = propsToInd(p);
+    const ind = propsToInd(p, !selectedStateRef.current);
     const score = M.composite(ind, weights);
     const cw = containerRef.current ? containerRef.current.clientWidth  : 800;
     const ch = containerRef.current ? containerRef.current.clientHeight : 480;

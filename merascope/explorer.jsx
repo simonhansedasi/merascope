@@ -357,7 +357,7 @@ function TileCard({ feats, weights, selectedState }) {
   const pi = window.propsToInd;
   let avgComposite = null;
   if (pi && M && weights) {
-    const scores = feats.map(f => M.composite(pi(f.properties, true), weights));
+    const scores = feats.map(f => M.composite(pi(f.properties, !selectedState), weights));
     avgComposite = scores.reduce((a, b) => a + b, 0) / scores.length;
   }
 
@@ -367,7 +367,8 @@ function TileCard({ feats, weights, selectedState }) {
   };
 
   const hasNat = props[0] && props[0].tx_score_nat != null;
-  const sc = base => hasNat ? base + '_nat' : base;
+  const useNat = !selectedState && hasNat;
+  const sc = base => useNat ? base + '_nat' : base;
 
   const INDS_DISPLAY = [
     { k: 'Transmission',       base: 'tx_score',            raw: 'tx_dist_m',        rLabel: 'Tx distance',   rUnit: 'km',    rFmt: v => (v / 1000).toFixed(1) },
@@ -406,7 +407,7 @@ function TileCard({ feats, weights, selectedState }) {
   const floodPass = props.every(p => (p.flood_score || 0) > 0);
 
   const stateName = selectedState && window.STATE_NAMES ? window.STATE_NAMES[selectedState] : null;
-  const scale = hasNat ? 'national' : 'state';
+  const scale = useNat ? 'national' : 'state';
 
   const Gate = ({ pass, label }) => (
     <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 10, fontWeight: 700,
