@@ -488,7 +488,8 @@ function BuilderCaseView({ id }) {
   React.useEffect(() => {
     if (!id || C) return;
     setDynLoading(true);
-    fetch('/api/builder/case/' + id)
+    var url = (id || '').startsWith('demo-') ? '/api/demo/case/' + id : '/api/builder/case/' + id;
+    fetch(url)
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data && data.case_id) setDynCase(data); })
       .finally(() => setDynLoading(false));
@@ -533,6 +534,7 @@ function BuilderCaseView({ id }) {
       payload.lat = parseFloat(impForm.lat);
       payload.lon = parseFloat(impForm.lon);
     }
+    payload.session_id = window.MERA_SESSION || '';
     fetch('/api/builder/submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -545,11 +547,15 @@ function BuilderCaseView({ id }) {
           setSearched(true);
           setMode('lookup');
           setDynCase(null);
-          fetch('/api/builder/case/' + data.case_id)
+          var caseUrl = data.is_demo ? '/api/demo/case/' + data.case_id : '/api/builder/case/' + data.case_id;
+          fetch(caseUrl)
             .then(function(r) { return r.ok ? r.json() : null; })
             .then(function(d) { if (d && d.case_id) setDynCase(d); });
+          if (data.is_demo) {
+            try { localStorage.setItem('mera_demo_ts', String(Date.now())); } catch (e) {}
+          }
           location.hash = '#/builder/case/' + data.case_id;
-          setToast('Permit registered — Case ' + data.case_id + ' created.');
+          setToast(data.is_demo ? 'Demo submitted — sign in to file a real inquiry.' : 'Permit registered — Case ' + data.case_id + ' created.');
         } else {
           setSubError(data.err || 'Import failed. Please try again.');
         }
@@ -564,7 +570,8 @@ function BuilderCaseView({ id }) {
     if (C) { location.hash = '#/builder/case/' + caseId; return; }
     if (!caseId) return;
     setDynLoading(true);
-    fetch('/api/builder/case/' + caseId)
+    var url = (caseId || '').startsWith('demo-') ? '/api/demo/case/' + caseId : '/api/builder/case/' + caseId;
+    fetch(url)
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data && data.case_id) setDynCase(data); })
       .finally(() => setDynLoading(false));
@@ -604,6 +611,7 @@ function BuilderCaseView({ id }) {
       payload.lon        = selCell.lon;
       payload.state_code = selCell.properties._state || '';
     }
+    payload.session_id = window.MERA_SESSION || '';
     fetch('/api/builder/submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -616,11 +624,15 @@ function BuilderCaseView({ id }) {
           setSearched(true);
           setMode('lookup');
           setDynCase(null);
-          fetch('/api/builder/case/' + data.case_id)
+          var caseUrl = data.is_demo ? '/api/demo/case/' + data.case_id : '/api/builder/case/' + data.case_id;
+          fetch(caseUrl)
             .then(function(r) { return r.ok ? r.json() : null; })
             .then(function(d) { if (d && d.case_id) setDynCase(d); });
+          if (data.is_demo) {
+            try { localStorage.setItem('mera_demo_ts', String(Date.now())); } catch (e) {}
+          }
           location.hash = '#/builder/case/' + data.case_id;
-          setToast('Site inquiry submitted — Case ' + data.case_id + ' created.');
+          setToast(data.is_demo ? 'Demo submitted — sign in to file a real inquiry.' : 'Site inquiry submitted — Case ' + data.case_id + ' created.');
         } else {
           setSubError(data.err || 'Submission failed. Please try again.');
         }
@@ -744,10 +756,23 @@ function BuilderCaseView({ id }) {
         <div>
           <div style={{ marginBottom: 14, display: 'flex', gap: 10, alignItems: 'center' }}>
             <button className="btn btn-quiet btn-sm" onClick={() => { setDynCase(null); setCaseId(''); setSearched(false); location.hash = '#/builder/case/'; }}>Look up a different case</button>
-            {dynCase.imported ? <Chip tone="basalt">Imported</Chip> : <Chip tone="slate">In intake</Chip>}
+            {(dynCase.case_id || '').startsWith('demo-')
+              ? <Chip tone="amber">Demo</Chip>
+              : dynCase.imported ? <Chip tone="basalt">Imported</Chip> : <Chip tone="slate">In intake</Chip>}
           </div>
 
-          {dynCase.confirmed_at ? (
+          {(dynCase.case_id || '').startsWith('demo-') && (
+            <div className="callout" style={{ padding: '12px 16px', marginBottom: 16, background: 'rgba(255,180,0,0.08)', border: '1px solid var(--amber)', borderRadius: 8 }}>
+              <div style={{ fontSize: 13.5, color: 'var(--amber)' }}>
+                <b>Demo mode.</b> This is a preview — your inquiry was not filed with any agency. <a href="#/login" style={{ color: 'var(--basalt)', fontWeight: 600 }}>Sign in</a> to submit a real site inquiry.
+              </div>
+              <div style={{ marginTop: 8 }}>
+                <a href="#/steward" style={{ fontSize: 13, fontWeight: 650, color: 'var(--basalt)' }}>View as agency steward &rarr;</a>
+              </div>
+            </div>
+          )}
+
+          {!(dynCase.case_id || '').startsWith('demo-') && (dynCase.confirmed_at ? (
             <div className="callout" style={{ padding: '12px 16px', marginBottom: 16, display: 'flex', gap: 12, alignItems: 'flex-start', background: 'var(--lo-bg)', border: '1px solid var(--lo-tx)' }}>
               <div style={{ fontSize: 13.5, color: 'var(--lo-tx)' }}>
                 <b>Case accepted{dynCase.lead_agency ? ' by ' + _resolveAgency(dynCase.lead_agency) : ''}.</b>
@@ -764,7 +789,7 @@ function BuilderCaseView({ id }) {
                   : <span><b>Site inquiry received.</b> Awaiting agency confirmation. Once confirmed, you will see their tracking number here.</span>}
               </div>
             </div>
-          )}
+          ))}
 
           <div className="card" style={{ padding: '18px 22px', marginBottom: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>

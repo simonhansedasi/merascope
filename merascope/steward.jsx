@@ -304,6 +304,8 @@ function CaseFilePage({ id }) {
     setCaseStage(C.stage);
     setServerRebuttals([]);
 
+    if ((id || '').startsWith('demo-')) return;
+
     fetch('/api/case/' + id + '/conditions')
       .then(r => r.json())
       .then(list => {
@@ -336,7 +338,8 @@ function CaseFilePage({ id }) {
   React.useEffect(() => {
     if (!isDynamic) return;
     setDynLoading(true);
-    fetch('/api/builder/case/' + id)
+    var url = (id || '').startsWith('demo-') ? '/api/demo/case/' + id : '/api/builder/case/' + id;
+    fetch(url)
       .then(r => r.ok ? r.json() : null)
       .then(data => { setDynCase(data && data.case_id ? data : null); })
       .finally(() => setDynLoading(false));
@@ -485,18 +488,27 @@ function CaseFilePage({ id }) {
       );
     }
     const dc = dynCase;
+    const isDemo = (id || '').startsWith('demo-');
     return (
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '22px 24px 50px' }} data-screen-label="Steward -- Intake case">
         {toast && <NotifyToast message={toast} onDone={() => setToast(null)} />}
         <a href="#/steward" className="btn btn-quiet btn-sm" style={{ marginBottom: 16, display: 'inline-block' }}>Back to Docket</a>
 
-        <div className="callout" style={{ padding: '12px 16px', marginBottom: 16, display: 'flex', gap: 12, alignItems: 'flex-start', background: 'var(--med-bg)', border: '1px solid var(--med-tx)' }}>
-          <div style={{ fontSize: 13.5, color: 'var(--med-tx)' }}>
-            {dc.imported
-              ? <span><b>Builder-registered permit.</b> The applicant has brought an existing permitting pipeline into Merascope. Review their documents and advance the stage to formally open the case.</span>
-              : <span><b>New site inquiry received.</b> Review the submission and advance the stage to formally open the case.</span>}
+        {isDemo ? (
+          <div className="callout" style={{ padding: '12px 16px', marginBottom: 16, background: 'rgba(255,180,0,0.07)', border: '1.5px solid var(--amber)', borderRadius: 8 }}>
+            <div style={{ fontSize: 13.5, color: 'var(--amber)' }}>
+              <b>Demo mode</b> — this is your agency's view of the submission. No record was created. <a href="#/login" style={{ color: 'var(--basalt)', fontWeight: 600 }}>Sign in</a> to file a real inquiry.
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="callout" style={{ padding: '12px 16px', marginBottom: 16, display: 'flex', gap: 12, alignItems: 'flex-start', background: 'var(--med-bg)', border: '1px solid var(--med-tx)' }}>
+            <div style={{ fontSize: 13.5, color: 'var(--med-tx)' }}>
+              {dc.imported
+                ? <span><b>Builder-registered permit.</b> The applicant has brought an existing permitting pipeline into Merascope. Review their documents and advance the stage to formally open the case.</span>
+                : <span><b>New site inquiry received.</b> Review the submission and advance the stage to formally open the case.</span>}
+            </div>
+          </div>
+        )}
 
         <div className="card" style={{ padding: '18px 22px', marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
@@ -550,7 +562,15 @@ function CaseFilePage({ id }) {
         <DocSection caseId={dc.case_id} />
 
         <div style={{ marginTop: 20, display: 'grid', gap: 12 }}>
-          {!dc.confirmed_at ? (
+          {!isDemo && (dc.confirmed_at ? (
+            <div className="card" style={{ padding: '14px 16px', background: 'var(--lo-bg)', border: '1px solid var(--lo-tx)' }}>
+              <div style={{ fontSize: 11, color: 'var(--lo-tx)', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 4, fontWeight: 700 }}>Case confirmed</div>
+              {dc.agency_tracking_id && (
+                <div style={{ fontWeight: 650, fontSize: 14, fontFamily: 'monospace', color: 'var(--ink)' }}>{dc.agency_tracking_id}</div>
+              )}
+              <div style={{ fontSize: 12, color: 'var(--slate)', marginTop: 2 }}>{dc.confirmed_at ? dc.confirmed_at.substring(0, 10) : ''}</div>
+            </div>
+          ) : (
             <div className="card" style={{ padding: '16px 20px' }}>
               <b style={{ fontSize: 14 }}>Confirm case &amp; assign tracking number</b>
               <p className="microcopy" style={{ margin: '4px 0 12px', lineHeight: 1.5 }}>
@@ -566,15 +586,7 @@ function CaseFilePage({ id }) {
                 </button>
               </div>
             </div>
-          ) : (
-            <div className="card" style={{ padding: '14px 16px', background: 'var(--lo-bg)', border: '1px solid var(--lo-tx)' }}>
-              <div style={{ fontSize: 11, color: 'var(--lo-tx)', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 4, fontWeight: 700 }}>Case confirmed</div>
-              {dc.agency_tracking_id && (
-                <div style={{ fontWeight: 650, fontSize: 14, fontFamily: 'monospace', color: 'var(--ink)' }}>{dc.agency_tracking_id}</div>
-              )}
-              <div style={{ fontSize: 12, color: 'var(--slate)', marginTop: 2 }}>{dc.confirmed_at ? dc.confirmed_at.substring(0, 10) : ''}</div>
-            </div>
-          )}
+          ))}
 
           <div className="card" style={{ padding: '16px 20px' }}>
             <b style={{ fontSize: 14 }}>Advance stage</b>
@@ -853,4 +865,43 @@ function CaseFilePage({ id }) {
   );
 }
 
-Object.assign(window, { DocketPage, CaseFilePage, StewardSubNav, StageStepper });
+function DemoStewardDocket() {
+  const { ramp } = React.useContext(MeraCtx);
+  const M = window.MERA;
+  const [cases, setCases] = React.useState(null);
+
+  React.useEffect(function() {
+    var sid = window.MERA_SESSION || '';
+    fetch('/api/demo/cases?session=' + encodeURIComponent(sid))
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(d) { setCases(d ? (d.cases || []) : []); });
+  }, []);
+
+  return (
+    <div style={{ maxWidth: 860, margin: '0 auto', padding: '32px 24px' }}>
+      <div style={{ background: 'rgba(255,180,0,0.07)', border: '1.5px solid var(--amber)', borderRadius: 8, padding: '12px 16px', marginBottom: 24, fontSize: 13.5, color: 'var(--amber)' }}>
+        <b>Demo mode</b> — this is what your agency contact sees when you submit a site inquiry. <a href="#/login" style={{ color: 'var(--basalt)', fontWeight: 600 }}>Sign in</a> for a live account. Demo data resets every 20 minutes.
+      </div>
+      <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16, color: 'var(--ink)' }}>Agency Docket <span style={{ fontSize: 13, fontWeight: 400, color: 'var(--slate)', marginLeft: 8 }}>Demo</span></h2>
+      {cases === null ? (
+        <div style={{ color: 'var(--slate)', fontSize: 14 }}>Loading…</div>
+      ) : cases.length === 0 ? (
+        <div style={{ color: 'var(--slate)', fontSize: 14 }}>No demo cases yet. <a href="#/builder" style={{ color: 'var(--basalt)' }}>Submit a site inquiry from the builder</a> to see it here.</div>
+      ) : cases.map(function(c) {
+        return (
+          <a key={c.case_id} href={'#/steward/case/' + c.case_id} style={{ display: 'block', textDecoration: 'none', background: 'var(--mist)', border: '1.5px solid var(--line)', borderRadius: 8, padding: '14px 18px', marginBottom: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <span style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--slate)' }}>{c.case_id}</span>
+              <span className="score-badge" style={{ background: M.rampColor(c.score, ramp), color: M.rampText(c.score, ramp), fontSize: 12 }}>{(c.score || 0).toFixed(3)}</span>
+            </div>
+            <div style={{ fontWeight: 650, fontSize: 15, color: 'var(--ink)' }}>{c.site}</div>
+            <div style={{ fontSize: 13, color: 'var(--slate)', marginTop: 3 }}>{c.applicant} &middot; {c.stage}</div>
+            <div style={{ marginTop: 8, fontSize: 12, fontWeight: 650, color: 'var(--basalt)' }}>Open the record &rarr;</div>
+          </a>
+        );
+      })}
+    </div>
+  );
+}
+
+Object.assign(window, { DocketPage, CaseFilePage, StewardSubNav, StageStepper, DemoStewardDocket });

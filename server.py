@@ -38,6 +38,18 @@ def _check_rate_limit(ip):
         hits.append(now)
         _rl_store[ip] = hits
     return True
+
+# In-memory demo case store — unauthenticated builder submissions land here
+# Each entry expires 20 minutes after creation (TTL enforced on read)
+DEMO_CASES    = []
+_demo_lock    = threading.Lock()
+DEMO_TTL_SEC  = 20 * 60
+
+def _clean_demo_cases():
+    cutoff = time.time() - DEMO_TTL_SEC
+    with _demo_lock:
+        DEMO_CASES[:] = [c for c in DEMO_CASES if c.get('_ts', 0) > cutoff]
+
 ROOT     = os.path.dirname(os.path.abspath(__file__))
 DOCS_DIR = os.path.join(ROOT, 'data', 'docs')
 
@@ -729,6 +741,21 @@ def builder_submit():
     imported    = 1 if data.get('imported') else 0
     user        = _session_user()
     owner_email = user['email'] if user else None
+
+    if not user:
+        _clean_demo_cases()
+        demo_id    = 'demo-{}'.format(secrets.token_hex(4))
+        session_id = (data.get('session_id') or '').strip()
+        with _demo_lock:
+            DEMO_CASES.append({
+                'case_id': demo_id, 'site': site, 'applicant': applicant,
+                'score': score, 'stage': stage, 'state_code': state_code,
+                'lat': lat, 'lon': lon, 'contact_name': contact_name,
+                'contact_email': contact_email, 'lead_agency': lead_agency,
+                'notes': notes, '_session': session_id, '_ts': time.time(),
+            })
+        return jsonify({'ok': True, 'case_id': demo_id, 'is_demo': True})
+
     with get_db() as db:
         count   = db.execute('SELECT COUNT(*) as n FROM cases').fetchone()['n']
         yr      = datetime.now().strftime('%y')
@@ -1635,6 +1662,26 @@ def gate_check():
             })
     return jsonify(gates)
 
+
+# ── demo case store ───────────────────────────────────────────────────────────
+
+@app.route('/api/demo/cases')
+def demo_cases_list():
+    session_id = request.args.get('session', '')
+    _clean_demo_cases()
+    with _demo_lock:
+        cases = [{k: v for k, v in c.items() if not k.startswith('_')}
+                 for c in DEMO_CASES if c.get('_session') == session_id]
+    return jsonify({'cases': cases, 'total': len(cases)})
+
+@app.route('/api/demo/case/<case_id>')
+def demo_case_get(case_id):
+    _clean_demo_cases()
+    with _demo_lock:
+        c = next((c for c in DEMO_CASES if c['case_id'] == case_id), None)
+    if not c:
+        return jsonify({'ok': False, 'err': 'Demo case not found or expired (20-min TTL)'}), 404
+    return jsonify({k: v for k, v in c.items() if not k.startswith('_')})
 
 # ── static file serving ────────────────────────────────────────────────────────
 

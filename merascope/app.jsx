@@ -68,6 +68,11 @@ function App() {
   const setRole = function(r) { setRoleState(r); try { localStorage.setItem('mera_role', r); } catch (e) { } };
   const partyKey = (function() { try { return localStorage.getItem('mera_party_key') || ''; } catch (e) { return ''; } })();
 
+  const DEMO_TTL_MS = 20 * 60 * 1000;
+  const [demoActive, setDemoActive] = React.useState(function() {
+    try { var ts = parseInt(localStorage.getItem('mera_demo_ts') || '0'); return ts > 0 && (Date.now() - ts) < DEMO_TTL_MS; } catch (e) { return false; }
+  });
+
   const [authUser, setAuthUser] = React.useState(null);
   React.useEffect(function() {
     window.refreshActiveZones = function() {
@@ -191,11 +196,18 @@ function App() {
     : path.startsWith('/steward') ? 'steward'
     : path.startsWith('/co-party') ? 'co-party'
     : null;
-  if (need && role !== need) page = <AuthWall need={need} setRole={setRole} />;
+  if (need && role !== need) {
+    if (need === 'steward' && demoActive) {
+      if (path.startsWith('/steward/case/')) page = <CaseFilePage id={path.split('/')[3]} />;
+      else page = <DemoStewardDocket />;
+    } else {
+      page = <AuthWall need={need} setRole={setRole} />;
+    }
+  }
 
   return (
     <MeraCtx.Provider value={{ ramp: RAMP_MAP[t.rampStyle] || 'field' }}>
-      <AuthCtx.Provider value={{ role, setRole, partyKey, authUser, logout }}>
+      <AuthCtx.Provider value={{ role, setRole, partyKey, authUser, logout, demoActive, setDemoActive }}>
         <TopNav route={path} role={role} />
         {page}
         {path !== '/login' && <FooterMain />}
