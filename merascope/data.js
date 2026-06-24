@@ -558,11 +558,11 @@ window.serverLog = function(eventType, fid, payload) {
     { n: '>40%', t: 'of 2025\u2019s canceled projects cited water' }
   ];
   var GRADES = [
-    { k: 'Water Durability', g: 'D', why: 'Two-thirds of the state\u2019s proposed capacity sits in cells scoring under 0.35 for water. The Columbia Basin\u2019s paper rights exceed wet-year supply, and the Odessa aquifer is in documented decline. New campuses east of the Cascades start from a structural deficit.' },
-    { k: 'Grid Access', g: 'A−', why: 'Federal hydro spine plus an unusually dense ≥230 kV network keep median line-distance to transmission under 7 km across viable cells. Queue time, not wire distance, is the binding constraint.' },
-    { k: 'Hazard Exposure', g: 'B', why: 'Eastern cells carry low seismic and flood exposure. The west side trades Cascadia subduction risk for water durability. No viable cell sits in a tornado belt; wildfire interface affects 9% of viable cells.' },
-    { k: 'Community Burden', g: 'C', why: 'Existing clusters concentrate near lower-income ZCTAs (Tukwila EJ score 0.109). Rural basin siting reduces direct burden but shifts rate and water externalities onto small PUD customer bases.' },
-    { k: 'Contamination Distance', g: 'C−', why: 'Hanford dominates the southeast quadrant: three of four proposed Tri-Cities-area campuses score under 0.25 on contamination distance. Statewide median is healthy; the growth corridor is not.' }
+    { k: 'Water Durability', g: 'B-', why: 'Mixed water picture. Strengths: Groundwater access is favorable (0.85). Long-term supply stress is low (0.88). Watch: Waterway proximity is weak (0.14) — cooling and process water options are limited.' },
+    { k: 'Grid Access', g: 'B-', why: 'Strong grid position. High-voltage transmission proximity is strong (0.87). Substation density is favorable (0.80). Fiber interconnect density is strong (0.79). ISO interconnection queue headroom is favorable (0.71).' },
+    { k: 'Hazard Exposure', g: 'D', why: 'Mixed hazard profile. Strengths: Flood exposure is minimal across viable cells (1.00). Air quality attainment is strong (0.99) — CAA permitting friction is low. Watch: Seismic exposure is above the national median (0.57) — structural requirements may apply in some viable cells.' },
+    { k: 'Community Burden', g: 'C+', why: 'Low community burden. EJ burden is low across viable cells (0.68). Population exposure is low (0.96). Opposition risk is below average.' },
+    { k: 'Contamination Distance', g: 'B', why: 'Contamination is a meaningful constraint. Contamination proximity is constrained (0.16) — legacy industrial presence affects viable inventory. NPL Superfund proximity is elevated (0.11) — Phase I and II ESAs are essential. RCRA corrective action site density is high (0.15) — legacy hazardous waste handling adds due diligence burden.' },
   ];
   var STATE_GRADE = 'C+';
   var DATA_SOURCES = 'OSM (ODbL) · Census ACS · PRISM Climate Group · USGS NWIS + ASCE 7-22 · FEMA NFHL · EPA TRI + Envirofacts NPL + RCRA · EPA Green Book · SSURGO SDM · IHFC 2024 GHFDB · SRTM1 · EIA Form 860 + 860M · WRI Aqueduct 3.0 · PeeringDB';
@@ -637,12 +637,12 @@ window.serverLog = function(eventType, fid, payload) {
       seismic: function (lon, lat) { return 0.72 - Math.exp(-dist(lon, lat, -111.3, 44.3) * 1.2) * 0.45; },
       geo: function (lon, lat) { return 0.3 + Math.exp(-dist(lon, lat, -111.6, 44.0) * 1.0) * 0.45; },
       flat: function (lon, lat, n) { return (lat < 44.0 && lat > 42.2) ? 0.68 + n * 0.3 : (lat < 46.3 && lat >= 44.0) ? 0.07 + n * 0.3 : 0.28 + n * 0.32; }
-    }, 'B−', [
-      { k: 'Water Durability', g: 'C+', why: 'The Snake River Plain aquifer is fully appropriated; the panhandle is wet but far from load. New consumptive rights effectively require retiring old ones.' },
-      { k: 'Grid Access', g: 'B−', why: 'Boise and the I-84 corridor are well served; central Idaho is effectively off-grid for heavy load.' },
-      { k: 'Hazard Exposure', g: 'B', why: 'Low statewide except the Yellowstone-adjacent east, which carries elevated seismic exposure.' },
-      { k: 'Community Burden', g: 'B+', why: 'Sparse siting pressure to date; the Kuna and Eagle hearings ran clean and fast.' },
-      { k: 'Contamination Distance', g: 'B+', why: 'INL is the single material exclusion zone, and it is well-mapped.' }
+    }, 'C', [
+      { k: 'Water Durability', g: 'D+', why: 'Mixed water picture. Strengths: Groundwater access is favorable (0.84). Long-term supply stress is low (0.74). Watch: Water availability is constrained (0.27) — paper rights exceed wet-year supply in key corridors. Waterway proximity is weak (0.17) — cooling and process water options are limited.' },
+      { k: 'Grid Access', g: 'D+', why: 'Strong grid position. High-voltage transmission proximity is strong (0.72). Substation density is favorable (0.67). ISO interconnection queue headroom is favorable (0.70).' },
+      { k: 'Hazard Exposure', g: 'C-', why: 'Low hazard profile. Seismic risk is low (0.76). Flood exposure is minimal across viable cells (1.00). Air quality attainment is strong (0.96) — CAA permitting friction is low.' },
+      { k: 'Community Burden', g: 'C', why: 'Low community burden. Population exposure is low (0.99). Opposition risk is below average.' },
+      { k: 'Contamination Distance', g: 'B+', why: 'Contamination is a meaningful constraint. Contamination proximity is constrained (0.29) — legacy industrial presence affects viable inventory. NPL Superfund proximity is elevated (0.16) — Phase I and II ESAs are essential. RCRA corrective action site density is high (0.16) — legacy hazardous waste handling adds due diligence burden.' }
     ]),
     OR: mkState('OR', 'Oregon', {
       poly: [[-124.55, 42.0], [-124.1, 43.4], [-123.9, 45.5], [-123.95, 46.2], [-123.4, 46.2], [-122.78, 45.9], [-122.6, 45.62], [-122.33, 45.56], [-121.9, 45.65], [-121.08, 45.65], [-120.65, 45.74], [-119.85, 45.83], [-119.25, 45.93], [-118.98, 46.0], [-116.92, 46.0], [-117.03, 44.25], [-117.03, 42.0]],
@@ -655,12 +655,12 @@ window.serverLog = function(eventType, fid, payload) {
       seismic: function (lon) { return 0.18 + Math.min(1, (lon + 124.6) / 4) * 0.62; },
       geo: function (lon) { return Math.exp(-Math.pow((lon + 121.9) / 0.55, 2)) * 0.7 + 0.12; },
       flat: function (lon, lat, n) { return (lon > -123.35 && lon < -122.45 && lat < 45.4) ? 0.5 + n * 0.35 : (lon >= -122.45 && lon < -121.2) ? 0.08 + n * 0.3 : (lon >= -121.2) ? 0.6 + n * 0.32 : 0.15 + n * 0.3; }
-    }, 'B', [
-      { k: 'Water Durability', g: 'B', why: 'The Willamette and the coast are durable; the eastern plateau is not — and the eastern plateau is where the land is.' },
-      { k: 'Grid Access', g: 'B+', why: 'The McNary–Boardman corridor is the strongest siting asset between Portland and Boise.' },
-      { k: 'Hazard Exposure', g: 'C+', why: 'Cascadia subduction risk dominates west of the Cascades; the east side is calm.' },
-      { k: 'Community Burden', g: 'C+', why: 'Hillsboro fatigue is real; The Dalles set the water-disclosure precedent the rest of the state now expects.' },
-      { k: 'Contamination Distance', g: 'B', why: 'Portland Harbor is the only large exclusion in a scored cell.' }
+    }, 'C+', [
+      { k: 'Water Durability', g: 'C-', why: 'Mixed water picture. Strengths: Groundwater access is favorable (0.89). Long-term supply stress is low (0.69). Watch: Waterway proximity is weak (0.19) — cooling and process water options are limited.' },
+      { k: 'Grid Access', g: 'D', why: 'Mixed grid picture. Strengths: High-voltage transmission proximity is strong (0.79). Substation density is favorable (0.69). Fiber interconnect density is strong (0.66). Watch: ISO queue is congested (0.13) — new large-load additions face above-average wait times.' },
+      { k: 'Hazard Exposure', g: 'D', why: 'Mixed hazard profile. Strengths: Flood exposure is minimal across viable cells (1.00). Air quality attainment is strong (1.00) — CAA permitting friction is low. Watch: Seismic exposure is above the national median (0.62) — structural requirements may apply in some viable cells.' },
+      { k: 'Community Burden', g: 'B+', why: 'Low community burden. EJ burden is low across viable cells (0.71). Population exposure is low (0.99). Opposition risk is below average.' },
+      { k: 'Contamination Distance', g: 'A', why: 'Contamination is a meaningful constraint. Contamination proximity is constrained (0.34) — legacy industrial presence affects viable inventory. NPL Superfund proximity is elevated (0.22) — Phase I and II ESAs are essential. RCRA corrective action site density is high (0.28) — legacy hazardous waste handling adds due diligence burden.' }
     ]),
     UT: mkState('UT', 'Utah', {
       poly: [[-114.05, 42.0], [-111.05, 42.0], [-111.05, 41.0], [-109.05, 41.0], [-109.05, 37.0], [-114.05, 37.0]],
@@ -673,12 +673,12 @@ window.serverLog = function(eventType, fid, payload) {
       seismic: function (lon) { return 0.72 - Math.exp(-Math.abs(lon + 111.85) * 4.5) * 0.42; },
       geo: function () { return 0.34; },
       flat: function (lon, lat, n) { return (lon < -112.3) ? 0.66 + n * 0.3 : (Math.abs(lon + 111.75) < 0.45) ? 0.1 + n * 0.3 : (lat > 40.4 && lon > -111.0) ? 0.08 + n * 0.3 : 0.34 + n * 0.34; }
-    }, 'C', [
-      { k: 'Water Durability', g: 'D+', why: 'The Colorado compact is oversubscribed and the Great Salt Lake deficit is now state policy. New consumptive load starts from a structural deficit.' },
-      { k: 'Grid Access', g: 'B+', why: 'IPP at Delta is a generational interconnection asset; the Wasatch Front backbone is dense.' },
-      { k: 'Hazard Exposure', g: 'B−', why: 'The Wasatch fault runs directly under the population — and the fiber.' },
-      { k: 'Community Burden', g: 'C+', why: 'Wasatch Front siting competes with housing; the west desert does not.' },
-      { k: 'Contamination Distance', g: 'C+', why: 'Legacy smelter and mining plumes ring the Salt Lake valley.' }
+    }, 'C+', [
+      { k: 'Water Durability', g: 'C-', why: 'Mixed water picture. Strengths: Groundwater access is favorable (0.85). Long-term supply stress is low (0.78). Watch: Water availability is constrained (0.12) — paper rights exceed wet-year supply in key corridors. Waterway proximity is weak (0.29) — cooling and process water options are limited.' },
+      { k: 'Grid Access', g: 'D-', why: 'Mixed grid picture. Strengths: High-voltage transmission proximity is strong (0.72). Substation density is favorable (0.68). Watch: ISO queue is congested (0.08) — new large-load additions face above-average wait times.' },
+      { k: 'Hazard Exposure', g: 'D+', why: 'Low hazard profile. Seismic risk is low (0.74). Flood exposure is minimal across viable cells (1.00). Air quality attainment is strong (0.91) — CAA permitting friction is low.' },
+      { k: 'Community Burden', g: 'A', why: 'Low community burden. EJ burden is low across viable cells (0.84). Population exposure is low (0.98). Opposition risk is below average.' },
+      { k: 'Contamination Distance', g: 'A', why: 'Contamination is a meaningful constraint. NPL Superfund proximity is elevated (0.28) — Phase I and II ESAs are essential. RCRA corrective action site density is high (0.24) — legacy hazardous waste handling adds due diligence burden.' }
     ]),
     NV: mkState('NV', 'Nevada', {
       poly: [[-120.0, 42.0], [-114.04, 42.0], [-114.04, 36.1], [-114.74, 36.1], [-114.63, 35.0], [-120.0, 39.0]],
@@ -691,12 +691,12 @@ window.serverLog = function(eventType, fid, payload) {
       seismic: function (lon) { return 0.3 + Math.min(1, (lon + 120) / 5.5) * 0.55; },
       geo: function (lon, lat) { return lat > 38.5 ? 0.55 : 0.35; },
       flat: function (lon, lat, n) { return 0.55 + Math.sin(lon * 9.0) * 0.22 + (n - 0.5) * 0.3; }
-    }, 'C−', [
-      { k: 'Water Durability', g: 'D−', why: 'Two of three scored basins are over-appropriated on paper before a single rack lands. Closed-loop is not a virtue here; it is the entry fee.' },
-      { k: 'Grid Access', g: 'A−', why: 'Hoover, the I-80 corridor, and the Apex build-out make wire the easy part of Nevada.' },
-      { k: 'Hazard Exposure', g: 'B+', why: 'Low flood, low wind; Walker Lane seismicity rides the western edge.' },
-      { k: 'Community Burden', g: 'B', why: 'The federal checkerboard keeps most viable siting away from neighborhoods.' },
-      { k: 'Contamination Distance', g: 'C+', why: 'The test-site legacy gates the south-central interior outright.' }
+    }, 'C+', [
+      { k: 'Water Durability', g: 'D', why: 'Mixed water picture. Strengths: Groundwater access is favorable (0.85). Watch: Water availability is constrained (0.08) — paper rights exceed wet-year supply in key corridors.' },
+      { k: 'Grid Access', g: 'D-', why: 'Mixed grid picture. Strengths: High-voltage transmission proximity is strong (0.71). Watch: ISO queue is congested (0.15) — new large-load additions face above-average wait times.' },
+      { k: 'Hazard Exposure', g: 'D+', why: 'Mixed hazard profile. Strengths: Flood exposure is minimal across viable cells (1.00). Air quality attainment is strong (0.99) — CAA permitting friction is low. Watch: Seismic exposure is above the national median (0.65) — structural requirements may apply in some viable cells.' },
+      { k: 'Community Burden', g: 'B+', why: 'Low community burden. EJ burden is low across viable cells (0.72). Population exposure is low (0.99). Opposition risk is below average.' },
+      { k: 'Contamination Distance', g: 'A+', why: 'NV sits near the national median on contamination indicators. Phase I findings are unlikely to be material in most viable cells.' }
     ])
   };
 

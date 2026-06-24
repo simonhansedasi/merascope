@@ -58,6 +58,7 @@ function _shapeDynamic(c) {
 
 function DocketPage() {
   const M = window.MERA;
+  const { authUser } = React.useContext(AuthCtx);
   const loading = useFakeLoad(700);
   const [dynamicCases, setDynamicCases] = React.useState([]);
   const [total, setTotal] = React.useState(0);
@@ -111,10 +112,8 @@ function DocketPage() {
     });
   };
 
-  const allCases = [
-    ...M.CASES.map(c => stageOverrides[c.id] ? Object.assign({}, c, { stage: stageOverrides[c.id] }) : c),
-    ...dynamicCases
-  ];
+  const demoCases = authUser ? [] : M.CASES.map(c => stageOverrides[c.id] ? Object.assign({}, c, { stage: stageOverrides[c.id] }) : c);
+  const allCases = [...demoCases, ...dynamicCases];
 
   return (
     <div style={{ maxWidth: 1340, margin: '0 auto', padding: '22px 24px 50px' }} data-screen-label="Steward — Docket">

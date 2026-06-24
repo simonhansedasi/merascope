@@ -201,11 +201,14 @@ function TopNav({ route, role }) {
         })}
       </div>
       <div style={{ flex: 1 }}></div>
-      <PersonaBadge surface={role} />
-      <DemoSwitch />
+      {!authUser && <PersonaBadge surface={role} />}
+      {!authUser && <DemoSwitch />}
       <span className="hide-mobile"><PromiseBadge compact /></span>
       {authUser ? (
-        <button className="btn btn-quiet btn-sm hide-mobile" onClick={logout} title={'Signed in as ' + authUser.email}>Sign out</button>
+        <span className="hide-mobile" style={{ fontSize: 12.5, color: 'var(--slate)' }}>{authUser.email}</span>
+      ) : null}
+      {authUser ? (
+        <button className="btn btn-quiet btn-sm hide-mobile" onClick={logout}>Sign out</button>
       ) : (
         role === 'public' && <a className="btn btn-primary btn-sm hide-mobile" href="#/login">Sign in</a>
       )}

@@ -625,6 +625,15 @@ def list_cases():
                 'SELECT * FROM cases WHERE owner_email=? ORDER BY ts DESC LIMIT ? OFFSET ?',
                 (user['email'], limit, offset)
             ).fetchall()
+        elif user and role == 'steward' and user.get('agency_key'):
+            total = db.execute(
+                'SELECT COUNT(*) as n FROM cases WHERE lead_agency=?',
+                (user['agency_key'],)
+            ).fetchone()['n']
+            rows = db.execute(
+                'SELECT * FROM cases WHERE lead_agency=? ORDER BY ts DESC LIMIT ? OFFSET ?',
+                (user['agency_key'], limit, offset)
+            ).fetchall()
         elif user and role == 'co-party' and user.get('agency_key'):
             total = db.execute(
                 '''SELECT COUNT(*) as n FROM cases c
@@ -1013,6 +1022,8 @@ _IND_KEYS = [
     'transmission', 'water', 'community', 'seismic', 'flood', 'contamination',
     'waterway', 'geothermal', 'flatness', 'aquifer', 'soil', 'slope',
     'pop_exposure', 'soil_profile', 'ksat',
+    # supplemental (scripts 11-16)
+    'substation', 'superfund', 'rcra', 'air_quality', 'fiber', 'water_stress', 'grid_capacity',
 ]
 
 def _zero_weights():
@@ -1022,37 +1033,37 @@ PRESET_TEMPLATES = [
     {
         'id': 'balanced',
         'name': 'Balanced',
-        'description': 'Equal weighting across the three primary pillars — Merascope defaults.',
+        'description': 'Merascope defaults. Equal weighting across the three primary pillars — transmission, water, and community burden. Good starting point for state-level screening.',
         'weights': {**_zero_weights(), 'transmission': 40, 'water': 35, 'community': 25},
         'min_score': 0.40,
     },
     {
-        'id': 'water_first',
-        'name': 'Water-First',
-        'description': 'Prioritizes water availability above all. Suited for drought-stressed jurisdictions.',
-        'weights': {**_zero_weights(), 'water': 65, 'transmission': 15, 'community': 20},
+        'id': 'grid_complete',
+        'name': 'Grid-Complete',
+        'description': 'Full grid infrastructure stack. Weights transmission proximity, substation access, ISO interconnection queue headroom, and fiber density equally alongside water. Suited for developers prioritizing shovel-ready grid connection.',
+        'weights': {**_zero_weights(), 'transmission': 25, 'substation': 20, 'grid_capacity': 20, 'fiber': 15, 'water': 15, 'community': 5},
+        'min_score': 0.40,
+    },
+    {
+        'id': 'water_durability',
+        'name': 'Water Durability',
+        'description': 'Long-term water security. Weights surface availability and WRI Aqueduct chronic stress index together. Suited for drought-stressed or water-rights-constrained jurisdictions.',
+        'weights': {**_zero_weights(), 'water': 45, 'water_stress': 25, 'transmission': 20, 'community': 10},
         'min_score': 0.50,
     },
     {
-        'id': 'grid_priority',
-        'name': 'Grid Priority',
-        'description': 'Transmission access is the critical path. Water and community burden are secondary.',
-        'weights': {**_zero_weights(), 'transmission': 70, 'water': 15, 'community': 15},
-        'min_score': 0.45,
-    },
-    {
-        'id': 'community_first',
-        'name': 'Community-First',
-        'description': 'EJ and community burden are the primary screens.',
-        'weights': {**_zero_weights(), 'community': 60, 'water': 20, 'transmission': 20},
-        'min_score': 0.55,
+        'id': 'contamination_screen',
+        'name': 'Contamination Screen',
+        'description': 'Strict environmental due diligence. Screens for TRI facility proximity, Superfund NPL distance, RCRA corrective action sites, and NAAQS air quality attainment alongside community burden. Designed for jurisdictions requiring Phase I/II ESA screening at the planning stage.',
+        'weights': {**_zero_weights(), 'contamination': 20, 'superfund': 20, 'rcra': 20, 'air_quality': 15, 'community': 15, 'water': 10},
+        'min_score': 0.50,
     },
     {
         'id': 'ej_forward',
         'name': 'EJ Forward',
-        'description': 'Strict community + contamination screening. Highest minimum score.',
-        'weights': {**_zero_weights(), 'community': 45, 'contamination': 25, 'water': 15, 'transmission': 15},
-        'min_score': 0.60,
+        'description': 'Community health-first screening. Combines EJ burden, NAAQS attainment, and contamination distance. Designed for jurisdictions with cumulative-impact mandates or health-based siting ordinances. Highest minimum score.',
+        'weights': {**_zero_weights(), 'community': 30, 'air_quality': 20, 'contamination': 15, 'superfund': 10, 'rcra': 10, 'water': 10, 'transmission': 5},
+        'min_score': 0.55,
     },
 ]
 
