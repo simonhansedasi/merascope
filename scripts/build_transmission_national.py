@@ -26,6 +26,7 @@ def round_coords(coords):
         return [round_coords(c) for c in coords]
     return [round(coords[0], 2), round(coords[1], 2)]
 
+
 features = []
 for st in STATES:
     path = DATA_DIR / st / "raw" / "transmission.geojson"

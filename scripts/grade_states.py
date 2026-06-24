@@ -9,7 +9,10 @@ Output modes:
   python3 grade_states.py --patch  -> also patches data.js in place
 """
 
-import json, os, sys, statistics, re
+import json
+import os
+import sys
+import re
 
 DATA_DIR   = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data')
 DATA_JS    = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'merascope', 'data.js')
@@ -81,14 +84,24 @@ def category_mean(rows, cols):
 # _nat values: nationally normalized 0-1 (p01/p99 across all 48 states).
 # Thresholds: >=0.65 = strong, <0.35 = weak, else near-median.
 
-def _hi(v):  return v is not None and v >= 0.65
-def _lo(v):  return v is not None and v < 0.35
+def _hi(v):
+    return v is not None and v >= 0.65
+
+
+def _lo(v):
+    return v is not None and v < 0.35
+
 
 def _grade_letter(grade):
     return grade[0] if grade else 'C'
 
-def _is_strong(grade): return _grade_letter(grade) in ('A', 'B')
-def _is_weak(grade):   return _grade_letter(grade) in ('D', 'F')
+
+def _is_strong(grade):
+    return _grade_letter(grade) in ('A', 'B')
+
+
+def _is_weak(grade):
+    return _grade_letter(grade) in ('D', 'F')
 
 def _fmt_factors(items):
     """Join factor sentences with a space. Capitalizes first char only — preserves acronyms."""
@@ -115,8 +128,10 @@ def why_water(state, water, aquifer, waterway, stress, grade):
 
     if not issues and not strengths:
         return f'{state} sits near the national median across all water indicators. No single factor is a dominant strength or constraint.'
-    if not issues:   return f'Strong water position. {_fmt_factors(strengths)}'
-    if not strengths: return f'Water is a primary constraint. {_fmt_factors(issues)}'
+    if not issues:
+        return f'Strong water position. {_fmt_factors(strengths)}'
+    if not strengths:
+        return f'Water is a primary constraint. {_fmt_factors(issues)}'
     return f'Mixed water picture. Strengths: {_fmt_factors(strengths)} Watch: {_fmt_factors(issues)}'
 
 def why_grid(state, tx, sub, fiber, cap, grade):
@@ -142,8 +157,10 @@ def why_grid(state, tx, sub, fiber, cap, grade):
 
     if not issues and not strengths:
         return f'{state} sits near the national median on all grid indicators. No single factor dominates.'
-    if not issues:   return f'Strong grid position. {_fmt_factors(strengths)}'
-    if not strengths: return f'Grid access is a primary constraint. {_fmt_factors(issues)}'
+    if not issues:
+        return f'Strong grid position. {_fmt_factors(strengths)}'
+    if not strengths:
+        return f'Grid access is a primary constraint. {_fmt_factors(issues)}'
     return f'Mixed grid picture. Strengths: {_fmt_factors(strengths)} Watch: {_fmt_factors(issues)}'
 
 def why_hazard(state, seismic, flood, air, grade):
@@ -164,8 +181,10 @@ def why_hazard(state, seismic, flood, air, grade):
 
     if not issues and not strengths:
         return f'{state} sits near the national median on hazard indicators. No single factor is a dominant constraint.'
-    if not issues:   return f'Low hazard profile. {_fmt_factors(strengths)}'
-    if not strengths: return f'Hazard exposure ranks below most states nationally. {_fmt_factors(issues)}'
+    if not issues:
+        return f'Low hazard profile. {_fmt_factors(strengths)}'
+    if not strengths:
+        return f'Hazard exposure ranks below most states nationally. {_fmt_factors(issues)}'
     return f'Mixed hazard profile. Strengths: {_fmt_factors(strengths)} Watch: {_fmt_factors(issues)}'
 
 def why_community(state, ej, pop, grade):
@@ -182,8 +201,10 @@ def why_community(state, ej, pop, grade):
 
     if not issues and not strengths:
         return f'{state} sits near the national median on community burden indicators.'
-    if not issues:   return f'Low community burden. {_fmt_factors(strengths)} Opposition risk is below average.'
-    if not strengths: return f'Community burden ranks above most states nationally. {_fmt_factors(issues)}'
+    if not issues:
+        return f'Low community burden. {_fmt_factors(strengths)} Opposition risk is below average.'
+    if not strengths:
+        return f'Community burden ranks above most states nationally. {_fmt_factors(issues)}'
     return f'Mixed community burden. Strengths: {_fmt_factors(strengths)} Watch: {_fmt_factors(issues)}'
 
 def why_contamination(state, contam, sf, rcra, grade):
@@ -204,9 +225,12 @@ def why_contamination(state, contam, sf, rcra, grade):
 
     if not issues and not strengths:
         return f'{state} sits near the national median on contamination indicators. Phase I findings are unlikely to be material in most viable cells.'
-    if not issues:   return f'Clean contamination profile. {_fmt_factors(strengths)} Phase I findings are unlikely to be material.'
-    if not strengths: return f'Contamination is a meaningful constraint. {_fmt_factors(issues)}'
+    if not issues:
+        return f'Clean contamination profile. {_fmt_factors(strengths)} Phase I findings are unlikely to be material.'
+    if not strengths:
+        return f'Contamination is a meaningful constraint. {_fmt_factors(issues)}'
     return f'Mixed contamination profile. Strengths: {_fmt_factors(strengths)} Watch: {_fmt_factors(issues)}'
+
 
 # ── main ──────────────────────────────────────────────────────────────────────
 
@@ -302,6 +326,7 @@ def grades_js(grades_list):
         lines.append(f"      {{ k: '{g['k']}', g: '{g['g']}', why: '{why}' }}")
     return '[\n' + ',\n'.join(lines) + '\n    ]'
 
+
 # patch WA (uses var GRADES / var STATE_GRADE, not mkState)
 wa = output.get('WA')
 if wa:
@@ -370,6 +395,7 @@ def find_mkstate_bounds(src, st):
                 if depth == 0: break
         i += 1
     return grade_start, grade_end, array_start, i + 1
+
 
 patched = 0
 for st, data in sorted(output.items()):
