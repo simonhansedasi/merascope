@@ -155,8 +155,11 @@ S3_ENDPOINT=https://<region>.your-objectstorage.com
 S3_ACCESS_KEY=<key>
 S3_SECRET_KEY=<secret>
 S3_BUCKET=merascope-docs
-SMTP_USER=vitruviansandwich@gmail.com
-SMTP_PASS=<gmail-app-password>
+SMTP_HOST=smtp.sendgrid.net
+SMTP_PORT=587
+SMTP_USER=apikey
+SMTP_PASS=SG.<sendgrid-api-key>
+FROM_EMAIL=noreply@merascope.com
 APP_URL=https://merascope.com
 APP_ENV=production
 ```
@@ -174,7 +177,9 @@ In local dev, omit `S3_ENDPOINT` (falls back to disk) and omit SMTP vars (magic 
 
 **S3 bucket name**: `merascopedocs` (no hyphen — that's what was created in Hetzner HEL1).
 
-**Go-live checklist**: Gmail app password → update `SMTP_PASS` → Tom flips DNS → `certbot --nginx -d merascope.com` → `APP_ENV=production` → seed OPCD steward email.
+**SSL note**: Namecheap PositiveSSL + APISIX handle SSL termination at the edge. The Hetzner nginx must stay HTTP-only (port 80 proxy to gunicorn). Do NOT run certbot — it adds an HTTPS redirect that breaks the APISIX proxy chain.
+
+**Go-live checklist**: Tom adds SendGrid CNAMEs (DKIM + domain auth) to Namecheap → verify sender domain in SendGrid dashboard → seed steward emails in `user_roles`.
 
 ## Testing
 
@@ -243,9 +248,15 @@ All publicly available.
 | USGS ASCE 7-22 API | Seismic hazard (PGA) |
 | FEMA NFHL REST API | Special Flood Hazard Areas |
 | EPA Envirofacts REST API (TRI_FACILITY) | Industrial facility proximity |
+| EPA Envirofacts REST API (SEMS NPL) | Superfund site proximity |
+| EPA Envirofacts REST API (RCRAInfo) | RCRA corrective action site proximity |
+| EPA Green Book GIS shapefiles | NAAQS non-attainment areas (air quality gate) |
 | IHFC GHFDB 2024 | Geothermal heat flow boreholes |
 | NASA SRTM1 (AWS S3) | 30m digital elevation model |
 | Esri USA Federal Lands | NPS, USFWS, DoD, Forest Service boundaries |
 | Census TIGER AIANNH | Tribal land boundaries |
 | USGS NWIS (post-2025 OGC API) | Depth to water table |
 | USDA NRCS SSURGO (SDM REST API) | Soil drainage class, horizon properties |
+| EIA Form 860M Monthly (Planned sheet) | State-level interconnection queue pressure |
+| WRI Aqueduct Water Risk Atlas 3.0 | Baseline water stress by watershed |
+| PeeringDB /api/fac | Carrier hotel and colo facility proximity (fiber) |

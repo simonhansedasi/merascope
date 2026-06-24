@@ -204,6 +204,7 @@ function WAMap({ weights, selectedState = null, selectedCells = null, onCellTogg
   const clusterLayerRef = React.useRef(null);
   const pinLayerRef = React.useRef(null);
   const tileLayerRef = React.useRef(null);
+  const powerLayerRef = React.useRef(null);
   const weightsRef = React.useRef(weights);
   const rampRef = React.useRef(ramp);
   const [hover, setHover] = React.useState(null);
@@ -253,13 +254,13 @@ function WAMap({ weights, selectedState = null, selectedCells = null, onCellTogg
     const nat = !sel;
     if (sel && p._state !== sel) return { fillOpacity: 0, color: 'transparent', weight: 0, interactive: false };
     const isSelected = selectedCellsRef.current && selectedCellsRef.current.has(p._fid);
-    if (p.protected_score === 0) return { fillColor: '#0d2b1a', fillOpacity: 0.88, color: isSelected ? '#fff' : 'transparent', weight: isSelected ? 2 : 0 };
+    if (p.protected_score === 0) return { fillColor: '#0d2b1a', fillOpacity: 0.72, color: isSelected ? '#fff' : 'transparent', weight: isSelected ? 2 : 0 };
     const fill = M.rampColor(M.composite(propsToInd(p, nat), w), r);
     const zones = window.ACTIVE_ZONES || [];
     const stewarded = p._lat != null && zones.some(function(z) { return _inZone(p, z); });
-    if (isSelected) return { fillColor: fill, fillOpacity: 0.95, color: '#ffffff', weight: 2.5 };
-    if (stewarded) return { fillColor: fill, fillOpacity: 0.72, color: '#b45f1d', weight: 2 };
-    return { fillColor: fill, fillOpacity: 0.72, color: 'transparent', weight: 0 };
+    if (isSelected) return { fillColor: fill, fillOpacity: 0.88, color: '#ffffff', weight: 2.5 };
+    if (stewarded) return { fillColor: fill, fillOpacity: 0.55, color: '#b45f1d', weight: 2 };
+    return { fillColor: fill, fillOpacity: 0.55, color: 'transparent', weight: 0 };
   }
 
   function applyColors(w, r) {
@@ -320,6 +321,10 @@ function WAMap({ weights, selectedState = null, selectedCells = null, onCellTogg
       ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
       : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
     tileLayerRef.current = L.tileLayer(tileUrl, { maxZoom: 14, subdomains: 'abcd' }).addTo(map);
+    powerLayerRef.current = L.tileLayer(
+      'https://tiles.openinframap.org/power/{z}/{x}/{y}.png',
+      { maxZoom: 14, opacity: 0.7 }
+    ).addTo(map);
 
     clusterLayerRef.current = L.layerGroup().addTo(map);
     pinLayerRef.current     = L.layerGroup().addTo(map);
