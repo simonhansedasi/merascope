@@ -205,7 +205,7 @@ function App() {
     : path.startsWith('/steward') ? 'steward'
     : path.startsWith('/co-party') ? 'co-party'
     : null;
-  if (need && role !== need) {
+  if (need && role !== need && !(role === 'admin' && (need === 'steward' || need === 'builder'))) {
     if (!(need === 'steward' && demoActive)) {
       page = <AuthWall need={need} setRole={setRole} />;
     }
@@ -213,7 +213,7 @@ function App() {
 
   return (
     <MeraCtx.Provider value={{ ramp: RAMP_MAP[t.rampStyle] || 'field' }}>
-      <AuthCtx.Provider value={{ role, setRole, partyKey, authUser, logout, demoActive, setDemoActive }}>
+      <AuthCtx.Provider value={{ role, setRole, partyKey, authUser, logout, demoActive, setDemoActive, readOnly: !!(authUser && authUser.role === 'admin') }}>
         <TopNav route={path} role={role} />
         {page}
         {path !== '/login' && <FooterMain />}

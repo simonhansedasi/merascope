@@ -192,6 +192,7 @@ function TopNav({ route, role }) {
   var links = pub;
   if (role === 'builder') links = [pub[0], ['#/builder', 'Builder'], ...pub.slice(1)];
   if (role === 'steward') links = [pub[0], ['#/steward', 'Steward'], ...pub.slice(1)];
+  if (role === 'admin') links = [pub[0], ['#/builder', 'Builder'], ['#/steward', 'Steward'], ...pub.slice(1)];
   return (
     <nav className="topnav">
       <a href="#/" style={{ textDecoration: 'none', display: 'inline-flex' }}><Wordmark size={15} /></a>

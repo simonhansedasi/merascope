@@ -131,7 +131,7 @@ def _can_access_case(user, case_row):
     if user is None:
         return True  # unauthenticated demo access
     role = user.get('role') or 'builder'
-    if role == 'steward':
+    if role in ('steward', 'admin'):
         return True
     if role == 'co-party':
         return True  # filtered at query level
@@ -690,6 +690,12 @@ def list_cases():
                 'SELECT * FROM cases WHERE lead_agency=? ORDER BY ts DESC LIMIT ? OFFSET ?',
                 (user['agency_key'], limit, offset)
             ).fetchall()
+        elif user and role == 'admin':
+            total = db.execute('SELECT COUNT(*) as n FROM cases').fetchone()['n']
+            rows  = db.execute(
+                'SELECT * FROM cases ORDER BY ts DESC LIMIT ? OFFSET ?',
+                (limit, offset)
+            ).fetchall()
         elif user and role == 'co-party' and user.get('agency_key'):
             total = db.execute(
                 '''SELECT COUNT(*) as n FROM cases c
@@ -1183,6 +1189,7 @@ def auth_me():
         'email':      row['email'],
         'role':       row['role'] or 'builder',
         'agency_key': row['agency_key'],
+        'read_only':  row['role'] == 'admin',
     })
 
 

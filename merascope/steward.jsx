@@ -65,7 +65,7 @@ function _agencyLabel(authUser) {
 
 function DocketPage() {
   const M = window.MERA;
-  const { authUser, demoActive } = React.useContext(AuthCtx);
+  const { authUser, demoActive, readOnly } = React.useContext(AuthCtx);
   const loading = useFakeLoad(700);
   const [dynamicCases, setDynamicCases] = React.useState([]);
   const [total, setTotal] = React.useState(0);
@@ -167,9 +167,15 @@ function DocketPage() {
           <b>Demo mode</b> — this is what your agency contact sees when you submit a site inquiry. <a href="#/login" style={{ color: 'var(--basalt)', fontWeight: 600 }}>Sign in</a> for a live account. Demo data resets every 20 minutes.
         </div>
       )}
+      {readOnly && (
+        <div style={{ marginBottom: 14, padding: '8px 14px', background: 'var(--sand)', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, color: 'var(--slate)', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Icon name="lock" size={14} color="var(--slate)" />
+          <span>Admin view — read only. All agency cases are visible; no changes can be made.</span>
+        </div>
+      )}
       <PageHead title="The Docket"
-        sub={<span><span className="score-serif">{allCases.length}</span>{total > dynamicCases.length ? ' of ' + (M.CASES.length + total) : ''} active cases · {demoActive ? 'Demo Agency' : _agencyLabel(authUser)} · findings versioned from intake.</span>}
-        right={demoActive ? null : <React.Fragment><button className="btn btn-ghost btn-sm" onClick={() => setShowNewCase(true)}>New case file</button><PromiseBadge /></React.Fragment>} />
+        sub={<span><span className="score-serif">{allCases.length}</span>{total > dynamicCases.length ? ' of ' + (M.CASES.length + total) : ''} active cases · {demoActive ? 'Demo Agency' : readOnly ? 'All agencies' : _agencyLabel(authUser)} · findings versioned from intake.</span>}
+        right={(demoActive || readOnly) ? null : <React.Fragment><button className="btn btn-ghost btn-sm" onClick={() => setShowNewCase(true)}>New case file</button><PromiseBadge /></React.Fragment>} />
       <div className="kanban">
         {M.STAGES.map(function(stage) {
           var cards = allCases.filter(function(c) { return c.stage === stage; });
@@ -222,8 +228,8 @@ function CaseFilePage({ id }) {
   const isDynamic = !(M.CASE_DETAIL_MAP && M.CASE_DETAIL_MAP[id]);
   const C = isDynamic ? M.CASE_DETAIL : M.CASE_DETAIL_MAP[id];
   const { ramp } = React.useContext(MeraCtx);
-  const { role, partyKey, authUser } = React.useContext(AuthCtx);
-  const isLead = role === 'steward';
+  const { role, partyKey, authUser, readOnly } = React.useContext(AuthCtx);
+  const isLead = role === 'steward' && !readOnly;
   const isCoParty = role === 'co-party';
 
   const partyName = (() => {
@@ -818,9 +824,11 @@ function CaseFilePage({ id }) {
             </div>
           )}
           <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-            <button className="btn btn-primary btn-sm" onClick={() => setShowForm(s => !s)}>
-              {showForm ? 'Cancel' : 'Propose condition'}
-            </button>
+            {!readOnly && (
+              <button className="btn btn-primary btn-sm" onClick={() => setShowForm(s => !s)}>
+                {showForm ? 'Cancel' : 'Propose condition'}
+              </button>
+            )}
             <button className="btn btn-quiet btn-sm" onClick={exportConditions}>Export conditions record</button>
           </div>
         </div>
