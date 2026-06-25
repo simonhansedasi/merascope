@@ -339,6 +339,7 @@ def init_db():
         )''')
 
         db.execute("ALTER TABLE studies ADD COLUMN IF NOT EXISTS case_id TEXT")
+        db.execute("ALTER TABLE studies ADD COLUMN IF NOT EXISTS finding TEXT")
         db.execute("ALTER TABLE studies DROP CONSTRAINT IF EXISTS studies_name_key")
 
         db.execute('''CREATE TABLE IF NOT EXISTS demo_cases (
@@ -917,10 +918,15 @@ def get_impasse_items():
 @app.route('/api/studies')
 def get_studies():
     case_id = request.args.get('case_id') or None
+    all_studies = request.args.get('all') == '1'
     with get_db() as db:
         if case_id:
             rows = db.execute(
                 'SELECT * FROM studies WHERE case_id=? ORDER BY ts DESC', (case_id,)
+            ).fetchall()
+        elif all_studies:
+            rows = db.execute(
+                'SELECT * FROM studies ORDER BY case_id NULLS FIRST, ts DESC'
             ).fetchall()
         else:
             rows = db.execute(
@@ -933,12 +939,13 @@ def add_study():
     data    = request.get_json(silent=True) or {}
     name    = (data.get('name') or '').strip()
     case_id = (data.get('case_id') or None)
+    finding = (data.get('finding') or None)
     if not name:
         return jsonify({'ok': False, 'err': 'name required'}), 400
     with get_db() as db:
         cur = db.execute(
-            'INSERT INTO studies (name, body, due, case_id) VALUES (?,?,?,?) RETURNING id',
-            (name, data.get('body', ''), data.get('due', ''), case_id)
+            'INSERT INTO studies (name, body, due, case_id, finding) VALUES (?,?,?,?,?) RETURNING id',
+            (name, data.get('body', ''), data.get('due', ''), case_id, finding)
         )
         new_id = cur.lastrowid
     return jsonify({'ok': True, 'id': new_id})

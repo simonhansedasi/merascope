@@ -598,19 +598,49 @@ function MethodologyPage() {
 function EvidencePage({ caseId }) {
   const M = window.MERA;
   const C = caseId && M.CASE_DETAIL_MAP && M.CASE_DETAIL_MAP[caseId];
+  const { role, readOnly } = React.useContext(AuthCtx);
+  const isLead = role === 'steward' && !readOnly;
   const [toast, setToast] = React.useState(null);
+  const [studies, setStudies] = React.useState(function() { return C && C.studies ? C.studies : []; });
+  const [selectedIndicator, setSelectedIndicator] = React.useState('');
   const [formNote, setFormNote] = React.useState('');
-  const [submitted, setSubmitted] = React.useState(false);
+  const [submitting, setSubmitting] = React.useState(false);
 
-  const showToast = msg => {
+  React.useEffect(function() {
+    if (!caseId || (C && C.studies)) return;
+    fetch('/api/studies?case_id=' + caseId).then(function(r) { return r.json(); }).then(setStudies).catch(function() {});
+  }, [caseId]);
+
+  const showToast = function(msg) {
     setToast(msg);
-    setTimeout(() => setToast(null), 3500);
+    setTimeout(function() { setToast(null); }, 3500);
   };
 
-  const handleCommission = e => {
+  const contestedFindings = C && C.findings ? C.findings.filter(function(f) { return f.contested; }) : [];
+  const allFindings = C && C.findings ? C.findings : [];
+
+  const handleCommission = function(e) {
     e.preventDefault();
-    setSubmitted(true);
-    showToast('Request submitted — a coordinator will follow up within 48 hours.');
+    if (!selectedIndicator) return;
+    setSubmitting(true);
+    var due = new Date(Date.now() + 180 * 86400000).toISOString().slice(0, 10);
+    var name = selectedIndicator + ' — independent study';
+    fetch('/api/studies', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name, body: formNote, due: due, case_id: caseId, finding: selectedIndicator })
+    }).then(function(r) { return r.json(); }).then(function(res) {
+      setSubmitting(false);
+      if (res.ok) {
+        var newStudy = { id: res.id, name: name, body: formNote, due: due, case_id: caseId, finding: selectedIndicator };
+        setStudies(function(prev) { return [newStudy].concat(prev); });
+        setFormNote('');
+        setSelectedIndicator('');
+        showToast('Study commissioned — it will appear in the mandated-study workbench.');
+      } else {
+        showToast('Error: ' + (res.err || 'could not submit'));
+      }
+    }).catch(function() { setSubmitting(false); showToast('Network error — try again.'); });
   };
 
   const title = C ? (C.title + ' — ' + C.id) : 'Evidence Record';
@@ -625,7 +655,7 @@ function EvidencePage({ caseId }) {
         </div>
       )}
       <PageHead eyebrow="Evidence Record" title={title}
-        sub="Source citations, formulas, and data provenance for each indicator. The record that backs the score." />
+        sub="Source citations, formulas, and data provenance for each indicator. Commissioned studies resolve on top of the base finding." />
 
       {!C && (
         <div className="callout" style={{ padding: '20px 24px', marginBottom: 24 }}>
@@ -635,10 +665,12 @@ function EvidencePage({ caseId }) {
 
       {C && C.findings && (
         <div style={{ display: 'grid', gap: 14, marginBottom: 48 }}>
-          {C.findings.map(f => {
-            const ind = INDS.find(i => i.n === f.k);
+          {C.findings.map(function(f) {
+            const ind = INDS.find(function(i) { return i.n === f.k; });
             const score = parseFloat(f.v);
             const tone = score < 0.2 ? 'hi' : score < 0.5 ? 'med' : 'lo';
+            const linked = studies.find(function(s) { return s.finding === f.k; });
+            const days = linked ? Math.round((new Date(linked.due) - Date.now()) / 86400000) : null;
             return (
               <div key={f.k} className="card" style={{ padding: '16px 20px' }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 6 }}>
@@ -654,63 +686,83 @@ function EvidencePage({ caseId }) {
                     <span style={{ fontWeight: 650 }}>Formula:</span> {ind.formula}
                   </div>
                 )}
-                <div style={{ marginTop: 8, padding: '8px 10px', background: 'var(--sand)', borderRadius: 6, fontSize: 12.5, color: 'var(--slate)' }}>
-                  No independent study on record
-                </div>
+                {linked ? (
+                  <div style={{ marginTop: 10, padding: '10px 12px', background: 'rgba(46,204,113,0.08)', border: '1px solid rgba(46,204,113,0.35)', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <Icon name="check-circle" size={14} color="#27AE60" />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 650, color: '#27AE60' }}>Study mandated: {linked.name}</div>
+                      {linked.body && <div className="microcopy" style={{ marginTop: 2 }}>{linked.body}</div>}
+                    </div>
+                    <div style={{ fontSize: 12, color: days < 30 ? '#C0392B' : 'var(--slate)', fontWeight: 600, flexShrink: 0 }}>{days}d to deadline</div>
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 8, padding: '8px 10px', background: 'var(--sand)', borderRadius: 6, fontSize: 12.5, color: 'var(--slate)' }}>
+                    No independent study on record
+                    {f.contested && isLead && <span style={{ marginLeft: 8, color: 'var(--basalt)', fontWeight: 600, cursor: 'pointer' }} onClick={function() { setSelectedIndicator(f.k); document.getElementById('commission-form').scrollIntoView({ behavior: 'smooth' }); }}>Commission one &darr;</span>}
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
       )}
 
-      <div className="card" style={{ padding: '24px 28px' }}>
-        <h3 style={{ fontSize: 17, marginBottom: 6 }}>Commission a study</h3>
-        <p style={{ color: 'var(--slate)', fontSize: 14, margin: '0 0 20px', lineHeight: 1.6 }}>
-          To refer a contested indicator to independent review, file a request below. Merascope coordinates the commission, maintains chain of custody, and takes a 1-2% fee from the consultant side.
-        </p>
-        {submitted ? (
-          <div style={{ padding: '14px 18px', background: 'var(--lo-bg)', borderRadius: 8, color: 'var(--lo-tx)', fontWeight: 600 }}>
-            Request received. A coordinator will be in touch within 48 hours.
-          </div>
-        ) : (
+      {isLead ? (
+        <div id="commission-form" className="card" style={{ padding: '24px 28px' }}>
+          <h3 style={{ fontSize: 17, marginBottom: 6 }}>Commission a study</h3>
+          <p style={{ color: 'var(--slate)', fontSize: 14, margin: '0 0 20px', lineHeight: 1.6 }}>
+            Refer a contested indicator to independent review. Merascope coordinates the commission, maintains chain of custody, and takes a 1–2% fee from the consultant side. The commissioned study resolves on top of the base finding and is visible to all parties.
+          </p>
           <form onSubmit={handleCommission} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div>
               <label style={{ fontSize: 13, fontWeight: 650, color: 'var(--slate)', display: 'block', marginBottom: 4 }}>
-                Describe the indicator and scope of study needed
+                Indicator to study
               </label>
-              <textarea
-                value={formNote}
-                onChange={e => setFormNote(e.target.value)}
-                rows={4}
+              <select
+                value={selectedIndicator}
+                onChange={function(e) { setSelectedIndicator(e.target.value); }}
                 required
-                style={{
-                  width: '100%', padding: '10px 12px', borderRadius: 7, border: '1px solid var(--line)',
-                  background: 'var(--paper)', color: 'var(--ink)', fontFamily: 'var(--sans)', fontSize: 14,
-                  resize: 'vertical'
-                }}
-                placeholder="e.g. Water availability score is contested by CTUIR. Request independent hydrologist review of well-log data."
-              />
+                style={{ width: '100%', padding: '9px 12px', borderRadius: 7, border: '1px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontFamily: 'var(--sans)', fontSize: 14 }}>
+                <option value="">Select an indicator...</option>
+                {contestedFindings.length > 0 && <option disabled>── Contested ──</option>}
+                {contestedFindings.map(function(f) {
+                  var alreadyMandated = studies.some(function(s) { return s.finding === f.k; });
+                  return <option key={f.k} value={f.k} disabled={alreadyMandated}>{f.k}{alreadyMandated ? ' (already mandated)' : ''}</option>;
+                })}
+                {allFindings.filter(function(f) { return !f.contested; }).length > 0 && <option disabled>── Other ──</option>}
+                {allFindings.filter(function(f) { return !f.contested; }).map(function(f) {
+                  var alreadyMandated = studies.some(function(s) { return s.finding === f.k; });
+                  return <option key={f.k} value={f.k} disabled={alreadyMandated}>{f.k}{alreadyMandated ? ' (already mandated)' : ''}</option>;
+                })}
+              </select>
             </div>
             <div>
               <label style={{ fontSize: 13, fontWeight: 650, color: 'var(--slate)', display: 'block', marginBottom: 4 }}>
-                Contact email
+                Scope and rationale
               </label>
-              <input
-                type="email"
+              <textarea
+                value={formNote}
+                onChange={function(e) { setFormNote(e.target.value); }}
+                rows={4}
                 required
-                style={{
-                  width: '100%', padding: '9px 12px', borderRadius: 7, border: '1px solid var(--line)',
-                  background: 'var(--paper)', color: 'var(--ink)', fontFamily: 'var(--sans)', fontSize: 14
-                }}
-                placeholder="your@agency.gov"
+                style={{ width: '100%', padding: '10px 12px', borderRadius: 7, border: '1px solid var(--line)', background: 'var(--paper)', color: 'var(--ink)', fontFamily: 'var(--sans)', fontSize: 14, resize: 'vertical' }}
+                placeholder="e.g. Water availability score is contested by CTUIR. Request independent hydrologist review of well-log data and aquifer recharge rates."
               />
             </div>
             <div>
-              <button type="submit" className="btn btn-accent">Submit request</button>
+              <button type="submit" className="btn btn-accent" disabled={submitting || !selectedIndicator}>
+                {submitting ? 'Submitting...' : 'Commission study'}
+              </button>
             </div>
           </form>
-        )}
-      </div>
+        </div>
+      ) : (
+        <div className="card" style={{ padding: '20px 24px', color: 'var(--slate)', fontSize: 14 }}>
+          <b style={{ color: 'var(--ink)' }}>Commission a study</b>
+          <p style={{ margin: '6px 0 0', lineHeight: 1.6 }}>Commissioning independent studies is a steward action. Sign in as a steward to refer a contested indicator to independent review.</p>
+          {role !== 'steward' && <a href="#/login" className="btn btn-quiet btn-sm" style={{ marginTop: 10, display: 'inline-block' }}>Sign in</a>}
+        </div>
+      )}
 
       {toast && (
         <div style={{

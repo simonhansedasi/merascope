@@ -219,7 +219,12 @@ function StudiesPage() {
   const [checked, setChecked] = React.useState({});
 
   React.useEffect(() => {
-    fetch('/api/studies').then(r => r.json()).then(setStudies);
+    var exampleStudies = (window.MERA && window.MERA.STUDIES || []).filter(function(s) { return s.is_example; });
+    fetch('/api/studies?all=1').then(r => r.json()).then(function(live) {
+      var liveIds = live.map(function(s) { return s.id; });
+      var merged = exampleStudies.filter(function(s) { return !liveIds.includes(s.id); }).concat(live);
+      setStudies(merged);
+    });
     fetch('/api/studies/checks').then(r => r.json()).then(list => {
       const init = {};
       list.forEach(c => { init[c.study_name + '|' + c.section_idx] = true; });
@@ -273,11 +278,17 @@ function StudiesPage() {
           const pct = secs.length > 0 ? Math.round(checkedCount / secs.length * 100) : 0;
           const open = !!expanded[st.name];
           return (
-            <div key={st.name} className="card" style={{ padding: '18px 20px' }}>
+            <div key={st.id} className="card" style={{ padding: '18px 20px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
                 <div>
                   <b style={{ fontSize: 15 }}>{st.name}</b>
                   <div className="microcopy" style={{ marginTop: 2 }}>{st.body}</div>
+                  {st.case_id && (
+                    <a href={'#/steward/case/' + st.case_id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 5, fontSize: 12, color: 'var(--basalt)', fontWeight: 600, textDecoration: 'none' }}>
+                      <Icon name="folder" size={12} color="var(--basalt)" />
+                      Case {st.case_id}
+                    </a>
+                  )}
                 </div>
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
                   <div className="score-serif" style={{ fontSize: 24, color: d < 40 ? '#C0392B' : 'var(--basalt)', lineHeight: 1 }}>{d}</div>

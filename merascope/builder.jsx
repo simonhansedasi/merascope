@@ -668,7 +668,14 @@ function BuilderCaseView({ id }) {
           <div style={{ marginBottom: 14, display: 'flex', gap: 10, alignItems: 'center' }}>
             <button className="btn btn-quiet btn-sm" onClick={() => { setCaseId(''); setSearched(false); location.hash = '#/builder/case/'; }}>Look up a different case</button>
             <Chip tone="slate">Read-only view</Chip>
+            {C.is_example && <Chip tone="med">EXAMPLE</Chip>}
           </div>
+
+          {C.is_example && (
+            <div style={{ marginBottom: 16, padding: '10px 16px', background: 'rgba(255,200,0,0.07)', border: '1.5px solid #F0C040', borderRadius: 8, fontSize: 13.5 }}>
+              <b>Example case</b> — This completed case shows the builder-side view of a full review cycle: submitted inquiry, contested findings, co-party conditions, and a Resolution with approved conditions. Use it as a reference for what to expect.
+            </div>
+          )}
 
           <div className="callout" style={{ padding: '12px 16px', marginBottom: 16, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
             <Icon name="lock" size={16} color="var(--basalt)" />
@@ -879,6 +886,11 @@ function BuilderCaseView({ id }) {
                   Case {caseId} not found. Check the ID, or use the Submit tab to file a new inquiry.
                 </p>
               )}
+              <div style={{ marginTop: 20, padding: '10px 14px', background: 'rgba(255,200,0,0.07)', border: '1px solid #F0C040', borderRadius: 8, fontSize: 13 }}>
+                <Chip tone="med" style={{ marginRight: 8 }}>EXAMPLE</Chip>
+                <span> See a completed case from inquiry to Resolution. </span>
+                <a href="#/builder/case/demo-EX-0001" style={{ fontWeight: 650, color: 'var(--basalt)' }}>Open example →</a>
+              </div>
             </div>
           ) : mode === 'import' ? (
             /* ── import existing pipeline form ── */

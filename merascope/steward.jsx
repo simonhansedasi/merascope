@@ -42,7 +42,8 @@ function CaseCard({ k }) {
         <span className="microcopy"><span className="score-serif">{k.days}</span>d in stage</span>
         <PartyAvatars parties={k.parties} />
       </div>
-      {k.resolution && <div style={{ marginTop: 8 }}><Chip tone="lo">{k.resolution}</Chip></div>}
+      {k.is_example && <div style={{ marginTop: 7 }}><Chip tone="med">EXAMPLE</Chip></div>}
+      {k.resolution && <div style={{ marginTop: 6 }}><Chip tone="lo">{k.resolution}</Chip></div>}
       {openable
         ? <div style={{ marginTop: 8, fontSize: 12, fontWeight: 650, color: 'var(--basalt)' }}>Open the record →</div>
         : <div style={{ marginTop: 8, fontSize: 11, color: 'var(--slate)' }}>Demo preview</div>}
@@ -73,6 +74,7 @@ function DocketPage() {
   const [showNewCase, setShowNewCase] = React.useState(false);
   const [newDraft, setNewDraft] = React.useState({ site: '', applicant: '', score: 0.5 });
   const [stageOverrides, setStageOverrides] = React.useState({});
+  const [hideExample, setHideExample] = React.useState(function() { try { return !!localStorage.getItem('mera_hide_example'); } catch(e) { return false; } });
 
   var fetchCases = function(offset, append) {
     return fetch('/api/cases?limit=' + DOCKET_LIMIT + '&offset=' + offset)
@@ -129,8 +131,9 @@ function DocketPage() {
     });
   };
 
-  const demoCases = authUser ? [] : M.CASES.map(c => stageOverrides[c.id] ? Object.assign({}, c, { stage: stageOverrides[c.id] }) : c);
-  const allCases = [...demoCases, ...dynamicCases];
+  const exampleCases = hideExample ? [] : (M.CASES || []).filter(function(c) { return c.is_example; }).map(function(c) { return stageOverrides[c.id] ? Object.assign({}, c, { stage: stageOverrides[c.id] }) : c; });
+  const demoCases = authUser ? [] : (M.CASES || []).filter(function(c) { return !c.is_example; }).map(function(c) { return stageOverrides[c.id] ? Object.assign({}, c, { stage: stageOverrides[c.id] }) : c; });
+  const allCases = [...exampleCases, ...demoCases, ...dynamicCases];
 
   return (
     <div style={{ maxWidth: 1340, margin: '0 auto', padding: '22px 24px 50px' }} data-screen-label="Steward — Docket">
@@ -171,6 +174,14 @@ function DocketPage() {
         <div style={{ marginBottom: 14, padding: '8px 14px', background: 'var(--sand)', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, color: 'var(--slate)', display: 'flex', alignItems: 'center', gap: 8 }}>
           <Icon name="lock" size={14} color="var(--slate)" />
           <span>Admin view — read only. All agency cases are visible; no changes can be made.</span>
+        </div>
+      )}
+      {!hideExample && exampleCases.length > 0 && (
+        <div style={{ marginBottom: 14, padding: '10px 16px', background: 'rgba(255,200,0,0.07)', border: '1.5px solid #F0C040', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <Chip tone="med">EXAMPLE</Chip>
+          <span style={{ flex: 1, fontSize: 13.5 }}>An example completed case is shown in the <b>Resolution</b> column — use it as a reference for the full steward workflow.</span>
+          <button className="btn btn-quiet btn-xs" onClick={() => location.hash = '#/steward/case/demo-EX-0001'}>Open record</button>
+          <button className="btn btn-quiet btn-xs" onClick={() => { setHideExample(true); try { localStorage.setItem('mera_hide_example', '1'); } catch(e) {} }}>Hide example</button>
         </div>
       )}
       <PageHead title="The Docket"
@@ -238,7 +249,7 @@ function CaseFilePage({ id }) {
     return found ? found.name : partyKey;
   })();
 
-  const [conditions, setConditions] = React.useState([]);
+  const [conditions, setConditions] = React.useState(function() { return (C && !isDynamic && (id || '').startsWith('demo-') && C.conditions) ? C.conditions : []; });
   const [showForm, setShowForm] = React.useState(false);
   const [draft, setDraft] = React.useState({ text: '', type: 'Water' });
   const [toast, setToast] = React.useState(null);
@@ -256,7 +267,7 @@ function CaseFilePage({ id }) {
   const [dynLoading, setDynLoading] = React.useState(isDynamic);
   const [trackingInput, setTrackingInput] = React.useState('');
   const [confirming, setConfirming] = React.useState(false);
-  const [caseStudies, setCaseStudies] = React.useState([]);
+  const [caseStudies, setCaseStudies] = React.useState(function() { return (C && !isDynamic && (id || '').startsWith('demo-') && C.studies) ? C.studies : []; });
   const [mandateForm, setMandateForm] = React.useState(false);
   const [mandateTemplate, setMandateTemplate] = React.useState('Water-availability assessment');
   const MANDATE_TEMPLATES = ['Moratorium impact study — NY-style', 'Application review scorecard', 'Water-availability assessment', 'Rate-impact memorandum'];
@@ -510,6 +521,7 @@ function CaseFilePage({ id }) {
     : (C.coParties || []);
   const backHref = isCoParty ? '#/co-party' : '#/steward';
   const backLabel = isCoParty ? 'Back to My Cases' : 'Back to the Docket';
+  const isDemo = isDynamic && (id || '').startsWith('demo-');
 
   /* ── dynamic (builder-submitted) case intake view ── */
   if (isDynamic) {
@@ -720,6 +732,14 @@ function CaseFilePage({ id }) {
         </div>
       )}
       <a href={backHref} style={{ fontSize: 13, fontWeight: 650, textDecoration: 'none' }}>{backLabel}</a>
+      {C.is_example && (
+        <div style={{ marginTop: 14, marginBottom: 0, padding: '10px 16px', background: 'rgba(255,200,0,0.07)', border: '1.5px solid #F0C040', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <Chip tone="med">EXAMPLE</Chip>
+          <span style={{ flex: 1, fontSize: 13.5 }}>This is a reference case showing the complete steward workflow from Site Inquiry through Resolution. Findings, conditions, and documents are illustrative.</span>
+          <button className="btn btn-quiet btn-xs" onClick={() => { try { localStorage.setItem('mera_hide_example', '1'); } catch(e) {} location.hash = '#/steward'; }}>Hide &amp; return to docket</button>
+          <button className="btn btn-quiet btn-xs" onClick={() => { try { localStorage.removeItem('mera_hide_example'); } catch(e) {} location.hash = '#/steward'; }}>Show in docket</button>
+        </div>
+      )}
       <div className="card" style={{ marginTop: 12, padding: '18px 22px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
           <div>
@@ -904,7 +924,7 @@ function CaseFilePage({ id }) {
             <button className="btn btn-quiet btn-xs" style={{ marginTop: 6, width: '100%' }} onClick={exportEvidentiary}>Export evidentiary record</button>
           </div>
 
-          {isLead && !isDemo && (
+          {(isLead || C.is_example) && !isDemo && (
             <div className="panel" style={{ padding: '14px 16px' }}>
               <b style={{ fontSize: 12, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--slate)' }}>Mandated studies</b>
               {caseStudies.length > 0 && (
@@ -915,12 +935,13 @@ function CaseFilePage({ id }) {
                       <div key={s.id}>
                         <div style={{ fontSize: 13, fontWeight: 600 }}>{s.name}</div>
                         <div className="microcopy" style={{ color: days < 30 ? '#C0392B' : 'var(--slate)' }}>{days} days to deadline</div>
+                        {s.body && <div className="microcopy" style={{ marginTop: 2, fontStyle: 'italic' }}>{s.body}</div>}
                       </div>
                     );
                   })}
                 </div>
               )}
-              {mandateForm ? (
+              {isLead && (mandateForm ? (
                 <div style={{ marginTop: 10, display: 'grid', gap: 7 }}>
                   <select value={mandateTemplate} onChange={e => setMandateTemplate(e.target.value)}
                     style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--sand)', color: 'inherit', fontSize: 12, fontFamily: 'inherit' }}>
@@ -933,7 +954,7 @@ function CaseFilePage({ id }) {
                 </div>
               ) : (
                 <button className="btn btn-quiet btn-xs" style={{ marginTop: caseStudies.length > 0 ? 10 : 9, width: '100%' }} onClick={() => setMandateForm(true)}>+ Mandate a study</button>
-              )}
+              ))}
             </div>
           )}
         </div>

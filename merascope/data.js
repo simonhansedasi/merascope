@@ -421,10 +421,74 @@ window.serverLog = function(eventType, fid, payload) {
   var CASE_DETAIL = {};
   var CASE_DETAIL_MAP = {};
 
+  /* ── EXAMPLE completed case (hardcoded) ── */
+  CASE_DETAIL_MAP['demo-EX-0001'] = {
+    id: 'demo-EX-0001',
+    title: 'Mattawa Technology Campus — Grant County',
+    applicant: 'Pinnacle Edge Computing LLC',
+    score: 0.581,
+    stage: 'Resolution',
+    is_example: true,
+    leadParty: 'WA Dept. of Ecology',
+    invitedParties: ['GCPUD', 'YN', 'SHPO', 'BPA'],
+    coParties: [
+      ['Grant County PUD', '2 conditions accepted', 'lo'],
+      ['Yakama Nation', 'Cultural survey condition accepted', 'lo'],
+      ['WA Dept. of Ecology', '2 conditions accepted, 1 countered', 'lo'],
+      ['Bonneville Power Administration', 'Cost-share agreement reached', 'lo']
+    ],
+    daysToRebuttal: null,
+    findings: [
+      { k: 'Water availability', v: '0.310', evidence: 'USGS NWIS gauge 12413000; Odessa Groundwater Management Area subarea; senior irrigation rights encumber 68% of annual allocation; conversion to industrial right confirmed viable but requires 24-month WA Ecology review.', ver: 'v3 (final)', contested: true },
+      { k: 'Grid access', v: '0.862', evidence: 'BPA 345 kV Grand Coulee-Vantage line 4.2 km southwest; Grant County PUD interconnection queue position 7 of 18; interim 40 MW service agreement executed 2026-01-22; full 80 MW capacity targeted at month 18.', ver: 'v2 (final)', contested: false },
+      { k: 'Community burden', v: '0.718', evidence: 'EPA EJScreen 2024 batch; census tract 5310590000; below state median on all EJ indices; 3.2% union construction labor within 25 km radius; no environmental justice trigger.', ver: 'v1 (final)', contested: false },
+      { k: 'Waterway sensitivity', v: '0.320', evidence: 'Columbia River main stem 6.1 km north; Potholes Reservoir irrigation inflow boundary 2.8 km east; CWA Section 404 buffer confirmed; cooling discharge to Lind Coulee drainage requires NPDES permit before commissioning.', ver: 'v2 (final)', contested: true },
+      { k: 'Seismic safety', v: '0.840', evidence: 'ASCE 7-22 Site Class D; PGA 0.12g at 2% PE in 50 years; no active fault trace within 30 km per USGS Quaternary Fault Database.', ver: 'v1 (final)', contested: false },
+      { k: 'Contamination distance', v: '0.687', evidence: 'Nearest NPL site (Hanford Reservation) 74 km; no RCRA corrective action sites within 10 km; Phase I ESA completed 2025-10-14, no recognized environmental conditions identified.', ver: 'v1 (final)', contested: false }
+    ],
+    conditions: [
+      { text: 'Applicant shall file a water right change application with WA Dept. of Ecology within 90 days of Resolution. Closed-loop evaporative cooling required until new industrial right is perfected; no once-through cooling permitted during conversion period.', by: 'WA Dept. of Ecology', type: 'Water', status: 'Accepted', submittedByRole: 'lead' },
+      { text: 'Monthly consumptive water use reporting to WA Dept. of Ecology beginning at commissioning. Emergency shutdown protocol for cooling towers during Drought Stage 3 declaration in Grant County; protocol to be filed with Ecology within 60 days of Resolution.', by: 'WA Dept. of Ecology', type: 'Water', status: 'Accepted', submittedByRole: 'lead' },
+      { text: 'Phase II cultural resource survey of 40-acre project footprint completed to SHPO standards prior to grading permit. Yakama Nation shall have 60-day review period upon survey submission. Discovery of cultural material triggers Section 106 consultation; work stoppage protocol required in all construction contracts.', by: 'Yakama Nation', type: 'Environmental', status: 'Accepted', submittedByRole: 'co-party', pendingApproval: false },
+      { text: 'Applicant to co-invest $4.2M toward BPA Grand Coulee 345 kV segment upgrade; cost-share agreement executed between applicant and BPA within 12 months of Resolution. Interim service capped at 40 MW for 18 months; full 80 MW interconnect thereafter.', by: 'Grant County PUD', type: 'Grid', status: 'Accepted', submittedByRole: 'co-party' },
+      { text: 'Local hire minimum of 35% construction trades from Grant, Adams, and Lincoln counties during the 18-month construction phase. Quarterly reporting to Grant County Commissioner; non-compliance subject to $50,000 per-quarter penalty.', by: 'Grant County PUD', type: 'Economic', status: 'Accepted', submittedByRole: 'co-party' },
+      { text: 'Annual diesel exhaust and noise monitoring report submitted to WA Dept. of Ecology; backup generator runtime for non-emergency load testing capped at 500 hours per unit per year.', by: 'WA Dept. of Ecology', type: 'Environmental', status: 'Countered', submittedByRole: 'lead' }
+    ],
+    docs: [
+      { name: 'Site Inquiry — Pinnacle Edge Computing LLC', date: '2025-09-12' },
+      { name: 'USGS NWIS Groundwater Assessment, Grant County Odessa Subarea', date: '2025-10-03' },
+      { name: 'SEPA Environmental Checklist (Draft)', date: '2025-10-21' },
+      { name: 'BPA Transmission System Feasibility Study — Grand Coulee Segment', date: '2025-11-14' },
+      { name: 'Yakama Nation Government-to-Government Consultation Request', date: '2025-12-02' },
+      { name: 'WA Dept. of Ecology — Conditional DNS', date: '2026-01-18' },
+      { name: 'Applicant Rebuttal — Water Rights Finding (v2)', date: '2026-02-09' },
+      { name: 'Mediation Summary — BPA Grid Cost-Share Agreement', date: '2026-03-22' },
+      { name: 'Resolution Order — Grant County Steward', date: '2026-05-14' }
+    ],
+    studies: [
+      { id: 'ex-s1', name: 'Water-availability assessment', body: 'Mandated by WA Dept. of Ecology per Resolution condition 1. Applicant must document current and projected annual consumptive use and demonstrate closed-loop compliance.', due: '2026-11-14', case_id: 'demo-EX-0001', finding: 'Water availability', is_example: true },
+      { id: 'ex-s2', name: 'Phase II cultural resource survey', body: 'Mandated per Yakama Nation condition. Survey of 40-acre project footprint to SHPO standards; Yakama Nation has 60-day review period upon submission.', due: '2026-08-14', case_id: 'demo-EX-0001', finding: 'Waterway sensitivity', is_example: true },
+      { id: 'ex-s3', name: 'Backup generator noise and emissions audit', body: 'Mandated per WA Dept. of Ecology condition 6 (countered — timeline under negotiation). Annual runtime cap of 500 hrs/unit; first report due 12 months post-commissioning.', due: '2026-12-14', case_id: 'demo-EX-0001', finding: 'Community burden', is_example: true }
+    ]
+  };
+
+  CASES.push({
+    id: 'demo-EX-0001',
+    site: 'Mattawa Technology Campus',
+    applicant: 'Pinnacle Edge Computing LLC',
+    score: 0.581,
+    stage: 'Resolution',
+    dot: '#2ECC71',
+    days: 0,
+    parties: ['YN', 'GCPUD', 'ECO'],
+    resolution: 'Approved with conditions',
+    is_example: true
+  });
+
   var IMPASSES = [];
   var IMPASSE_UNLOCKS = {};
   var LITIGATION = [];
-  var STUDIES = [];
+  var STUDIES = (CASE_DETAIL_MAP['demo-EX-0001'] && CASE_DETAIL_MAP['demo-EX-0001'].studies) || [];
 
   /* ── shared context ── */
   var STATS = [
