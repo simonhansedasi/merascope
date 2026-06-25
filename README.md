@@ -117,6 +117,10 @@ Workspace tab (saved cells, comparison panel), Status tab (CRM tracker per site:
 ### Steward surface (`#/steward`)
 Kanban docket across all stages. Case file: versioned findings, conditions negotiation (propose/accept/reject), co-party coordination, rebuttal clock, document chain, CSV exports. Impasse register (route to mediation). Mandated studies workbench (section checklists, live progress). **Weight templates** (`#/steward/templates`): define named weight profiles and attach them to geographic zones; lock a template to gate builders whose cells score below the minimum threshold.
 
+**Evidence record** (`#/evidence?case=:id`): per-finding cards with score, citation, source, formula. Each card shows whether an independent study has been mandated (green badge + days-to-deadline). Stewards can commission a study directly from the evidence record — study is linked to the specific indicator via the `finding` DB column and appears immediately. Non-stewards see a read-only card. Builders rebut findings; stewards commission independent review.
+
+**EXAMPLE case** (`demo-EX-0001`): fully wired showcase visible to all users on the docket. Shows a complete end-to-end flow: 6 findings (2 contested), 6 conditions (1 countered), 3 mandated studies linked to specific indicators by `finding` key, evidence record with live study badges, workbench entries. Hideable via the docket UI.
+
 ### Co-party surface (`#/co-party`)
 Filtered docket — only shows cases where the agency is invited. Same case file as steward, propose-only permissions. Co-party conditions show as "Pending lead approval" until lead approves.
 
