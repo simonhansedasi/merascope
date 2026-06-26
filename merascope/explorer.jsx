@@ -261,11 +261,13 @@ function StateFactSheet({ stateCode, feats: featsProp, gradeData }) {
   const floodGated = props.filter(p => p.flood_score === 0).length;
   const protectedGated = props.filter(p => p.protected_score === 0).length;
   const viable = props.filter(p => p.flood_score > 0 && p.protected_score > 0).length;
-  const medPrecip = med('ann_precip_mm');
-  const medAquifer = med('aquifer_depth_ft');
-  const medKsat = med('ksat_mean_ums');
-  const maxSeismic = Math.max(...props.map(p => p.seismic_pga_g || 0).filter(v => !isNaN(v)));
-  const medTxDist = med('tx_dist_m');
+  const medPrecip    = med('ann_precip_mm');
+  const medAquifer   = med('aquifer_depth_ft');
+  const medKsat      = med('ksat_mean_ums');
+  const maxSeismic   = Math.max(...props.map(p => p.seismic_pga_g || 0).filter(v => !isNaN(v)));
+  const medTxDist    = med('tx_dist_m');
+  const medSubstDist = med('substation_dist_m');
+  const medSfDist    = med('superfund_dist_m');
 
   const { grades, overallRank, stateGrade, stateName } = gradeData;
   const n = grades[0] ? grades[0].n : 48;
@@ -332,11 +334,13 @@ function StateFactSheet({ stateCode, feats: featsProp, gradeData }) {
 
           <div>
             <div style={{ fontSize: 11, letterSpacing: '.1em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--slate)', borderBottom: '1px solid var(--line)', paddingBottom: 4, marginBottom: 4 }}>Physical indicators</div>
-            <Stat label="Median annual precip" value={medPrecip != null ? Math.round(medPrecip) : null} unit="mm" />
-            <Stat label="Median aquifer depth" value={medAquifer != null ? Math.round(medAquifer) : null} unit="ft" />
-            <Stat label="Median hydraulic conductivity" value={medKsat != null ? medKsat.toFixed(1) : null} unit="um/s" />
-            <Stat label="Max seismic PGA" value={maxSeismic ? maxSeismic.toFixed(3) : null} unit="g" />
-            <Stat label="Median tx distance" value={medTxDist != null ? (medTxDist / 1000).toFixed(1) : null} unit="km" />
+            {medPrecip    != null && <Stat label="Median annual precip"          value={Math.round(medPrecip)}             unit="mm"    />}
+            {medAquifer   != null && <Stat label="Median aquifer depth"          value={Math.round(medAquifer)}            unit="ft"    />}
+            {medKsat      != null && <Stat label="Median hydraulic conductivity" value={medKsat.toFixed(1)}                unit="um/s"  />}
+            {maxSeismic   > 0     && <Stat label="Max seismic PGA"              value={maxSeismic.toFixed(3)}             unit="g"     />}
+            {medTxDist    != null && <Stat label="Median tx distance"           value={(medTxDist / 1000).toFixed(1)}     unit="km"    />}
+            {medSubstDist != null && <Stat label="Median substation distance"   value={(medSubstDist / 1000).toFixed(1)}  unit="km"    />}
+            {medSfDist    != null && <Stat label="Median Superfund distance"    value={(medSfDist / 1000).toFixed(1)}     unit="km"    />}
           </div>
 
         </div>
@@ -499,6 +503,10 @@ function ExplorerPage({ query }) {
   const [gradeData, setGradeData] = React.useState(null);
   const [selectedCells, setSelectedCells] = React.useState(new Set());
   const [showGrid, setShowGrid] = React.useState(false);
+  const [minScore, setMinScore] = React.useState(0);
+  const [zipInput, setZipInput] = React.useState('');
+  const [zipError, setZipError] = React.useState(null);
+  const [zipTarget, setZipTarget] = React.useState(null);
   const isMobile = window.innerWidth < 900;
 
   const hasSelection = selectedCells.size > 0;
@@ -515,10 +523,18 @@ function ExplorerPage({ query }) {
     setSelectedCells(new Set());
   }
 
-  // Clear selection when state changes
-  React.useEffect(() => {
-    clearSelection();
-  }, [selectedState]);
+  React.useEffect(() => { clearSelection(); }, [selectedState]);
+
+  function handleZipSearch() {
+    const zip = zipInput.trim();
+    if (zip.length !== 5 || !/^\d{5}$/.test(zip)) { setZipError('Enter a 5-digit ZIP'); return; }
+    if (!window.findZip) { setZipError('Map still loading'); return; }
+    const feat = window.findZip(zip);
+    if (!feat) { setZipError('ZIP not found'); return; }
+    setZipError(null);
+    setSelectedState(feat.properties._state);
+    setZipTarget(zip + '_' + Date.now());
+  }
 
   React.useEffect(() => {
     if (!selectedState) { setGradeData(null); return; }
@@ -535,30 +551,43 @@ function ExplorerPage({ query }) {
   return (
     <div style={{ maxWidth: 1240, margin: '0 auto', padding: '26px 24px 60px' }} data-screen-label="Public Explorer">
       <PageHead eyebrow="Public Explorer — free, no login" title="U.S. data center suitability"
-        sub={<span><span className="score-serif">37,997</span> grid cells at 0.15° (~14 km) across the contiguous 48 states · scores update live as you weight the indicators.</span>}
+        sub={<span>ZIP code suitability across the contiguous 48 states · scores update live as you weight the indicators.</span>}
         right={<PromiseBadge />} />
       <div className="explorer-layout" style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="card" style={{ padding: 14 }}>
             <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <StateSelector selectedState={selectedState} onChange={setSelectedState} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input
+                  type="text"
+                  maxLength={5}
+                  placeholder="ZIP code"
+                  value={zipInput}
+                  onChange={e => { setZipInput(e.target.value.replace(/\D/g, '').slice(0, 5)); setZipError(null); }}
+                  onKeyDown={e => { if (e.key === 'Enter') handleZipSearch(); }}
+                  style={{ width: 76, background: 'var(--mist)', border: '1px solid var(--line)', borderRadius: 7, color: 'var(--ink)', fontSize: 13, padding: '6px 9px' }}
+                />
+                <button className="btn btn-sm btn-ghost" onClick={handleZipSearch}>Find</button>
+                {zipError && <span style={{ fontSize: 11.5, color: 'var(--clay, #b45f1d)' }}>{zipError}</span>}
+              </div>
               {hasSelection && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--slate)' }}>
-                  <span style={{ background: 'var(--evergreen)', color: '#fff', borderRadius: 12, padding: '2px 9px', fontWeight: 700, fontSize: 12 }}>{selectedCells.size} tile{selectedCells.size === 1 ? '' : 's'} selected</span>
+                  <span style={{ background: 'var(--evergreen)', color: '#fff', borderRadius: 12, padding: '2px 9px', fontWeight: 700, fontSize: 12 }}>{selectedCells.size} ZIP{selectedCells.size === 1 ? '' : 's'} selected</span>
                   <button className="btn btn-ghost btn-sm" onClick={clearSelection}>Clear</button>
                 </div>
               )}
-              {!hasSelection && (
-                <span className="microcopy" style={{ marginLeft: 4 }}>Click any tile to compare it nationally</span>
+              {!hasSelection && selectedState && (
+                <span className="microcopy" style={{ marginLeft: 4 }}>Click any ZIP code to compare and save to workspace</span>
               )}
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 6 }}>
               <button className={'btn btn-sm ' + (showGrid ? 'btn-primary' : 'btn-ghost')}
                 onClick={() => setShowGrid(g => !g)}>
                 {showGrid ? 'Hide power grid' : 'Show power grid'}
               </button>
             </div>
-            <WAMap weights={weights} selectedState={selectedState} selectedCells={selectedCells} onCellToggle={handleCellToggle} markers={false} pins={null} showGrid={showGrid} />
+            <WAMap weights={weights} selectedState={selectedState} selectedCells={selectedCells} onCellToggle={handleCellToggle} markers={false} pins={null} showGrid={showGrid} zipTarget={zipTarget} minScore={minScore} />
             <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line-soft)' }}>
               <MapLegend />
             </div>
@@ -583,7 +612,7 @@ function ExplorerPage({ query }) {
               gradeData={gradeData} />
           )}
         </div>
-        <WeightPanel weights={weights} setWeights={setWeights} dock={isMobile} />
+        <WeightPanel weights={weights} setWeights={setWeights} minScore={minScore} setMinScore={setMinScore} dock={isMobile} />
       </div>
     </div>
   );

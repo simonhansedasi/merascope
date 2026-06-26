@@ -1,8 +1,8 @@
 # Merascope
 
 National data center site suitability intelligence and permitting coordination platform.
-GIS-MCDA across 0.15-degree fishnet cells, 23 scored indicators (16 core + 7 supplemental),
-raw physical values included in every output for multi-scale renormalization.
+GIS-MCDA across ZIP code tabulation areas (ZCTAs), 23 scored indicators (16 core + 7 supplemental),
+scored at both state and national scale with cross-state `*_nat` normalization.
 
 Built for three audiences:
 - **Builders** (developers evaluating sites) — Explorer map, workspace, portfolio screening
@@ -58,7 +58,7 @@ Hard gates: only two remain.
 - **flood_score**: flood_score = 0 blocks portfolio PASS
 
 Terrain (flatness_score, slope_score) is a scoring penalty, not a hard gate.
-All scores normalized 0-1 within state (1 = most favorable for siting).
+All scores normalized 0-1 within state (1 = most favorable for siting). Cross-state `*_nat` columns added by `normalize_zcta_national.py` after all 48 states complete.
 
 ### Supplemental indicators (scripts 11-16, default weight 0)
 
@@ -76,23 +76,27 @@ All 7 supplemental indicators are present in every state's `grid_scores.geojson`
 
 ### Raw columns
 
-Every output GeoJSON also carries raw physical-value columns for multi-scale
-renormalization without re-running the pipeline:
+Fishnet `grid_scores.geojson` files carry raw physical-value columns. ZCTA files carry step-09+ raw columns only (steps 02-08 raw values were lost in a restore operation — steps 09-16 raw values are intact):
 
-| Column | Units | Added by |
-|---|---|---|
-| tx_dist_m | m to nearest HV line | step 02 |
-| ann_precip_mm | mm/yr (PRISM 30-yr normal) | step 02 |
-| pop_density | persons/km2 | step 02 |
-| seismic_pga_g | PGA (g) | step 03 |
-| tri_dist_m | m to nearest TRI facility | step 04 |
-| river_dist_m | m to nearest major river | step 04 |
-| heatflow_mwm2 | mW/m2 | step 05 |
-| flat_frac | fraction of cell pixels with slope < 5 deg | step 06 |
-| slope_mean_deg | mean slope in degrees | step 06 |
-| protected_frac | fraction of cell covered by protected land | step 07 |
-| aquifer_depth_ft | ft to water table (IDW from USGS wells) | step 08 |
-| ksat_mean_ums | µm/s saturated hydraulic conductivity | step 10 |
+| Column | Units | Added by | In ZCTA? |
+|---|---|---|---|
+| tx_dist_m | m to nearest HV line | step 02 | no |
+| ann_precip_mm | mm/yr (PRISM 30-yr normal) | step 02 | no |
+| pop_density | persons/km2 | step 02 | no |
+| seismic_pga_g | PGA (g) | step 03 | no |
+| tri_dist_m | m to nearest TRI facility | step 04 | no |
+| river_dist_m | m to nearest major river | step 04 | no |
+| heatflow_mwm2 | mW/m2 | step 05 | no |
+| flat_frac | fraction with slope < 5 deg | step 06 | no |
+| slope_mean_deg | mean slope in degrees | step 06 | no |
+| protected_frac | fraction covered by protected land | step 07 | no |
+| aquifer_depth_ft | ft to water table (IDW from USGS wells) | step 08 | no |
+| substation_dist_m | m to nearest 345kV+ substation | step 11 | yes |
+| superfund_dist_m | m to nearest Superfund site | step 12 | yes |
+| rcra_dist_m | m to nearest RCRA site | step 12 | yes |
+| ksat_mean_ums | µm/s saturated hydraulic conductivity | step 10 | yes |
+| water_stress_raw | WRI Aqueduct bws_score (0-5) | step 15 | yes |
+| iso_queue_mw | planned interconnection queue MW | step 16 | yes |
 
 ## States completed
 
@@ -141,13 +145,10 @@ Filtered docket — only shows cases where the agency is invited. Same case file
 
 ## Multi-scale architecture
 
-Three normalization windows are planned:
+Two normalization windows live:
 
-1. **National** — one-time post-processing pass after all states complete; re-ranks every
-   cell using raw values against the national distribution.
-2. **State** — current output (0-1, within-state). Default view.
-3. **County / ZCTA / parcel** — dynamic re-ranking in the frontend using raw values; no
-   new pipeline work needed. Raw columns in every GeoJSON enable arbitrary re-normalization.
+1. **National (`*_nat` columns)** — `normalize_zcta_national.py` runs global p01-p99 percentile normalization across all ~33k ZCTAs after all 48 states complete. Binary gates (flood, protected, air quality) are copied directly. Used in Explorer national view.
+2. **State** — scores normalized 0-1 within state. Used in Explorer state view (default when a state is selected).
 
 ## Server setup
 
@@ -219,14 +220,11 @@ npm install   # first time only
 npm run build
 ```
 
-Add a completed state to `merascope/map.jsx`:
+The map uses ZCTA geography for both national and state views. All 48 states are wired. `GRID_URLS` in `merascope/map.jsx` all point to `data/{STATE}/zcta/grid_scores.geojson`. Fishnet files exist but are not used in the explorer map.
 
-```js
-const GRID_URLS = [
-  // existing states ...
-  'data/WY/grid_scores.geojson',  // add new state here
-];
-```
+**ZIP code finder:** search input in the Explorer sidebar (5-digit code, Enter or "Find" button). Calls `window.findZip(zip)` which searches `_gridCache.features` by `zcta` property, zooms to the match, and highlights it with a dashed border. Works across all 48 states once data is loaded.
+
+**Lazy loading:** ZCTA files load incrementally via `window._onStateZctaLoaded(stateData)` callback — first state renders in ~1 second; remaining 47 stream in behind it using `L.geoJSON.addData()`.
 
 Dev server: `cd ~/coding/merascope && python3 server.py` (Flask, port 8877 — NOT python3 -m http.server; Flask provides /api routes)
 

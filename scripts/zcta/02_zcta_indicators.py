@@ -35,7 +35,7 @@ import pandas as pd
 import requests
 from shapely.geometry import Point
 
-SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
+SCRIPTS_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(SCRIPTS_DIR))
 from config import get_state, PROJECT_ROOT
 
@@ -44,8 +44,12 @@ CRS = "EPSG:4326"
 DARK_BG = "#1a1a2e"
 WHITE = "white"
 
-ZCTA_CB_URL = "https://www2.census.gov/geo/tiger/GENZ2020/shp/cb_2020_us_zcta520_500k.zip"
-ZCTA_CB_DIR = PROJECT_ROOT / "data" / "raw" / "zcta_cb"
+ZCTA_CB_URL  = "https://www2.census.gov/geo/tiger/GENZ2020/shp/cb_2020_us_zcta520_500k.zip"
+ZCTA_CB_DIR  = PROJECT_ROOT / "data" / "raw" / "zcta_cb"
+PRISM_TIF    = PROJECT_ROOT / "data" / "prism_ppt_30yr.tif"
+# PRISM CONUS extent (standard 800 m / 4 km products share this bounding box)
+_PRISM_XMIN, _PRISM_XMAX = -125.0208333, -66.4791667
+_PRISM_YMIN, _PRISM_YMAX =   24.0625,     49.9375
 
 
 def get_zcta_paths(state_abbr):
@@ -88,7 +92,7 @@ def load_census_key():
     key = os.environ.get("CENSUS_API_KEY")
     if key:
         return key
-    for env_file in [Path("/home/simonhans/coding/snotrac/.env"), Path.home() / ".env"]:
+    for env_file in [PROJECT_ROOT / ".env", Path("/home/simonhans/coding/snotrac/.env"), Path.home() / ".env"]:
         if env_file.exists():
             for line in env_file.read_text().splitlines():
                 if line.startswith("CENSUS_API_KEY"):
@@ -130,6 +134,32 @@ def fetch_acs_zcta(zcta_codes, zcta_root):
     return state_df
 
 
+def sample_prism_precip(grid):
+    """Read annual precipitation (mm) for each ZCTA centroid directly from PRISM TIF."""
+    from PIL import Image
+    print(f"  reading PRISM TIF: {PRISM_TIF}", flush=True)
+    img = Image.open(PRISM_TIF)
+    data = np.array(img, dtype=np.float64)
+    nrows, ncols = data.shape
+    dx = (_PRISM_XMAX - _PRISM_XMIN) / ncols
+    dy = (_PRISM_YMAX - _PRISM_YMIN) / nrows
+    centroids = grid.geometry.centroid
+    vals = []
+    for pt in centroids:
+        col = int((pt.x - _PRISM_XMIN) / dx)
+        row = int((_PRISM_YMAX - pt.y) / dy)
+        col = max(0, min(col, ncols - 1))
+        row = max(0, min(row, nrows - 1))
+        v = data[row, col]
+        vals.append(float(v) if v > 0 else np.nan)
+    arr = np.array(vals)
+    # Fill any nodata with state median
+    med = float(np.nanmedian(arr))
+    arr = np.where(np.isnan(arr), med, arr)
+    print(f"  PRISM precip: {arr.min():.1f} - {arr.max():.1f} mm/yr", flush=True)
+    return arr
+
+
 def fetch_precip(state_gdf, raw):
     path = raw / "precip_coarse.csv"
     if path.exists():
@@ -138,28 +168,56 @@ def fetch_precip(state_gdf, raw):
     state_union = state_gdf.geometry.unary_union
     sample_lats = np.linspace(bounds[1] + 0.4, bounds[3] - 0.2, 7)
     sample_lons = np.linspace(bounds[0] + 0.4, bounds[2] - 0.2, 11)
+    pts = [(round(lat, 2), round(lon, 2))
+           for lat in sample_lats for lon in sample_lons
+           if state_union.contains(Point(lon, lat))]
+    print(f"  fetching {len(pts)} precip points in one batch request...", flush=True)
+
+    BATCH = 50
     records = []
-    for lat in sample_lats:
-        for lon in sample_lons:
-            if not state_union.contains(Point(lon, lat)):
-                continue
+    for batch_start in range(0, len(pts), BATCH):
+        batch = pts[batch_start:batch_start + BATCH]
+        lats = ",".join(str(p[0]) for p in batch)
+        lons = ",".join(str(p[1]) for p in batch)
+        params = {
+            "latitude": lats, "longitude": lons,
+            "start_date": "1991-01-01", "end_date": "2020-12-31",
+            "daily": "precipitation_sum", "timezone": "UTC",
+        }
+        delay = 30
+        for attempt in range(8):
             try:
-                params = {
-                    "latitude": round(lat, 2), "longitude": round(lon, 2),
-                    "start_date": "1991-01-01", "end_date": "2020-12-31",
-                    "daily": "precipitation_sum", "timezone": "UTC",
-                }
                 r = requests.get("https://archive-api.open-meteo.com/v1/archive",
-                                 params=params, timeout=30)
+                                 params=params, timeout=120)
+                if r.status_code == 429:
+                    print(f"  Rate limited (batch {batch_start//BATCH+1}) — waiting {delay}s...", flush=True)
+                    time.sleep(delay)
+                    delay = min(delay * 2, 300)
+                    continue
                 r.raise_for_status()
-                vals = [v for v in r.json()["daily"]["precipitation_sum"] if v is not None]
-                records.append({"lat": lat, "lon": lon, "ann_precip_mm": sum(vals) / 30.0})
-                time.sleep(0.05)
+                results = r.json()
+                # Batch response is a list when multiple locations are requested
+                if isinstance(results, dict):
+                    results = [results]
+                for i, res in enumerate(results):
+                    lat, lon = batch[i]
+                    vals = [v for v in res["daily"]["precipitation_sum"] if v is not None]
+                    if vals:
+                        records.append({"lat": lat, "lon": lon, "ann_precip_mm": sum(vals) / 30.0})
+                print(f"  batch {batch_start//BATCH+1}: {len(results)} locations OK", flush=True)
+                time.sleep(2.0)
+                break
             except Exception as e:
-                print(f"  Skipped ({lat:.2f},{lon:.2f}): {e}")
+                if attempt == 7:
+                    print(f"  batch {batch_start//BATCH+1} failed after retries: {e}", flush=True)
+                else:
+                    print(f"  batch retry {attempt+1} in {delay}s: {e}", flush=True)
+                    time.sleep(delay)
+                    delay = min(delay * 2, 300)
+
     df = pd.DataFrame(records)
     df.to_csv(path, index=False)
-    print(f"  Saved {len(df)} precip points to {path.name}")
+    print(f"  Saved {len(df)} precip points to {path.name}", flush=True)
     return df
 
 
@@ -189,34 +247,39 @@ def main():
     tx_gdf = gpd.read_file(raw / "transmission.geojson") if (raw / "transmission.geojson").exists() else \
              gpd.GeoDataFrame(columns=["geometry"], crs=CRS)
 
-    print("Fetching ZCTA boundaries...")
+    print("Fetching ZCTA boundaries...", flush=True)
     grid = fetch_zcta(state, zcta_root)
-    print(f"  {len(grid)} ZCTAs")
+    print(f"  {len(grid)} ZCTAs", flush=True)
 
-    print("Transmission proximity (tx_score)...")
+    print("Transmission proximity (tx_score)...", flush=True)
     if len(tx_gdf) > 0:
         tx_proj = tx_gdf.to_crs(crs_proj)
         tx_union = tx_proj.geometry.unary_union
         grid_proj = grid.to_crs(crs_proj)
         centroids = list(grid_proj.geometry.centroid)
+        print(f"  computing distances for {len(centroids)} ZCTAs...", flush=True)
         grid["tx_dist_m"] = [tx_union.distance(pt) for pt in centroids]
         grid["tx_score"] = 1.0 - (grid["tx_dist_m"] / grid["tx_dist_m"].max())
     else:
         grid["tx_score"] = 0.5
     print(f"  tx_score: {grid['tx_score'].min():.3f} - {grid['tx_score'].max():.3f}")
 
-    print("Precipitation / water availability (water_score)...")
-    precip_df = fetch_precip(state, raw)
-    centroids_ll = grid.geometry.centroid
-    grid["ann_precip_mm"] = idw(
-        precip_df["lat"].values, precip_df["lon"].values, precip_df["ann_precip_mm"].values,
-        np.array([p.y for p in centroids_ll]), np.array([p.x for p in centroids_ll]),
-    )
-    p05, p95 = grid["ann_precip_mm"].quantile([0.05, 0.95])
+    print("Precipitation / water availability (water_score)...", flush=True)
+    if PRISM_TIF.exists():
+        precip_vals = sample_prism_precip(grid)
+    else:
+        precip_df = fetch_precip(state, raw)
+        centroids_ll = grid.geometry.centroid
+        precip_vals = np.array(idw(
+            precip_df["lat"].values, precip_df["lon"].values, precip_df["ann_precip_mm"].values,
+            np.array([p.y for p in centroids_ll]), np.array([p.x for p in centroids_ll]),
+        ))
+    grid["ann_precip_mm"] = precip_vals
+    p05, p95 = np.nanpercentile(precip_vals, [5, 95])
     grid["water_score"] = ((grid["ann_precip_mm"] - p05) / (p95 - p05)).clip(0, 1)
-    print(f"  water_score: {grid['water_score'].min():.3f} - {grid['water_score'].max():.3f}")
+    print(f"  water_score: {grid['water_score'].min():.3f} - {grid['water_score'].max():.3f}", flush=True)
 
-    print("Community burden / EJ score (ej_score)...")
+    print("Community burden / EJ score (ej_score)...", flush=True)
     zcta_codes = set(grid["zcta"].astype(str).str.zfill(5))
     df_acs = fetch_acs_zcta(zcta_codes, zcta_root)
     df_acs["zcta"] = df_acs["zcta"].astype(str).str.zfill(5)
@@ -227,7 +290,7 @@ def main():
     grid["ej_score"] = grid["ej_score"].fillna(grid["ej_score"].median())
     print(f"  ej_score: {grid['ej_score'].min():.3f} - {grid['ej_score'].max():.3f}")
 
-    print("Population exposure (pop_exposure_score)...")
+    print("Population exposure (pop_exposure_score)...", flush=True)
     grid_proj_tmp = grid.to_crs(crs_proj)
     grid["area_km2"] = grid_proj_tmp.geometry.area / 1e6
     grid["pop_density"] = (grid["pop"] / grid["area_km2"].clip(lower=0.01)).fillna(0)
