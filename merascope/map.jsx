@@ -16,60 +16,76 @@ const STATE_NAMES = {
 const CELL_PX = 15; // kept for sitelab.jsx compat
 
 const GRID_URLS = [
-  'data/WA/grid_scores.geojson',
-  'data/OR/grid_scores.geojson',
-  'data/TX/grid_scores.geojson',
-  'data/CA/grid_scores.geojson',
-  'data/NV/grid_scores.geojson',
-  'data/UT/grid_scores.geojson',
-  'data/ID/grid_scores.geojson',
-  'data/MT/grid_scores.geojson',
-  'data/AZ/grid_scores.geojson',
-  'data/CO/grid_scores.geojson',
-  'data/WY/grid_scores.geojson',
-  'data/NM/grid_scores.geojson',
-  'data/ND/grid_scores.geojson',
-  'data/SD/grid_scores.geojson',
-  'data/NE/grid_scores.geojson',
-  'data/KS/grid_scores.geojson',
-  'data/OK/grid_scores.geojson',
-  'data/MN/grid_scores.geojson',
-  'data/IA/grid_scores.geojson',
-  'data/MO/grid_scores.geojson',
-  'data/AR/grid_scores.geojson',
-  'data/LA/grid_scores.geojson',
-  'data/MI/grid_scores.geojson',
-  'data/WI/grid_scores.geojson',
-  'data/IL/grid_scores.geojson',
-  'data/IN/grid_scores.geojson',
-  'data/KY/grid_scores.geojson',
-  'data/TN/grid_scores.geojson',
-  'data/MS/grid_scores.geojson',
-  'data/GA/grid_scores.geojson',
-  'data/OH/grid_scores.geojson',
-  'data/AL/grid_scores.geojson',
-  'data/FL/grid_scores.geojson',
-  'data/SC/grid_scores.geojson',
-  'data/NC/grid_scores.geojson',
-  'data/VA/grid_scores.geojson',
-  'data/WV/grid_scores.geojson',
-  'data/PA/grid_scores.geojson',
-  'data/NY/grid_scores.geojson',
-  'data/NJ/grid_scores.geojson',
-  'data/CT/grid_scores.geojson',
-  'data/RI/grid_scores.geojson',
-  'data/MA/grid_scores.geojson',
-  'data/VT/grid_scores.geojson',
-  'data/NH/grid_scores.geojson',
-  'data/ME/grid_scores.geojson',
-  'data/DE/grid_scores.geojson',
-  'data/MD/grid_scores.geojson',
+  'data/WA/zcta/grid_scores.geojson',
+  'data/OR/zcta/grid_scores.geojson',
+  'data/TX/zcta/grid_scores.geojson',
+  'data/CA/zcta/grid_scores.geojson',
+  'data/NV/zcta/grid_scores.geojson',
+  'data/UT/zcta/grid_scores.geojson',
+  'data/ID/zcta/grid_scores.geojson',
+  'data/MT/zcta/grid_scores.geojson',
+  'data/AZ/zcta/grid_scores.geojson',
+  'data/CO/zcta/grid_scores.geojson',
+  'data/WY/zcta/grid_scores.geojson',
+  'data/NM/zcta/grid_scores.geojson',
+  'data/ND/zcta/grid_scores.geojson',
+  'data/SD/zcta/grid_scores.geojson',
+  'data/NE/zcta/grid_scores.geojson',
+  'data/KS/zcta/grid_scores.geojson',
+  'data/OK/zcta/grid_scores.geojson',
+  'data/MN/zcta/grid_scores.geojson',
+  'data/IA/zcta/grid_scores.geojson',
+  'data/MO/zcta/grid_scores.geojson',
+  'data/AR/zcta/grid_scores.geojson',
+  'data/LA/zcta/grid_scores.geojson',
+  'data/MI/zcta/grid_scores.geojson',
+  'data/WI/zcta/grid_scores.geojson',
+  'data/IL/zcta/grid_scores.geojson',
+  'data/IN/zcta/grid_scores.geojson',
+  'data/KY/zcta/grid_scores.geojson',
+  'data/TN/zcta/grid_scores.geojson',
+  'data/MS/zcta/grid_scores.geojson',
+  'data/GA/zcta/grid_scores.geojson',
+  'data/OH/zcta/grid_scores.geojson',
+  'data/AL/zcta/grid_scores.geojson',
+  'data/FL/zcta/grid_scores.geojson',
+  'data/SC/zcta/grid_scores.geojson',
+  'data/NC/zcta/grid_scores.geojson',
+  'data/VA/zcta/grid_scores.geojson',
+  'data/WV/zcta/grid_scores.geojson',
+  'data/PA/zcta/grid_scores.geojson',
+  'data/NY/zcta/grid_scores.geojson',
+  'data/NJ/zcta/grid_scores.geojson',
+  'data/CT/zcta/grid_scores.geojson',
+  'data/RI/zcta/grid_scores.geojson',
+  'data/MA/zcta/grid_scores.geojson',
+  'data/VT/zcta/grid_scores.geojson',
+  'data/NH/zcta/grid_scores.geojson',
+  'data/ME/zcta/grid_scores.geojson',
+  'data/DE/zcta/grid_scores.geojson',
+  'data/MD/zcta/grid_scores.geojson',
 ];
 let _gridCache = null;
 let _gridCachePromise = null;
 let _txCache = null;
 let _txCachePromise = null;
 let _subCache = null;
+
+function _geomStats(geom) {
+  const rings = geom.type === 'MultiPolygon'
+    ? geom.coordinates.flatMap(poly => poly[0])
+    : geom.coordinates[0];
+  let slat = 0, slon = 0, minLon = Infinity, maxLon = -Infinity, minLat = Infinity, maxLat = -Infinity;
+  const n = rings.length;
+  for (let i = 0; i < n; i++) {
+    slon += rings[i][0]; slat += rings[i][1];
+    if (rings[i][0] < minLon) minLon = rings[i][0];
+    if (rings[i][0] > maxLon) maxLon = rings[i][0];
+    if (rings[i][1] < minLat) minLat = rings[i][1];
+    if (rings[i][1] > maxLat) maxLat = rings[i][1];
+  }
+  return { lat: slat/n, lon: slon/n, bboxW: minLon, bboxE: maxLon, bboxS: minLat, bboxN: maxLat };
+}
 
 function loadTxCache() {
   if (_txCache) return Promise.resolve(_txCache);
@@ -94,34 +110,27 @@ function loadGridCache() {
   if (_gridCache) return Promise.resolve(_gridCache);
   if (_gridCachePromise) return _gridCachePromise;
   let fid = 0;
+  _gridCache = { type: 'FeatureCollection', features: [] };
   _gridCachePromise = Promise.all(GRID_URLS.map(url =>
     fetch(url).then(r => r.json()).then(d => {
       const st = url.split('/')[1];
+      d.features = d.features.filter(f => f.geometry && (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon'));
       d.features.forEach(f => {
+        const gs = _geomStats(f.geometry);
         f.properties._state = st;
         f.properties._fid = fid++;
-        const ring = f.geometry.coordinates[0];
-        const n = ring.length;
-        let slat = 0, slon = 0, minLon = Infinity, maxLon = -Infinity, minLat = Infinity, maxLat = -Infinity;
-        for (let i = 0; i < n; i++) {
-          slon += ring[i][0]; slat += ring[i][1];
-          if (ring[i][0] < minLon) minLon = ring[i][0];
-          if (ring[i][0] > maxLon) maxLon = ring[i][0];
-          if (ring[i][1] < minLat) minLat = ring[i][1];
-          if (ring[i][1] > maxLat) maxLat = ring[i][1];
-        }
-        f.properties._lon = slon / n;
-        f.properties._lat = slat / n;
-        f.properties._bboxW = minLon; f.properties._bboxE = maxLon;
-        f.properties._bboxS = minLat; f.properties._bboxN = maxLat;
+        f.properties._lat = gs.lat;
+        f.properties._lon = gs.lon;
+        f.properties._bboxW = gs.bboxW; f.properties._bboxE = gs.bboxE;
+        f.properties._bboxS = gs.bboxS; f.properties._bboxN = gs.bboxN;
       });
+      _gridCache.features.push(...d.features);
+      if (window._onStateZctaLoaded) window._onStateZctaLoaded(d);
       return d;
-    })
-  )).then(datasets => {
-    const combined = { type: 'FeatureCollection', features: datasets.flatMap(d => d.features) };
-    _gridCache = combined;
+    }).catch(() => null)
+  )).then(() => {
     _gridCachePromise = null;
-    return combined;
+    return _gridCache;
   });
   return _gridCachePromise;
 }
@@ -217,7 +226,7 @@ function _checkStewardGateLocal(p) {
   return gates;
 }
 
-function WAMap({ weights, selectedState = null, selectedCells = null, onCellToggle = null, stateData = null, interactive = true, markers = true, pins = null, onPinClick = null, dimmed = false, highlight = null, onStewardLockIn = null, showGrid = false, style }) {
+function WAMap({ weights, selectedState = null, selectedCells = null, onCellToggle = null, stateData = null, interactive = true, markers = true, pins = null, onPinClick = null, dimmed = false, highlight = null, onStewardLockIn = null, showGrid = false, zipTarget = null, minScore = 0, style }) {
   const M = window.MERA;
   const { ramp } = React.useContext(MeraCtx);
   const containerRef = React.useRef(null);
@@ -229,6 +238,7 @@ function WAMap({ weights, selectedState = null, selectedCells = null, onCellTogg
   const substationLayerRef = React.useRef(null);
   const weightsRef = React.useRef(weights);
   const rampRef = React.useRef(ramp);
+  const minScoreRef = React.useRef(minScore);
   const [hover, setHover] = React.useState(null);
   const [mousePos, setMousePos] = React.useState({ x: 0, y: 0 });
   const [stewardGates, setStewardGates] = React.useState([]);
@@ -265,23 +275,30 @@ function WAMap({ weights, selectedState = null, selectedCells = null, onCellTogg
   const selectedStateRef = React.useRef(selectedState);
   const selectedCellsRef = React.useRef(selectedCells);
   const onCellToggleRef = React.useRef(onCellToggle);
+  const highlightedZipRef = React.useRef(null);
   selectedCellsRef.current = selectedCells;
   onCellToggleRef.current = onCellToggle;
   weightsRef.current = weights;
   rampRef.current = ramp;
+  minScoreRef.current = minScore;
   selectedStateRef.current = selectedState;
 
   function cellStyle(p, w, r) {
     const sel = selectedStateRef.current;
     const nat = !sel;
-    if (sel && p._state !== sel) return { fillOpacity: 0, color: 'transparent', weight: 0, interactive: false };
+    if (sel && p._state && p._state !== sel) return { fillOpacity: 0, color: 'transparent', weight: 0, interactive: false };
     const isSelected = selectedCellsRef.current && selectedCellsRef.current.has(p._fid);
     if (p.protected_score === 0) return { fillColor: '#0d2b1a', fillOpacity: 0.72, color: isSelected ? '#fff' : 'transparent', weight: isSelected ? 2 : 0 };
-    const fill = M.rampColor(M.composite(propsToInd(p, nat), w), r);
+    const ind = propsToInd(p, nat);
+    const score = M.composite(ind, w);
+    if (!isSelected && score < minScoreRef.current) return { fillOpacity: 0, color: 'transparent', weight: 0, interactive: false };
+    const fill = M.rampColor(score, r);
     const zones = window.ACTIVE_ZONES || [];
     const stewarded = p._lat != null && zones.some(function(z) { return _inZone(p, z); });
-    if (isSelected) return { fillColor: fill, fillOpacity: 0.88, color: '#ffffff', weight: 2.5 };
-    if (stewarded) return { fillColor: fill, fillOpacity: 0.55, color: '#b45f1d', weight: 2 };
+    const isHighlighted = highlightedZipRef.current && p.zcta === highlightedZipRef.current;
+    if (isSelected)    return { fillColor: fill, fillOpacity: 0.88, color: '#ffffff', weight: 2.5 };
+    if (isHighlighted) return { fillColor: fill, fillOpacity: 0.88, color: '#ffffff', weight: 2.5, dashArray: '6 3' };
+    if (stewarded)     return { fillColor: fill, fillOpacity: 0.55, color: '#b45f1d', weight: 2 };
     return { fillColor: fill, fillOpacity: 0.55, color: 'transparent', weight: 0 };
   }
 
@@ -353,24 +370,35 @@ function WAMap({ weights, selectedState = null, selectedCells = null, onCellTogg
     mapRef.current = map;
 
     let cancelled = false;
-    const load = loadGridCache();
 
-    load.then(data => {
+    const layerOpts = () => ({
+      renderer,
+      style: feat => cellStyle(feat.properties, weightsRef.current, rampRef.current),
+      onEachFeature: interactive ? (feat, lyr) => {
+        lyr.on('mouseover', () => {
+          const ctr = lyr.getBounds().getCenter();
+          setHover(Object.assign({}, feat.properties, { _lat: ctr.lat, _lon: ctr.lng }));
+        });
+        lyr.on('mouseout', () => setHover(null));
+        lyr.on('click', () => {
+          if (onCellToggleRef.current) onCellToggleRef.current(feat.properties._fid, feat.properties);
+        });
+      } : undefined,
+    });
+
+    window._onStateZctaLoaded = (stateData) => {
       if (cancelled) return;
-      const layer = L.geoJSON(data, {
-        style: feat => cellStyle(feat.properties, weightsRef.current, rampRef.current),
-        onEachFeature: interactive ? (feat, lyr) => {
-          lyr.on('mouseover', () => {
-            const ctr = lyr.getBounds().getCenter();
-            setHover(Object.assign({}, feat.properties, { _lat: ctr.lat, _lon: ctr.lng }));
-          });
-          lyr.on('mouseout',  () => setHover(null));
-          lyr.on('click', () => {
-            if (onCellToggleRef.current) onCellToggleRef.current(feat.properties._fid, feat.properties);
-          });
-        } : undefined,
-      }).addTo(map);
-      gridLayerRef.current = layer;
+      if (!gridLayerRef.current) {
+        gridLayerRef.current = L.geoJSON(stateData, layerOpts()).addTo(map);
+      } else {
+        gridLayerRef.current.addData(stateData);
+      }
+      applyColors(weightsRef.current, rampRef.current);
+    };
+
+    loadGridCache().then(() => {
+      if (cancelled) return;
+      window._onStateZctaLoaded = null;
       applyColors(weightsRef.current, rampRef.current);
       applyMarkers();
     });
@@ -384,6 +412,7 @@ function WAMap({ weights, selectedState = null, selectedCells = null, onCellTogg
       el.addEventListener('mousemove', track);
       return () => {
         cancelled = true;
+        window._onStateZctaLoaded = null;
         el.removeEventListener('mousemove', track);
         map.remove();
         mapRef.current = null;
@@ -402,6 +431,7 @@ function WAMap({ weights, selectedState = null, selectedCells = null, onCellTogg
   React.useEffect(() => { applyColors(weights, ramp); }, [weights, ramp]);
   React.useEffect(() => { window._recolorMap = function() { applyColors(weightsRef.current, rampRef.current); }; return function() { window._recolorMap = null; }; }, []);
   React.useEffect(() => { applyColors(weightsRef.current, rampRef.current); }, [selectedCells]);
+  React.useEffect(() => { applyColors(weightsRef.current, rampRef.current); }, [minScore]);
   React.useEffect(() => { applyPins(weights, ramp);   }, [pins, ramp]);
   React.useEffect(() => { applyMarkers();              }, [markers]);
 
@@ -459,6 +489,19 @@ function WAMap({ weights, selectedState = null, selectedCells = null, onCellTogg
   }, [showGrid]);
 
   React.useEffect(() => {
+    if (!zipTarget || !mapRef.current || !gridLayerRef.current) return;
+    const zip = zipTarget.split('_')[0];
+    highlightedZipRef.current = zip;
+    let found = null;
+    gridLayerRef.current.eachLayer(lyr => {
+      if (lyr.feature && lyr.feature.properties.zcta === zip) found = lyr;
+    });
+    if (!found) return;
+    mapRef.current.fitBounds(found.getBounds(), { padding: [40, 40] });
+    applyColors(weightsRef.current, rampRef.current);
+  }, [zipTarget]);
+
+  React.useEffect(() => {
     applyColors(weightsRef.current, rampRef.current);
     if (!mapRef.current) return;
     if (!selectedState) {
@@ -490,6 +533,7 @@ function WAMap({ weights, selectedState = null, selectedCells = null, onCellTogg
           </div>
         ) : (
           <div>
+            {p.zcta && <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink)', marginBottom: 4, letterSpacing: '0.04em' }}>ZIP {p.zcta}</div>}
             <div className="score-serif" style={{ fontSize: 32, lineHeight: 1.1, color: M.rampColor(score, ramp) }}>{score.toFixed(3)}</div>
             <div className="microcopy">composite suitability</div>
             {stewardGates.length > 0 && stewardGates.map(function(g, i) {
@@ -542,7 +586,7 @@ function MapLegend() {
 }
 
 /* ── weight slider panel ── */
-function WeightPanel({ weights, setWeights, dock = false }) {
+function WeightPanel({ weights, setWeights, minScore = 0, setMinScore = null, dock = false }) {
   const M = window.MERA;
   const [collapsed, setCollapsed] = React.useState(false);
   const [shareUrl, setShareUrl] = React.useState(null);
@@ -589,6 +633,17 @@ function WeightPanel({ weights, setWeights, dock = false }) {
               </div>
             ))}
           </div>
+          {setMinScore && (
+            <div style={{ marginTop: 12, borderTop: '1px solid var(--line-soft)', paddingTop: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 2 }}>
+                <span style={{ color: 'var(--ink)', fontWeight: 600 }}>Minimum site score</span>
+                <span className="score-serif" style={{ color: 'var(--basalt)', fontWeight: 600 }}>{Math.round(minScore)}</span>
+              </div>
+              <input className="mslider" type="range" min="0" max="100" step="1" value={Math.round(minScore)} aria-label="Minimum site score"
+                onChange={e => setMinScore(+e.target.value)} />
+              <span className="microcopy">Cells below this score are hidden from the map.</span>
+            </div>
+          )}
           <div style={{ marginTop: 13, background: 'var(--sand)', borderRadius: 8, padding: '9px 11px', fontSize: 12.5, color: 'var(--ink)' }}>
             <div style={{ display: 'flex', gap: 7, alignItems: 'flex-start' }}>
               <span style={{ marginTop: 1 }}><Icon name="lock" color="var(--slate)" /></span>
@@ -661,26 +716,22 @@ function getFeaturesById(fids) {
   return _gridCache.features.filter(f => s.has(f.properties._fid));
 }
 
-var _centroids = null;
 function findNearestCell(lat, lon) {
   if (!_gridCache) return null;
-  if (!_centroids) {
-    _centroids = _gridCache.features.map(function(f) {
-      var c = f.geometry.coordinates[0];
-      var cLat = c.reduce(function(s,p){return s+p[1];},0)/c.length;
-      var cLon = c.reduce(function(s,p){return s+p[0];},0)/c.length;
-      return { lat: cLat, lon: cLon, fid: f.properties._fid };
-    });
-  }
   var best = null, bestD = Infinity;
-  for (var i = 0; i < _centroids.length; i++) {
-    var ct = _centroids[i];
-    var d = (lat - ct.lat)*(lat - ct.lat) + (lon - ct.lon)*(lon - ct.lon);
-    if (d < bestD) { bestD = d; best = ct; }
+  for (var i = 0; i < _gridCache.features.length; i++) {
+    var p = _gridCache.features[i].properties;
+    if (p._lat == null || p._lon == null) continue;
+    var d = (lat - p._lat)*(lat - p._lat) + (lon - p._lon)*(lon - p._lon);
+    if (d < bestD) { bestD = d; best = _gridCache.features[i]; }
   }
   if (!best) return null;
-  var feat = _gridCache.features.find(function(f) { return f.properties._fid === best.fid; });
-  return { feature: feat, distDeg: Math.sqrt(bestD) };
+  return { feature: best, distDeg: Math.sqrt(bestD) };
+}
+
+function findZip(zip) {
+  if (!_gridCache) return null;
+  return _gridCache.features.find(f => f.properties.zcta === zip) || null;
 }
 
 function computeCellRank(composite, stateCode) {
@@ -693,4 +744,4 @@ function computeCellRank(composite, stateCode) {
   return { rank: rank > 0 ? rank : scores.length, total: scores.length };
 }
 
-Object.assign(window, { WAMap, MapLegend, WeightPanel, SiteThumb, StateSelector, normalizeWeights, CELL_PX, getStateFeatures, getFeaturesById, computeCellRank, findNearestCell, STATE_NAMES, propsToInd, loadGridCache });
+Object.assign(window, { WAMap, MapLegend, WeightPanel, SiteThumb, StateSelector, normalizeWeights, CELL_PX, getStateFeatures, getFeaturesById, computeCellRank, findNearestCell, findZip, STATE_NAMES, propsToInd, loadGridCache });

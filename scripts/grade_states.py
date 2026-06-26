@@ -110,9 +110,10 @@ def _fmt_factors(items):
 def why_water(state, water, aquifer, waterway, stress, grade):
     issues, strengths = [], []
 
-    if _hi(water): strengths.append(f'precipitation availability is strong ({water:.2f})')
-    elif _lo(water): issues.append(f'water availability is constrained ({water:.2f}) — paper rights exceed wet-year supply in key corridors')
-    elif _is_weak(grade): issues.append(f'water availability sits below the national median ({water:.2f})')
+    if water is not None:
+        if _hi(water): strengths.append(f'precipitation availability is strong ({water:.2f})')
+        elif _lo(water): issues.append(f'water availability is constrained ({water:.2f}) — paper rights exceed wet-year supply in key corridors')
+        elif _is_weak(grade): issues.append(f'water availability sits below the national median ({water:.2f})')
 
     if aquifer is not None:
         if _hi(aquifer): strengths.append(f'groundwater access is favorable ({aquifer:.2f})')

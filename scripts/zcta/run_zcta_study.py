@@ -21,16 +21,25 @@ import subprocess
 import sys
 from pathlib import Path
 
-SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
+SCRIPTS_DIR = Path(__file__).resolve().parent.parent
 ZCTA_DIR = Path(__file__).parent
 
 PIPELINE = [
-    ("02", ZCTA_DIR / "02_zcta_indicators.py",  "ZCTA grid + tx_score, water_score, ej_score"),
-    ("03", SCRIPTS_DIR / "03_risk.py",           "seismic_score, flood_score"),
-    ("04", SCRIPTS_DIR / "04_environment.py",    "contamination_score, waterway_score"),
-    ("05", SCRIPTS_DIR / "05_geothermal.py",     "geothermal_score"),
-    ("06", SCRIPTS_DIR / "06_terrain.py",        "flatness_score (SRTM1 hard gate)"),
-    ("07", SCRIPTS_DIR / "07_protected.py",      "protected_score (federal + tribal hard gate)"),
+    ("02", ZCTA_DIR / "02_zcta_indicators.py",   "ZCTA grid + tx_score, water_score, ej_score"),
+    ("03", SCRIPTS_DIR / "03_risk.py",            "seismic_score, flood_score"),
+    ("04", SCRIPTS_DIR / "04_environment.py",     "contamination_score, waterway_score"),
+    ("05", SCRIPTS_DIR / "05_geothermal.py",      "geothermal_score"),
+    ("06", SCRIPTS_DIR / "06_terrain.py",         "flatness_score, slope_score (SRTM1)"),
+    ("07", SCRIPTS_DIR / "07_protected.py",       "protected_score (federal + tribal hard gate)"),
+    ("08", SCRIPTS_DIR / "08_aquifer.py",         "aquifer_score"),
+    ("09", SCRIPTS_DIR / "09_soil.py",            "soil_score"),
+    ("10", SCRIPTS_DIR / "10_soilprofile.py",     "soil_profile_score, ksat_score"),
+    ("11", SCRIPTS_DIR / "11_substations.py",     "substation_score"),
+    ("12", SCRIPTS_DIR / "12_superfund.py",       "superfund_score, rcra_score"),
+    ("13", SCRIPTS_DIR / "13_air_quality.py",     "air_quality_score"),
+    ("14", SCRIPTS_DIR / "14_fiber.py",           "fiber_score"),
+    ("15", SCRIPTS_DIR / "15_water_stress.py",    "water_stress_score"),
+    ("16", SCRIPTS_DIR / "16_iso_queue.py",       "grid_capacity_score"),
 ]
 
 

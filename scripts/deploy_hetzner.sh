@@ -7,7 +7,7 @@ REMOTE_DIR="/home/simonhans/coding/merascope"
 echo "Running lint..."
 flake8 scripts/ merascope/ \
   --max-line-length 120 \
-  --exclude=scripts/.ipynb_checkpoints,merascope/.ipynb_checkpoints \
+  --exclude=scripts/.ipynb_checkpoints,merascope/.ipynb_checkpoints,scripts/zcta/.ipynb_checkpoints \
   --extend-ignore=E127,E221,E222,E231,E302,E402,E501,E701,E702,W503
 
 echo "Running tests..."
@@ -23,6 +23,7 @@ echo "Syncing code to Hetzner..."
 rsync -av --checksum --delete \
   -e "ssh -i $HOME/.ssh/id_ed25519" \
   --exclude='.git/' \
+  --exclude='.env' \
   --exclude='__pycache__/' \
   --exclude='*.pyc' \
   --exclude='venv/' \

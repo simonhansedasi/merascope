@@ -2,6 +2,7 @@ data/
 node_modules/
 merascope/dist/
 vendor/
+grades_output.json
 outreach_opcd_draft.md
 suggestions_*.md
 merascope_assessment.md
