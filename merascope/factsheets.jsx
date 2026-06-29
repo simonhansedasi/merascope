@@ -167,21 +167,29 @@ function FactSheetDynamic({ stateCode }) {
             </div>
           ))}
 
-          {hasRaw && (
-            <React.Fragment>
-              <SheetH>Physical profile — state medians</SheetH>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3px 16px', fontSize: 12 }}>
-                <div className="kv"><span>Annual precipitation</span><b className="score-serif">{medPrecip != null ? Math.round(medPrecip) + ' mm' : 'n/a'}</b></div>
-                <div className="kv"><span>Depth to water table</span><b className="score-serif">{medAquifer != null ? Math.round(medAquifer) + ' ft' : 'n/a'}</b></div>
-                <div className="kv"><span>Hydraulic conductivity</span><b className="score-serif">{medKsat != null ? medKsat.toFixed(1) + ' um/s' : 'n/a'}</b></div>
-                <div className="kv"><span>Max seismic PGA</span><b className="score-serif">{maxSeismic ? maxSeismic.toFixed(3) + ' g' : 'n/a'}</b></div>
-                <div className="kv"><span>Median HV tx distance</span><b className="score-serif">{medTxDist != null ? (medTxDist / 1000).toFixed(1) + ' km' : 'n/a'}</b></div>
-              </div>
-              <div style={{ fontSize: 9.5, color: 'var(--slate)', marginTop: 5, lineHeight: 1.5 }}>
-                Precip: PRISM Climate Group 30-yr normals (1991-2020). Water table: USGS NWIS param 72019. K-sat: SSURGO chorizon thickness-weighted mean. Seismic: USGS ASCE 7-22 PGAm (Risk Cat II, Site Class C). Tx: OSM + EIA Form 860 distance to nearest HV line or substation.
-              </div>
-            </React.Fragment>
-          )}
+          {hasRaw && (() => {
+            const physStats = [
+              medPrecip    != null ? { label: 'Annual precipitation',  val: Math.round(medPrecip) + ' mm' }          : null,
+              medAquifer   != null ? { label: 'Depth to water table',  val: Math.round(medAquifer) + ' ft' }          : null,
+              medKsat      != null ? { label: 'Hydraulic conductivity', val: medKsat.toFixed(1) + ' um/s' }           : null,
+              maxSeismic        ? { label: 'Max seismic PGA',       val: maxSeismic.toFixed(3) + ' g' }           : null,
+              medTxDist    != null ? { label: 'Median HV tx distance', val: (medTxDist / 1000).toFixed(1) + ' km' } : null,
+            ].filter(Boolean);
+            if (!physStats.length) return null;
+            return (
+              <React.Fragment>
+                <SheetH>Physical profile — state medians</SheetH>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3px 16px', fontSize: 12 }}>
+                  {physStats.map(s => (
+                    <div key={s.label} className="kv"><span>{s.label}</span><b className="score-serif">{s.val}</b></div>
+                  ))}
+                </div>
+                <div style={{ fontSize: 9.5, color: 'var(--slate)', marginTop: 5, lineHeight: 1.5 }}>
+                  Precip: PRISM Climate Group 30-yr normals (1991-2020). Water table: USGS NWIS param 72019. K-sat: SSURGO chorizon thickness-weighted mean. Seismic: USGS ASCE 7-22 PGAm (Risk Cat II, Site Class C). Tx: OSM + EIA Form 860 distance to nearest HV line or substation.
+                </div>
+              </React.Fragment>
+            );
+          })()}
         </div>
       </div>
     </SheetShell>
