@@ -215,7 +215,7 @@ def main():
 
     print("State boundary...")
     state = fetch_state_boundary(cfg["abbr"], cfg["fips"], raw)
-    state_union = state.geometry.unary_union
+    state_union = state.geometry.union_all()
     print(f"  {len(state)} feature(s)")
 
     print("OSM data centers...")

@@ -211,7 +211,7 @@ def main():
     rivers = fetch_osm_rivers(cfg["bbox"], raw)
     if len(rivers) > 0:
         rivers_proj = rivers.to_crs(crs_proj)
-        rivers_union = rivers_proj.geometry.unary_union
+        rivers_union = rivers_proj.geometry.union_all()
         dists_riv = np.array([rivers_union.distance(
             gpd.GeoSeries([pt], crs=crs_proj).iloc[0]
         ) for pt in grid_proj.geometry.centroid])

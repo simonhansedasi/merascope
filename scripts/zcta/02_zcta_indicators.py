@@ -79,7 +79,7 @@ def fetch_zcta(state_gdf, zcta_root):
         print(f"  Cached to {ZCTA_CB_DIR}")
     print("  Filtering ZCTAs to state boundary...")
     national = gpd.read_file(ZCTA_CB_DIR / "cb_2020_us_zcta520_500k.shp").to_crs(CRS)
-    state_union = state_gdf.geometry.unary_union
+    state_union = state_gdf.geometry.union_all()
     mask = national.geometry.centroid.within(state_union)
     zcta = national[mask][["ZCTA5CE20", "geometry"]].copy()
     zcta = zcta.rename(columns={"ZCTA5CE20": "zcta"}).reset_index(drop=True)
@@ -165,7 +165,7 @@ def fetch_precip(state_gdf, raw):
     if path.exists():
         return pd.read_csv(path)
     bounds = state_gdf.total_bounds
-    state_union = state_gdf.geometry.unary_union
+    state_union = state_gdf.geometry.union_all()
     sample_lats = np.linspace(bounds[1] + 0.4, bounds[3] - 0.2, 7)
     sample_lons = np.linspace(bounds[0] + 0.4, bounds[2] - 0.2, 11)
     pts = [(round(lat, 2), round(lon, 2))
@@ -254,7 +254,7 @@ def main():
     print("Transmission proximity (tx_score)...", flush=True)
     if len(tx_gdf) > 0:
         tx_proj = tx_gdf.to_crs(crs_proj)
-        tx_union = tx_proj.geometry.unary_union
+        tx_union = tx_proj.geometry.union_all()
         grid_proj = grid.to_crs(crs_proj)
         centroids = list(grid_proj.geometry.centroid)
         print(f"  computing distances for {len(centroids)} ZCTAs...", flush=True)

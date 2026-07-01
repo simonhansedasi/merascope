@@ -77,7 +77,7 @@ def patch_tx_dist(grid, raw, cfg):
         return
     crs_proj = cfg["utm_epsg"]
     tx_proj = tx_gdf.to_crs(crs_proj)
-    tx_union = tx_proj.geometry.unary_union
+    tx_union = tx_proj.geometry.union_all()
     grid_proj = grid.to_crs(crs_proj)
     centroids = list(grid_proj.geometry.centroid)
     print(f"  computing tx distances for {len(centroids)} ZCTAs...")

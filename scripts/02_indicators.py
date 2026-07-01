@@ -58,7 +58,7 @@ def create_fishnet(state_gdf, cell_size=CELL_SIZE):
     rows = np.arange(miny, maxy, cell_size)
     polygons = [box(x, y, x + cell_size, y + cell_size) for x in cols for y in rows]
     grid = gpd.GeoDataFrame({"geometry": polygons}, crs=CRS)
-    state_union = state_gdf.geometry.unary_union
+    state_union = state_gdf.geometry.union_all()
     grid = grid[grid.geometry.centroid.within(state_union)].reset_index(drop=True)
     grid["cell_id"] = grid.index
     return grid
@@ -233,7 +233,7 @@ def main():
     print("Transmission proximity (tx_score)...")
     if len(tx_gdf) > 0:
         tx_proj = tx_gdf.to_crs(crs_proj)
-        tx_union = tx_proj.geometry.unary_union
+        tx_union = tx_proj.geometry.union_all()
         grid_proj = grid.to_crs(crs_proj)
         centroids = list(grid_proj.geometry.centroid)
         grid["tx_dist_m"] = [tx_union.distance(pt) for pt in centroids]

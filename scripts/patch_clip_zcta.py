@@ -41,7 +41,7 @@ def clip_state(state):
     # Fix invalid geometries before clipping to avoid TopologyException
     zcta_gdf = zcta_gdf.copy()
     zcta_gdf["geometry"] = zcta_gdf.geometry.buffer(0)
-    state_union = state_gdf.geometry.unary_union.buffer(0)
+    state_union = state_gdf.geometry.union_all().buffer(0)
     clipped = zcta_gdf.clip(state_union).reset_index(drop=True)
     # Drop degenerate clip artifacts (GeometryCollection, LineString, None)
     valid = {'Polygon', 'MultiPolygon'}

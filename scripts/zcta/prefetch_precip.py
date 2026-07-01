@@ -40,7 +40,7 @@ def fetch_precip(state, state_gdf):
         return
 
     bounds = state_gdf.total_bounds
-    state_union = state_gdf.geometry.unary_union
+    state_union = state_gdf.geometry.union_all()
     sample_lats = np.linspace(bounds[1] + 0.4, bounds[3] - 0.2, 7)
     sample_lons = np.linspace(bounds[0] + 0.4, bounds[2] - 0.2, 11)
     pts = [(round(lat, 2), round(lon, 2))

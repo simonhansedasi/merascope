@@ -38,7 +38,7 @@ def fetch_seismic(state_gdf, raw):
     if path.exists():
         return pd.read_csv(path)
     bounds = state_gdf.total_bounds
-    state_union = state_gdf.geometry.unary_union
+    state_union = state_gdf.geometry.union_all()
     sample_lats = np.linspace(bounds[1] + 0.4, bounds[3] - 0.2, 6)
     sample_lons = np.linspace(bounds[0] + 0.4, bounds[2] - 0.2, 10)
     api_url = "https://earthquake.usgs.gov/ws/designmaps/asce7-22.json"

@@ -14,7 +14,7 @@ Same Score Promise: methodology is public and identical for all users. No party 
 ## Quick start
 
 ```bash
-# Activate the pipeline environment (Python 3.7 + geopandas 0.10.x — intentionally pinned; see environment.yml)
+# Activate the pipeline environment (Python 3.11+, geopandas 1.x; see environment.yml)
 conda activate merascope
 PYTHON=/home/simonhans/anaconda3/envs/merascope/bin/python3
 

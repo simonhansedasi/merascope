@@ -77,7 +77,7 @@ def patch_step02(grid, raw, root, cfg):
         tx_gdf = gpd.read_file(tx_path)
         if len(tx_gdf) > 0:
             tx_proj   = tx_gdf.to_crs(crs_proj)
-            tx_union  = tx_proj.geometry.unary_union
+            tx_union  = tx_proj.geometry.union_all()
             grid_proj = grid.to_crs(crs_proj)
             centroids = list(grid_proj.geometry.centroid)
             grid["tx_dist_m"] = [tx_union.distance(pt) for pt in centroids]
@@ -175,7 +175,7 @@ def patch_step04(grid, raw, cfg):
             rivers = gpd.read_file(rivers_path)
             if len(rivers) > 0:
                 rivers_proj  = rivers.to_crs(crs_proj)
-                rivers_union = rivers_proj.geometry.unary_union
+                rivers_union = rivers_proj.geometry.union_all()
                 dists_riv = np.array([rivers_union.distance(
                     gpd.GeoSeries([pt], crs=crs_proj).iloc[0]
                 ) for pt in grid_proj.geometry.centroid])
