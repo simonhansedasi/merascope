@@ -4,6 +4,7 @@ channels:
   - defaults
 dependencies:
   - python>=3.11
+  # pipeline
   - geopandas>=1.0
   - pyogrio
   - pandas>=2.0
@@ -11,6 +12,10 @@ dependencies:
   - scipy>=1.9
   - matplotlib>=3.5
   - pillow>=10.0
+  # server
+  - flask>=3.0
+  - psycopg2>=2.9
+  # shared / tooling
   - requests>=2.31
   - pytest>=7.4
   - ipykernel
