@@ -535,6 +535,7 @@ function BuilderCaseView({ id }) {
       payload.lon = parseFloat(impForm.lon);
     }
     payload.session_id = window.MERA_SESSION || '';
+    payload.weights    = (window.MERA && window.MERA.DEFAULT_WEIGHTS) ? Object.assign({}, window.MERA.DEFAULT_WEIGHTS) : {};
     fetch('/api/builder/submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -613,6 +614,7 @@ function BuilderCaseView({ id }) {
       payload.state_code = selCell.properties._state || '';
     }
     payload.session_id = window.MERA_SESSION || '';
+    payload.weights    = (window.MERA && window.MERA.DEFAULT_WEIGHTS) ? Object.assign({}, window.MERA.DEFAULT_WEIGHTS) : {};
     fetch('/api/builder/submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -854,7 +856,58 @@ function BuilderCaseView({ id }) {
             </div>
           )}
 
-          <div style={{ maxWidth: 640 }}>
+          {dynCase.weights && (() => {
+            var dw = (M && M.DEFAULT_WEIGHTS) ? M.DEFAULT_WEIGHTS : {};
+            var activeW = dynCase.weights;
+            var nonZero = Object.entries(activeW).filter(function(e){ return e[1] > 0; });
+            var isDefault = Object.keys(dw).every(function(k){ return (activeW[k] || 0) === (dw[k] || 0); });
+            var totalW = nonZero.reduce(function(s, e){ return s + e[1]; }, 0);
+            return (
+              <div className="card" style={{ padding: '14px 16px', marginTop: 14, maxWidth: 640 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <div style={{ fontSize: 11, color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: '.07em' }}>Scoring weights at submission</div>
+                  {isDefault
+                    ? <span style={{ fontSize: 10.5, background: 'var(--evergreen)', color: '#fff', borderRadius: 4, padding: '1px 6px' }}>Platform defaults</span>
+                    : <span style={{ fontSize: 10.5, background: '#b89a2a', color: '#fff', borderRadius: 4, padding: '1px 6px' }}>Custom weights</span>}
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 10px' }}>
+                  {nonZero.map(function(e){
+                    var label = (M && M.INDICATORS) ? (M.INDICATORS.find(function(i){ return i.k === e[0]; }) || {}).label || e[0] : e[0];
+                    var pct = totalW > 0 ? Math.round(e[1] / totalW * 100) : 0;
+                    var isDev = (dw[e[0]] || 0) !== e[1];
+                    return (
+                      <span key={e[0]} style={{ fontSize: 12.5, color: isDev ? '#b89a2a' : 'var(--ink)' }}>
+                        {label} <span style={{ fontWeight: 700 }}>{pct}%</span>
+                        {isDev && <span style={{ fontSize: 10, marginLeft: 3, color: '#b89a2a' }}>(default {Math.round((dw[e[0]] || 0) / totalW * 100)}%)</span>}
+                      </span>
+                    );
+                  })}
+                </div>
+                {!isDefault && (
+                  <div style={{ fontSize: 11, color: '#b89a2a', marginTop: 8 }}>
+                    These weights differ from platform defaults. The composite score reflects this custom configuration. This deviation is part of the evidentiary record.
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          <div style={{ maxWidth: 640, marginTop: 14 }}>
+            <a href={'/report/' + dynCase.case_id} target="_blank" rel="noopener noreferrer"
+               style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
+                        background: 'var(--mist)', border: '1px solid var(--line)', borderRadius: 8,
+                        color: 'var(--ink)', textDecoration: 'none' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 650, fontSize: 14 }}>Download permit justification report</div>
+                <div style={{ fontSize: 12, color: 'var(--slate)', marginTop: 2 }}>
+                  Printable PDF-ready document &mdash; composite score, 22-indicator breakdown, data sources, reproducibility metadata
+                </div>
+              </div>
+              <span style={{ fontSize: 13, color: 'var(--slate)', flexShrink: 0 }}>&rarr;</span>
+            </a>
+          </div>
+
+          <div style={{ maxWidth: 640, marginTop: 14 }}>
             <DocSection caseId={dynCase.case_id} />
           </div>
         </div>

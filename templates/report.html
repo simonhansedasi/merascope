@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ site_name }} — Permit Justification Report</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 10pt;
+      color: #111;
+      background: #eef0f4;
+    }
+    .page {
+      width: 8.5in;
+      min-height: 11in;
+      margin: 0.4in auto;
+      padding: 0.6in 0.7in;
+      background: #fff;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.13);
+    }
+
+    /* ── Header ── */
+    .rpt-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 2px solid #1a1a2e;
+      padding-bottom: 12px;
+      margin-bottom: 20px;
+    }
+    .rpt-logo { font-size: 13.5pt; font-weight: 700; color: #1a1a2e; letter-spacing: 0.07em; }
+    .rpt-doc-title { font-size: 8pt; color: #555; margin-top: 3px; letter-spacing: 0.04em; }
+    .rpt-meta { text-align: right; font-size: 8pt; color: #555; line-height: 1.8; }
+    .rpt-meta strong { color: #222; }
+
+    /* ── Score block ── */
+    .score-block {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+      padding: 14px 18px;
+      background: #f7f8fc;
+      border: 1px solid #d8dae8;
+      border-radius: 7px;
+      margin-bottom: 22px;
+    }
+    .score-circle {
+      width: 68px; height: 68px;
+      border-radius: 50%;
+      border: 3px solid;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .score-num { font-size: 17pt; font-weight: 700; line-height: 1; }
+    .score-sub { font-size: 7pt; color: #666; margin-top: 2px; }
+    .score-info h2 { font-size: 14pt; font-weight: 600; margin-bottom: 3px; }
+    .score-info .meta { font-size: 8.5pt; color: #555; margin-top: 2px; }
+    .score-info .note { font-size: 8pt; color: #777; margin-top: 6px; }
+
+    /* ── Section headers ── */
+    h3.sec {
+      font-size: 8.5pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: #444;
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 4px;
+      margin: 20px 0 10px;
+    }
+
+    /* ── Gates ── */
+    .gate-table { width: 100%; border-collapse: collapse; }
+    .gate-table th { font-size: 8pt; text-align: left; padding: 5px 8px; background: #f0f0f7; border-bottom: 1.5px solid #ccd; }
+    .gate-table td { padding: 5px 8px; font-size: 9pt; border-bottom: 1px solid #eee; }
+    .gate-pass { color: #1a7a45; font-weight: 700; }
+    .gate-fail { color: #b92b27; font-weight: 700; }
+    .gate-note { color: #888; font-size: 8pt; }
+
+    /* ── Indicator table ── */
+    .ind-table { width: 100%; border-collapse: collapse; }
+    .ind-table th { font-size: 7.5pt; text-align: left; padding: 4px 6px; background: #f0f0f7; border-bottom: 1.5px solid #ccd; white-space: nowrap; }
+    .ind-table td { padding: 3.5px 6px; font-size: 8.5pt; border-bottom: 1px solid #eee; vertical-align: middle; }
+    .bar-wrap { display: inline-flex; align-items: center; gap: 6px; }
+    .bar { display: inline-block; height: 6px; background: #3a5bd9; border-radius: 3px; }
+    .conf-h { color: #1a7a45; font-weight: 700; }
+    .conf-m { color: #8a6000; font-weight: 700; }
+    .conf-l { color: #b92b27; font-weight: 700; }
+
+    /* ── Strengths / challenges ── */
+    .sc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 6px; }
+    .sc-block h4 { font-size: 8.5pt; font-weight: 600; margin-bottom: 6px; color: #333; }
+    .sc-row { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 0; border-bottom: 1px solid #eee; font-size: 8.5pt; }
+    .sc-row:last-child { border-bottom: none; }
+    .pct-hi { font-weight: 700; color: #1a7a45; }
+    .pct-lo { font-weight: 700; color: #b92b27; }
+
+    /* ── Sources ── */
+    .src-table { width: 100%; border-collapse: collapse; }
+    .src-table th { font-size: 7.5pt; text-align: left; padding: 4px 6px; background: #f0f0f7; border-bottom: 1.5px solid #ccd; white-space: nowrap; }
+    .src-table td { padding: 3.5px 6px; font-size: 7.5pt; border-bottom: 1px solid #eee; vertical-align: top; }
+
+    /* ── Reproducibility ── */
+    .repro {
+      background: #f7f8fc;
+      border: 1px solid #d8dae8;
+      border-radius: 6px;
+      padding: 11px 15px;
+      font-size: 8pt;
+      line-height: 1.9;
+    }
+    .repro strong { color: #222; }
+    .hash-val { font-family: 'Courier New', monospace; font-size: 7.5pt; color: #333; word-break: break-all; background: #eeeffa; padding: 2px 5px; border-radius: 3px; }
+    .anchor-link { color: #3a5bd9; font-size: 7.5pt; }
+    .unanchored { color: #888; font-style: italic; }
+
+    /* ── Demo banner ── */
+    .demo-banner {
+      background: #fff8e1;
+      border: 1px solid #e6b800;
+      border-radius: 6px;
+      padding: 9px 13px;
+      font-size: 8.5pt;
+      margin-bottom: 18px;
+      color: #5a4000;
+    }
+
+    /* ── Gate fail banner ── */
+    .gate-fail-banner {
+      background: #fff0f0;
+      border: 1px solid #e88;
+      border-radius: 6px;
+      padding: 9px 13px;
+      font-size: 8.5pt;
+      margin-top: 8px;
+      color: #6a0000;
+    }
+
+    /* ── Caption text ── */
+    .caption { font-size: 7.5pt; color: #777; margin-top: 4px; }
+
+    /* ── Print button (screen only) ── */
+    .print-bar {
+      position: fixed; bottom: 22px; right: 24px;
+      display: flex; gap: 10px;
+    }
+    .btn-print {
+      padding: 8px 20px; border-radius: 6px; border: none; cursor: pointer;
+      background: #1a1a2e; color: #fff; font-size: 9pt; font-weight: 600;
+    }
+    .btn-close {
+      padding: 8px 16px; border-radius: 6px; border: 1px solid #ccc;
+      cursor: pointer; background: #fff; color: #333; font-size: 9pt;
+    }
+
+    @media print {
+      body { background: none; }
+      .page { box-shadow: none; margin: 0; padding: 0.5in 0.6in; }
+      .print-bar { display: none; }
+      .demo-banner, .gate-fail-banner, .repro {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      h3.sec { page-break-after: avoid; }
+      .ind-table tr, .src-table tr { page-break-inside: avoid; }
+      .sc-grid { page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ── Header ── -->
+  <div class="rpt-header">
+    <div>
+      <div class="rpt-logo">MERASCOPE</div>
+      <div class="rpt-doc-title">Permit Justification Report</div>
+    </div>
+    <div class="rpt-meta">
+      {% if case_id %}<div><strong>Case ID:</strong> {{ case_id }}</div>{% endif %}
+      {% if state_code %}<div><strong>State:</strong> {{ state_code }}</div>{% endif %}
+      {% if zcta %}<div><strong>ZCTA:</strong> {{ zcta }}</div>{% endif %}
+      <div><strong>Generated:</strong> {{ generated_at }}</div>
+      <div><strong>Pipeline:</strong> {{ version }}</div>
+    </div>
+  </div>
+
+  {% if is_demo %}
+  <div class="demo-banner">
+    <strong>Demo record.</strong> This report was generated from a demonstration submission and was not filed with any agency. Sign in at merascope.com to create an authenticated evidentiary record.
+  </div>
+  {% endif %}
+
+  <!-- ── Site + score block ── -->
+  {% if composite >= 0.6 %}
+    {% set sc = '#1a7a45' %}
+  {% elif composite >= 0.4 %}
+    {% set sc = '#d4820a' %}
+  {% else %}
+    {% set sc = '#b92b27' %}
+  {% endif %}
+
+  <div class="score-block">
+    <div class="score-circle" style="border-color: {{ sc }}; color: {{ sc }};">
+      <div class="score-num">{{ '%.2f'|format(composite) }}</div>
+      <div class="score-sub">{{ composite_pct }}th pct</div>
+    </div>
+    <div class="score-info">
+      <h2>{{ site_name }}</h2>
+      <div class="meta">
+        {% if applicant %}{{ applicant }}{% if state_code %} &middot; {% endif %}{% endif %}
+        {% if state_code %}{{ state_code }}{% endif %}
+        {% if stage %} &middot; Stage: <strong>{{ stage }}</strong>{% endif %}
+      </div>
+      <div class="note">Composite score computed with Balanced weights: Transmission 40%, Water Availability 35%, Community Burden 25%. Score of 0.50 = national median. 22 indicators scored across {{ zcta or 'ZCTA' }} geography.</div>
+    </div>
+  </div>
+
+  <!-- ── Hard gates ── -->
+  <h3 class="sec">Hard gate analysis</h3>
+  <table class="gate-table">
+    <tr>
+      <th style="width: 38%;">Gate</th>
+      <th style="width: 14%; text-align: center;">Result</th>
+      <th>Notes</th>
+    </tr>
+    {% for g in gates %}
+    <tr>
+      <td>{{ g.label }}</td>
+      <td style="text-align: center;">
+        {% if g.pass %}<span class="gate-pass">PASS</span>
+        {% else %}<span class="gate-fail">FAIL</span>{% endif %}
+      </td>
+      <td class="gate-note">{% if not g.pass %}{{ g.note }}{% else %}No flag{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% if not all_gates_pass %}
+  <div class="gate-fail-banner">
+    One or more hard gates failed. This site is ineligible for standard data center permitting under Merascope criteria and is excluded from portfolio screening results.
+  </div>
+  {% endif %}
+
+  <!-- ── Indicator scorecard ── -->
+  <h3 class="sec">Indicator scorecard — 22 indicators</h3>
+  <table class="ind-table">
+    <tr>
+      <th style="width: 29%;">Indicator</th>
+      <th style="width: 38%;">National percentile</th>
+      <th style="width: 12%; text-align: center;">Quartile</th>
+      <th style="width: 9%; text-align: center;">Conf.</th>
+    </tr>
+    {% for ind in inds %}
+    <tr>
+      <td>{{ ind.label }}</td>
+      <td>
+        <div class="bar-wrap">
+          <span class="bar" style="width: {{ [ind.pct, 0]|max }}px; max-width: 110px;"></span>
+          <span style="font-size: 8.5pt;">{{ ind.pct }}th</span>
+        </div>
+      </td>
+      <td style="text-align: center; font-size: 8pt; color: #555;">{{ ind.quartile }}</td>
+      <td style="text-align: center;">
+        {% if ind.confidence == 'High' %}<span class="conf-h">H</span>
+        {% elif ind.confidence == 'Medium' %}<span class="conf-m">M</span>
+        {% else %}<span class="conf-l">L</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="caption">Confidence: H = direct lookup or binary gate &nbsp;&middot;&nbsp; M = IDW-interpolated or coarser-than-ZCTA &nbsp;&middot;&nbsp; L = sparse IDW data (treat as indicative only)</p>
+
+  <!-- ── Strengths / challenges ── -->
+  <h3 class="sec">Top strengths and areas for attention</h3>
+  <div class="sc-grid">
+    <div class="sc-block">
+      <h4>Top strengths (above national median)</h4>
+      {% for ind in strengths %}
+      <div class="sc-row">
+        <span>{{ ind.label }}</span>
+        <span class="pct-hi">{{ ind.pct }}th pct</span>
+      </div>
+      {% else %}
+      <div class="sc-row" style="color: #888; font-style: italic;">No indicators above the 50th percentile.</div>
+      {% endfor %}
+    </div>
+    <div class="sc-block">
+      <h4>Areas for attention (below national median)</h4>
+      {% for ind in challenges %}
+      <div class="sc-row">
+        <span>{{ ind.label }}</span>
+        <span class="pct-lo">{{ ind.pct }}th pct</span>
+      </div>
+      {% else %}
+      <div class="sc-row" style="color: #888; font-style: italic;">No indicators below the 50th percentile.</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if weights %}
+  <!-- ── Scoring weights ── -->
+  <h3 class="sec">Scoring weights at submission</h3>
+  <div style="font-size: 8.5pt; line-height: 2;">
+    {% for k, v in weights.items() if v > 0 %}
+    <span style="margin-right: 14px;"><strong>{{ k }}</strong>: {{ (v / weights.values()|sum * 100)|round|int }}%</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- ── Data sources ── -->
+  <h3 class="sec">Data sources and methods</h3>
+  <table class="src-table">
+    <tr>
+      <th style="width: 20%;">Indicator</th>
+      <th style="width: 20%;">Source</th>
+      <th style="width: 33%;">Spatial method</th>
+      <th style="width: 17%;">Update frequency</th>
+      <th style="width: 10%; text-align: center;">Confidence</th>
+    </tr>
+    {% for ind in inds %}
+    <tr>
+      <td>{{ ind.label }}</td>
+      <td>{{ ind.source }}</td>
+      <td>{{ ind.method }}</td>
+      <td>{{ ind.freq }}</td>
+      <td style="text-align: center;">
+        {% if ind.confidence == 'High' %}<span class="conf-h">High</span>
+        {% elif ind.confidence == 'Medium' %}<span class="conf-m">Med.</span>
+        {% else %}<span class="conf-l">Low</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  <!-- ── Reproducibility ── -->
+  <h3 class="sec">Reproducibility and provenance</h3>
+  <div class="repro">
+    <div><strong>Methodology:</strong> Merascope MCDA v1 &mdash; 22 indicators, ZCTA geography, national min-max normalization (p01&ndash;p99 clip across 48 contiguous states). Methodology and source code available at merascope.com/methodology.</div>
+    <div><strong>Pipeline version:</strong> {{ version }}</div>
+    {% if case_id %}<div><strong>Case ID:</strong> {{ case_id }}</div>{% endif %}
+    {% if zcta %}<div><strong>ZCTA:</strong> {{ zcta }}</div>{% endif %}
+    {% if anchor %}
+    <div><strong>SHA-256 record anchor:</strong> <span class="hash-val">{{ anchor.hash }}</span></div>
+    <div><strong>Anchored at:</strong> {{ anchor.anchored_at }}</div>
+    <div><a class="anchor-link" href="/api/case/{{ case_id }}/anchor">Verify record integrity at /api/case/{{ case_id }}/anchor &rarr;</a></div>
+    {% else %}
+    <div class="unanchored">Record not yet anchored. Advance to Resolution stage in Merascope to generate a tamper-evident SHA-256 anchor hash.</div>
+    {% endif %}
+    <div style="margin-top: 2px;"><strong>Generated:</strong> {{ generated_at }}</div>
+  </div>
+
+</div><!-- end .page -->
+
+<div class="print-bar">
+  <button class="btn-print" onclick="window.print()">Print / Save PDF</button>
+  <button class="btn-close" onclick="window.close()">Close</button>
+</div>
+</body>
+</html>

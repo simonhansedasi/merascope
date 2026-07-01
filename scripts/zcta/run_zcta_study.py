@@ -12,7 +12,8 @@ If the fishnet pipeline has already run for this state, step 02 is the only cold
 Usage:
   conda activate merascope
   python zcta/run_zcta_study.py WA
-  python zcta/run_zcta_study.py WA --start 03   # resume after step 02
+  python zcta/run_zcta_study.py WA --start 03         # resume after step 02
+  python zcta/run_zcta_study.py WA --start 04 --end 07  # run only steps 04-07
 """
 
 import argparse
@@ -61,17 +62,22 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python zcta/run_zcta_study.py WA           # full ZCTA study run
-  python zcta/run_zcta_study.py WA --start 03  # resume from risk step
+  python zcta/run_zcta_study.py WA                      # full ZCTA study run
+  python zcta/run_zcta_study.py WA --start 03           # resume from risk step
+  python zcta/run_zcta_study.py WA --start 04 --end 07  # run only steps 04-07
         """,
     )
     parser.add_argument("state", help="Two-letter state abbreviation (e.g. WA)")
     parser.add_argument("--start", metavar="NN", default="02",
                         help="Start from this step number (default: 02)")
+    parser.add_argument("--end", metavar="NN", default=None,
+                        help="Stop after this step number (default: run all remaining)")
     args = parser.parse_args()
 
     state_abbr = args.state.upper()
     steps = [s for s in PIPELINE if s[0] >= args.start]
+    if args.end is not None:
+        steps = [s for s in steps if s[0] <= args.end]
 
     if not steps:
         print(f"No matching steps. Available: {[s[0] for s in PIPELINE]}")

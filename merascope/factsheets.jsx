@@ -33,7 +33,7 @@ function SheetShell({ title, kicker, children, seed }) {
       <div style={{ marginTop: 16 }}>{children}</div>
       <div style={{ position: 'absolute', left: 58, right: 58, bottom: 38, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 14, borderTop: '1px solid var(--line)', paddingTop: 12 }}>
         <div style={{ fontSize: 9.5, color: 'var(--slate)', maxWidth: 520, lineHeight: 1.5 }}>
-          Methodology: 22 indicators normalized 0-1, 2 hard gates (protected land {'>'} 25%, FEMA flood zone), 0.15 deg grid (~14 km). Sources: OSM (ODbL) · Census ACS · PRISM Climate Group · USGS NWIS + ASCE 7-22 · FEMA NFHL · EPA TRI + Envirofacts NPL + RCRA · EPA Green Book · SSURGO SDM · IHFC 2024 GHFDB · SRTM1 · EIA Form 860 + 860M · WRI Aqueduct 3.0 · PeeringDB. {M.VERSION}. All scoring code reproducible.
+          Methodology: 23 indicators normalized 0-1, 2 hard gates (protected land {'>'} 25%, FEMA flood zone), ZCTA geography. Sources: OSM (ODbL) · Census ACS · PRISM Climate Group · USGS NWIS + ASCE 7-22 · FEMA NFHL · EPA TRI + Envirofacts NPL + RCRA · EPA Green Book · SSURGO SDM · IHFC 2024 GHFDB · SRTM1 · EIA Form 860 + 860M · WRI Aqueduct 3.0 · PeeringDB. {M.VERSION}. All scoring code reproducible.
           <div style={{ marginTop: 4, fontWeight: 700, color: 'var(--evergreen)' }}>◈ Same Score Promise — identical methodology, weights, and sources for every reader of this page.</div>
         </div>
         <div style={{ textAlign: 'center' }}>
@@ -49,7 +49,7 @@ function SheetH({ children }) {
   return <div style={{ fontSize: 11, letterSpacing: '.1em', textTransform: 'uppercase', fontWeight: 750, color: 'var(--slate)', borderBottom: '1px solid var(--line)', paddingBottom: 4, marginBottom: 9 }}>{children}</div>;
 }
 
-function FactSheetDynamic({ stateCode }) {
+function FactSheetDynamic({ stateCode, onRawFeats }) {
   const [gradeData, setGradeData] = React.useState(null);
   const [rawFeats, setRawFeats] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
@@ -62,8 +62,10 @@ function FactSheetDynamic({ stateCode }) {
       if (window.computeStateGrades && window.getStateFeatures) {
         const result = window.computeStateGrades(stateCode);
         if (result) {
+          const feats = window.getStateFeatures(stateCode);
           setGradeData(result);
-          setRawFeats(window.getStateFeatures(stateCode));
+          setRawFeats(feats);
+          if (onRawFeats) onRawFeats(feats);
           setLoading(false);
           return;
         }
@@ -268,13 +270,105 @@ function GradeMethodologyPanel() {
   );
 }
 
+function IndicatorBreakdownPanel({ rawFeats }) {
+  if (!rawFeats || !rawFeats.length) return null;
+  const M = window.MERA;
+  const props = rawFeats.map(f => f.properties);
+  const rows = M.INDICATORS.map(ind => {
+    const vals = props.map(p => p[ind.nat_col]).filter(v => v != null && !isNaN(v));
+    if (!vals.length) return null;
+    const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+    return { label: ind.label, score: mean, k: ind.k, confidence: ind.confidence, confidence_note: ind.confidence_note };
+  }).filter(Boolean).sort((a, b) => b.score - a.score);
+
+  const barColor = s => s >= 0.67 ? 'var(--evergreen)' : s >= 0.33 ? '#b89a2a' : '#c0392b';
+  const quartileLabel = s => s >= 0.75 ? 'Top 25%' : s >= 0.5 ? 'Upper mid' : s >= 0.25 ? 'Lower mid' : 'Bottom 25%';
+  const confColor = c => c === 'High' ? 'var(--evergreen)' : c === 'Medium' ? '#b89a2a' : '#c0392b';
+
+  return (
+    <div className="panel" style={{ maxWidth: 980, margin: '0 auto 20px', padding: '16px 20px' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 18, marginBottom: 12, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 13, fontWeight: 650 }}>Indicator score breakdown — national comparison</div>
+        <div style={{ fontSize: 11, color: 'var(--slate)' }}>
+          Confidence: <span style={{ color: 'var(--evergreen)', fontWeight: 700 }}>H</span> direct lookup &ensp;
+          <span style={{ color: '#b89a2a', fontWeight: 700 }}>M</span> interpolated &ensp;
+          <span style={{ color: '#c0392b', fontWeight: 700 }}>L</span> sparse data — hover for detail
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1px 24px' }}>
+        {rows.map(r => (
+          <div key={r.k} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '1px solid var(--line-soft)' }}>
+            <span style={{ fontSize: 12, color: 'var(--slate)', minWidth: 160, flexShrink: 0 }}>{r.label}</span>
+            <div style={{ flex: 1, height: 7, background: 'var(--line-soft)', borderRadius: 4, overflow: 'hidden' }}>
+              <div style={{ width: (r.score * 100) + '%', height: '100%', background: barColor(r.score), borderRadius: 4 }} />
+            </div>
+            <span style={{ fontSize: 11, color: barColor(r.score), minWidth: 70, textAlign: 'right', flexShrink: 0, fontWeight: 600 }}>{quartileLabel(r.score)}</span>
+            {r.confidence && (
+              <span title={r.confidence_note || r.confidence}
+                style={{ fontSize: 10, fontWeight: 700, color: confColor(r.confidence), minWidth: 10, flexShrink: 0, cursor: 'help' }}>
+                {r.confidence[0]}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: 11.5, color: 'var(--slate)', marginTop: 10, lineHeight: 1.5 }}>
+        Bars show the state mean score on the national scale (p01/p99 across all 48 states, 1 = most favorable). Sorted strongest to weakest. Quartile reflects where this state falls relative to the national distribution for each indicator. This section does not appear in the printed fact sheet.
+      </div>
+    </div>
+  );
+}
+
+function DataSourcesPanel() {
+  const [open, setOpen] = React.useState(false);
+  const M = window.MERA;
+  return (
+    <div className="panel" style={{ marginBottom: 20, padding: '12px 16px' }}>
+      <button onClick={() => setOpen(v => !v)}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none',
+          cursor: 'pointer', fontFamily: 'var(--sans)', fontSize: 13, fontWeight: 650,
+          color: 'var(--ink)', padding: 0, width: '100%', textAlign: 'left' }}>
+        {open ? '▼' : '▶'} Data sources and spatial methods
+      </button>
+      {open && (
+        <div style={{ marginTop: 14 }}>
+          <p style={{ fontSize: 12.5, color: 'var(--slate)', lineHeight: 1.6, margin: '0 0 12px' }}>
+            Each indicator is computed from a public federal or open dataset. All pipeline scripts are reproducible and stateless; re-running a script against the same source data produces identical scores. Scores are normalized 0-1 within state (state view) or against the national p01/p99 distribution (national view). Raw physical values are stored alongside every score to support re-normalization at any geographic window.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 24px' }}>
+            {M.INDICATORS.map(ind => (
+              <div key={ind.k} style={{ padding: '7px 0', borderBottom: '1px solid var(--line-soft)' }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 2 }}>
+                  <div style={{ fontWeight: 700, fontSize: 12 }}>{ind.label}</div>
+                  {ind.confidence && (() => {
+                    const cc = ind.confidence === 'High' ? 'var(--evergreen)' : ind.confidence === 'Medium' ? '#b89a2a' : '#c0392b';
+                    return <span title={ind.confidence_note} style={{ fontSize: 10, fontWeight: 700, color: cc, cursor: 'help' }}>{ind.confidence} confidence</span>;
+                  })()}
+                </div>
+                <div style={{ fontSize: 11.5, color: 'var(--slate)', lineHeight: 1.5 }}>
+                  <span style={{ fontWeight: 600 }}>Source:</span> {ind.source}<br />
+                  <span style={{ fontWeight: 600 }}>Method:</span> {ind.method}<br />
+                  <span style={{ fontWeight: 600 }}>Update freq:</span> {ind.freq}
+                  {ind.confidence_note && <><br /><span style={{ fontStyle: 'italic' }}>{ind.confidence_note}</span></>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FactSheetsPage({ which }) {
   const STATE_NAMES = window.STATE_NAMES || {};
   const initCode = which && which.length === 2 && STATE_NAMES[which.toUpperCase()] ? which.toUpperCase() : null;
   const [selectedState, setSelectedState] = React.useState(initCode);
+  const [sheetFeats, setSheetFeats] = React.useState([]);
 
   function handleSelect(st) {
     setSelectedState(st || null);
+    setSheetFeats([]);
     location.hash = st ? '#/factsheets/' + st : '#/factsheets';
   }
 
@@ -296,10 +390,11 @@ function FactSheetsPage({ which }) {
           )}
         </div>
         <GradeMethodologyPanel />
+        <DataSourcesPanel />
       </div>
       {selectedState ? (
         <div className="sheet-wrap" style={{ marginTop: 0 }}>
-          <FactSheetDynamic stateCode={selectedState} />
+          <FactSheetDynamic stateCode={selectedState} onRawFeats={setSheetFeats} />
         </div>
       ) : (
         <div style={{ textAlign: 'center', padding: '80px 24px', color: 'var(--slate)', fontSize: 15 }}>
@@ -307,6 +402,7 @@ function FactSheetsPage({ which }) {
           <div className="microcopy" style={{ marginTop: 8 }}>Company and site formats available in paid tiers.</div>
         </div>
       )}
+      {selectedState && <IndicatorBreakdownPanel rawFeats={sheetFeats} />}
     </div>
   );
 }

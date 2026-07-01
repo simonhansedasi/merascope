@@ -327,6 +327,13 @@ function CaseFilePage({ id }) {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ stage })
+    }).then(function() {
+      if (stage === 'Resolution' && isDynamic) {
+        var caseUrl = (id || '').startsWith('demo-') ? '/api/demo/case/' + id : '/api/builder/case/' + id;
+        fetch(caseUrl).then(r => r.ok ? r.json() : null).then(data => {
+          if (data && data.case_id) setDynCase(data);
+        });
+      }
     });
     setCaseStage(stage);
     notify('Stage updated to ' + stage);
@@ -644,7 +651,7 @@ function CaseFilePage({ id }) {
 
           <div className="card" style={{ padding: '16px 20px' }}>
             <b style={{ fontSize: 14 }}>Advance stage</b>
-            <p className="microcopy" style={{ margin: '4px 0 10px' }}>Each stage advance updates the case record and notifies all parties.</p>
+            <p className="microcopy" style={{ margin: '4px 0 10px' }}>Each stage advance updates the case record and notifies all parties. Advancing to Resolution anchors the evidentiary record with a SHA-256 hash.</p>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {M.STAGES.filter(function(s) { return s !== (dc.stage || 'Site Inquiry'); }).map(function(s) {
                 return (
@@ -653,6 +660,20 @@ function CaseFilePage({ id }) {
               })}
             </div>
           </div>
+
+          {dc.anchor && (
+            <div className="card" style={{ padding: '14px 16px', borderColor: 'var(--evergreen)', borderWidth: 1.5 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--evergreen)' }}>Record anchored</span>
+                <Chip tone="lo">SHA-256</Chip>
+                <span style={{ fontSize: 11.5, color: 'var(--slate)', marginLeft: 'auto' }}>{dc.anchor.anchored_at.substring(0, 10)}</span>
+              </div>
+              <div style={{ fontFamily: 'monospace', fontSize: 11.5, wordBreak: 'break-all', color: 'var(--basalt)', marginBottom: 8 }}>{dc.anchor.hash}</div>
+              <div className="microcopy" style={{ lineHeight: 1.5 }}>
+                The evidentiary record — site, score, weights, conditions, rebuttals, and co-parties — was serialized to canonical JSON and hashed at this timestamp. Any modification to the record will produce a different hash. Verify independently at <a href={'/api/case/' + dc.case_id + '/anchor'} target="_blank" rel="noreferrer" style={{ fontWeight: 650 }}>/api/case/{dc.case_id}/anchor</a>.
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );

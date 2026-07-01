@@ -3,7 +3,7 @@ Merascope server — PostgreSQL backend.
 Requires DATABASE_URL env var: postgresql://user:pass@host/dbname
 """
 
-from flask import Flask, request, jsonify, send_from_directory, Response, redirect, g
+from flask import Flask, request, jsonify, send_from_directory, Response, redirect, g, render_template
 from werkzeug.utils import secure_filename
 from contextlib import contextmanager
 from datetime import datetime, date as _date, timedelta
@@ -13,7 +13,7 @@ from functools import wraps
 import psycopg2
 import psycopg2.extras
 import psycopg2.pool
-import json, csv, io, os, secrets, smtplib, time, threading
+import json, csv, io, os, secrets, smtplib, time, threading, hashlib
 
 try:
     import boto3
@@ -42,6 +42,33 @@ def _check_rate_limit(ip):
 
 ROOT     = os.path.dirname(os.path.abspath(__file__))
 DOCS_DIR = os.path.join(ROOT, 'data', 'docs')
+
+# ── report indicator metadata (mirrors data.js INDICATORS) ────────────────────
+
+_REPORT_INDICATORS = [
+    {'k': 'transmission', 'label': 'Transmission proximity',  'score_col': 'tx_score',           'nat_col': 'tx_score_nat',           'source': 'EIA Form 860 + OSM',           'method': 'Centroid-to-line distance (UTM)',             'freq': 'Annual (EIA 860)',                      'confidence': 'High'},
+    {'k': 'water',        'label': 'Water availability',      'score_col': 'water_score',         'nat_col': 'water_score_nat',         'source': 'PRISM Climate Group',           'method': 'Nearest-pixel raster lookup',                'freq': '30-yr normals (updated decennially)',   'confidence': 'High'},
+    {'k': 'community',    'label': 'Community burden',        'score_col': 'ej_score',            'nat_col': 'ej_score_nat',            'source': 'Census ACS 5-yr',              'method': 'ZCTA-direct (poverty + minority rate)',      'freq': 'Annual (ACS release)',                  'confidence': 'High'},
+    {'k': 'seismic',      'label': 'Seismic safety',          'score_col': 'seismic_score',       'nat_col': 'seismic_score_nat',       'source': 'USGS ASCE 7-22',               'method': 'IDW from 60-pt sample per state',            'freq': 'Static (hazard model updates ~5 yr)',   'confidence': 'Medium'},
+    {'k': 'flood',        'label': 'Flood safety',            'score_col': 'flood_score',         'nat_col': 'flood_score_nat',         'source': 'FEMA NFHL',                    'method': 'Point-in-polygon (hard gate)',               'freq': 'Continuous (FEMA updates by county)',   'confidence': 'High'},
+    {'k': 'contamination','label': 'Contamination distance',  'score_col': 'contamination_score', 'nat_col': 'contamination_score_nat', 'source': 'EPA Toxics Release Inventory', 'method': 'Centroid-to-point distance (UTM)',           'freq': 'Annual (TRI reporting year)',           'confidence': 'High'},
+    {'k': 'waterway',     'label': 'Waterway sensitivity',    'score_col': 'waterway_score',      'nat_col': 'waterway_score_nat',      'source': 'OpenStreetMap',                'method': 'Centroid-to-line distance (UTM)',             'freq': 'Static (OSM snapshot)',                 'confidence': 'High'},
+    {'k': 'geothermal',   'label': 'Geothermal opportunity',  'score_col': 'geothermal_score',    'nat_col': 'geothermal_score_nat',    'source': 'IHFC GHFDB 2024',              'method': 'IDW (k=8, p=2) from borehole measurements', 'freq': 'Static (2024 release)',                 'confidence': 'Low'},
+    {'k': 'flatness',     'label': 'Terrain flatness',        'score_col': 'flatness_score',      'nat_col': 'flatness_score_nat',      'source': 'NASA SRTM1 (AWS S3)',          'method': 'np.gradient slope < 5 deg flat fraction',   'freq': 'Static (SRTM 2000)',                    'confidence': 'Medium'},
+    {'k': 'aquifer',      'label': 'Aquifer depth',           'score_col': 'aquifer_score',       'nat_col': 'aquifer_score_nat',       'source': 'USGS NWIS',                    'method': 'IDW (k=8, p=2) from well measurements',    'freq': 'Annual (NWIS field records)',           'confidence': 'Low'},
+    {'k': 'soil',         'label': 'Soil suitability',        'score_col': 'soil_score',          'nat_col': 'soil_score_nat',          'source': 'USDA SSURGO (SDM API)',        'method': 'IDW from map-unit centroids (HSG A-D)',     'freq': 'Static (SSURGO vintage)',               'confidence': 'Medium'},
+    {'k': 'slope',        'label': 'Slope suitability',       'score_col': 'slope_score',         'nat_col': 'slope_score_nat',         'source': 'NASA SRTM1 (AWS S3)',          'method': 'Mean slope (degrees) within ZCTA bounds',   'freq': 'Static (SRTM 2000)',                    'confidence': 'Medium'},
+    {'k': 'pop_exposure', 'label': 'Population exposure',     'score_col': 'pop_exposure_score',  'nat_col': 'pop_exposure_score_nat',  'source': 'Census ACS 5-yr',              'method': 'ZCTA-direct (population density)',          'freq': 'Annual (ACS release)',                  'confidence': 'High'},
+    {'k': 'soil_profile', 'label': 'Soil profile chemistry',  'score_col': 'soil_profile_score',  'nat_col': 'soil_profile_score_nat',  'source': 'USDA SSURGO (SDM API)',        'method': 'Depth-weighted horizon composite; IDW',    'freq': 'Static (SSURGO vintage)',               'confidence': 'Medium'},
+    {'k': 'ksat',         'label': 'Hydraulic K-sat',         'score_col': 'ksat_score',          'nat_col': 'ksat_score_nat',          'source': 'USDA SSURGO (SDM API)',        'method': 'Thickness-weighted mean K-sat to 150 cm',  'freq': 'Static (SSURGO vintage)',               'confidence': 'Medium'},
+    {'k': 'substation',   'label': 'Substation proximity',    'score_col': 'substation_score',    'nat_col': 'substation_score_nat',    'source': 'EIA Form 860',                 'method': 'Centroid-to-point distance + capacity weight', 'freq': 'Annual (EIA 860)',                 'confidence': 'High'},
+    {'k': 'superfund',    'label': 'Superfund distance',      'score_col': 'superfund_score',     'nat_col': 'superfund_score_nat',     'source': 'EPA Envirofacts NPL',          'method': 'Centroid-to-point distance (UTM)',          'freq': 'Continuous (NPL updates)',              'confidence': 'High'},
+    {'k': 'rcra',         'label': 'RCRA site distance',      'score_col': 'rcra_score',          'nat_col': 'rcra_score_nat',          'source': 'EPA Envirofacts RCRA',         'method': 'Centroid-to-point distance (UTM)',          'freq': 'Annual (RCRA reporting)',               'confidence': 'High'},
+    {'k': 'air_quality',  'label': 'Air quality (NAAQS)',     'score_col': 'air_quality_score',   'nat_col': 'air_quality_score_nat',   'source': 'EPA Green Book',               'method': 'Point-in-polygon non-attainment areas',    'freq': 'Continuous (EPA designations)',         'confidence': 'High'},
+    {'k': 'fiber',        'label': 'Fiber connectivity',      'score_col': 'fiber_score',         'nat_col': 'fiber_score_nat',         'source': 'PeeringDB /api/fac',           'method': 'Centroid-to-point distance (carrier hotels)', 'freq': 'Static (PeeringDB snapshot)',       'confidence': 'Medium'},
+    {'k': 'water_stress', 'label': 'Water stress',            'score_col': 'water_stress_score',  'nat_col': 'water_stress_score_nat',  'source': 'WRI Aqueduct 3.0',             'method': 'Watershed spatial join (HydroBASINS L6)',  'freq': 'Static (2023 release)',                 'confidence': 'Medium'},
+    {'k': 'grid_capacity','label': 'Grid capacity',           'score_col': 'grid_capacity_score', 'nat_col': 'grid_capacity_score_nat', 'source': 'EIA Form 860M',                'method': 'State-level ISO queue aggregation',         'freq': 'Monthly (860M planned sheet)',          'confidence': 'Medium'},
+]
 
 # ── object storage ─────────────────────────────────────────────────────────────
 
@@ -341,6 +368,14 @@ def init_db():
         db.execute("ALTER TABLE studies ADD COLUMN IF NOT EXISTS case_id TEXT")
         db.execute("ALTER TABLE studies ADD COLUMN IF NOT EXISTS finding TEXT")
         db.execute("ALTER TABLE studies DROP CONSTRAINT IF EXISTS studies_name_key")
+        db.execute("ALTER TABLE cases ADD COLUMN IF NOT EXISTS weights_json TEXT")
+        db.execute("ALTER TABLE demo_cases ADD COLUMN IF NOT EXISTS weights_json TEXT")
+        db.execute('''CREATE TABLE IF NOT EXISTS case_anchors (
+            case_id      TEXT PRIMARY KEY,
+            hash         TEXT NOT NULL,
+            anchored_at  TEXT NOT NULL,
+            payload_json TEXT NOT NULL
+        )''')
 
         db.execute('''CREATE TABLE IF NOT EXISTS demo_cases (
             id            SERIAL PRIMARY KEY,
@@ -356,6 +391,7 @@ def init_db():
             contact_email TEXT,
             lead_agency   TEXT,
             notes         TEXT,
+            weights_json  TEXT,
             created_at    TIMESTAMP DEFAULT NOW()
         )''')
 
@@ -756,6 +792,8 @@ def builder_submit():
     external_permit_id = (data.get('external_permit_id') or '').strip()
     stage              = (data.get('stage') or 'Site Inquiry').strip()
     imported    = 1 if data.get('imported') else 0
+    raw_weights = data.get('weights') or {}
+    weights_json = json.dumps({k: float(v) for k, v in raw_weights.items()}) if raw_weights else None
     user        = _session_user()
 
     if not user:
@@ -764,10 +802,10 @@ def builder_submit():
             db.execute(
                 '''INSERT INTO demo_cases
                    (case_id, site, applicant, score, stage, state_code, lat, lon,
-                    contact_name, contact_email, lead_agency, notes)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)''',
+                    contact_name, contact_email, lead_agency, notes, weights_json)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''',
                 (demo_id, site, applicant, score, stage, state_code, lat, lon,
-                 contact_name, contact_email, lead_agency, notes)
+                 contact_name, contact_email, lead_agency, notes, weights_json)
             )
         return jsonify({'ok': True, 'case_id': demo_id, 'is_demo': True})
 
@@ -782,12 +820,12 @@ def builder_submit():
                (case_id, site, applicant, score, stage,
                 cell_fid, state_code, lat, lon,
                 contact_name, contact_email, lead_agency, notes,
-                external_permit_id, imported, owner_email)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                external_permit_id, imported, owner_email, weights_json)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
             (case_id, site, applicant, score, stage,
              cell_fid, state_code, lat, lon,
              contact_name, contact_email, lead_agency, notes,
-             external_permit_id, imported, owner_email)
+             external_permit_id, imported, owner_email, weights_json)
         )
     return jsonify({'ok': True, 'case_id': case_id})
 
@@ -817,7 +855,40 @@ def get_builder_case(case_id):
         return jsonify({'ok': False, 'err': 'not found'}), 404
     if not _can_access_case(user, row):
         return jsonify({'ok': False, 'err': 'not found'}), 404
-    return jsonify(row)
+    r = dict(row)
+    if r.get('weights_json'):
+        r['weights'] = json.loads(r.pop('weights_json'))
+    else:
+        r.pop('weights_json', None)
+    with get_db() as db:
+        anchor = db.execute(
+            'SELECT hash, anchored_at FROM case_anchors WHERE case_id=?', (case_id,)
+        ).fetchone()
+    if anchor:
+        r['anchor'] = {'hash': anchor['hash'], 'anchored_at': anchor['anchored_at']}
+    return jsonify(r)
+
+
+@app.route('/api/case/<case_id>/anchor')
+def get_anchor(case_id):
+    user = _session_user()
+    with get_db() as db:
+        row = db.execute('SELECT * FROM cases WHERE case_id=?', (case_id,)).fetchone()
+        if not row or not _can_access_case(user, row):
+            return jsonify({'ok': False, 'err': 'not found'}), 404
+        anchor = db.execute(
+            'SELECT hash, anchored_at, payload_json FROM case_anchors WHERE case_id=?',
+            (case_id,)
+        ).fetchone()
+    if not anchor:
+        return jsonify({'ok': False, 'err': 'Record not yet anchored — advance to Resolution to anchor.'}), 404
+    return jsonify({
+        'case_id':     case_id,
+        'hash':        anchor['hash'],
+        'anchored_at': anchor['anchored_at'],
+        'algorithm':   'SHA-256',
+        'payload':     json.loads(anchor['payload_json']),
+    })
 
 
 # ── builder CRM ───────────────────────────────────────────────────────────────
@@ -838,6 +909,47 @@ def save_crm(fid):
             (fid, json.dumps(data))
         )
     return jsonify({'ok': True})
+
+
+# ── record anchoring ──────────────────────────────────────────────────────────
+
+def _compute_anchor(db, case_id):
+    """Build canonical JSON for a case and return (sha256_hex, canonical_str)."""
+    case = db.execute('SELECT * FROM cases WHERE case_id=?', (case_id,)).fetchone()
+    if not case:
+        return None, None
+    conditions = db.execute(
+        'SELECT text, type, status, by FROM case_conditions WHERE case_id=? ORDER BY id',
+        (case_id,)
+    ).fetchall()
+    rebuttals = db.execute(
+        'SELECT text, ts FROM case_rebuttals WHERE case_id=? ORDER BY id',
+        (case_id,)
+    ).fetchall()
+    invites = db.execute(
+        'SELECT agency_key FROM case_invites WHERE case_id=? ORDER BY agency_key',
+        (case_id,)
+    ).fetchall()
+    payload = {
+        'case_id':    case['case_id'],
+        'site':       case['site'],
+        'applicant':  case['applicant'],
+        'score':      case['score'],
+        'state_code': case['state_code'],
+        'lat':        case['lat'],
+        'lon':        case['lon'],
+        'weights':    json.loads(case['weights_json']) if case.get('weights_json') else None,
+        'lead_agency': case['lead_agency'],
+        'ts':         str(case['ts']),
+        'confirmed_at': case['confirmed_at'],
+        'stage':      'Resolution',
+        'conditions': [dict(r) for r in conditions],
+        'rebuttals':  [{'text': r['text'], 'ts': str(r['ts'])} for r in rebuttals],
+        'co_parties': [r['agency_key'] for r in invites],
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+    hash_val  = hashlib.sha256(canonical.encode('utf-8')).hexdigest()
+    return hash_val, canonical
 
 
 # ── stage transitions ─────────────────────────────────────────────────────────
@@ -861,6 +973,18 @@ def set_stage(case_id):
             (case_id, stage)
         )
         db.execute('UPDATE cases SET stage=? WHERE case_id=?', (stage, case_id))
+        if stage == 'Resolution':
+            hash_val, canonical = _compute_anchor(db, case_id)
+            if hash_val:
+                anchored_at = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+                db.execute(
+                    '''INSERT INTO case_anchors (case_id, hash, anchored_at, payload_json)
+                       VALUES (?,?,?,?)
+                       ON CONFLICT (case_id) DO UPDATE
+                         SET hash=EXCLUDED.hash, anchored_at=EXCLUDED.anchored_at,
+                             payload_json=EXCLUDED.payload_json''',
+                    (case_id, hash_val, anchored_at, canonical)
+                )
     return jsonify({'ok': True})
 
 
@@ -1737,7 +1861,168 @@ def demo_case_get(case_id):
         ).fetchone()
     if not c:
         return jsonify({'ok': False, 'err': 'Demo case not found or expired (20-min TTL)'}), 404
-    return jsonify(c)
+    r = dict(c)
+    if r.get('weights_json'):
+        r['weights'] = json.loads(r.pop('weights_json'))
+    else:
+        r.pop('weights_json', None)
+    return jsonify(r)
+
+# ── permit justification report ───────────────────────────────────────────────
+
+_zcta_centroids_cache = {}  # state_code -> [(cx, cy, props_dict), ...]
+
+
+def _load_zcta_feature(state_code, lat, lon):
+    """Return the ZCTA feature properties dict nearest to (lat, lon), or None."""
+    if not state_code or lat is None or lon is None:
+        return None
+    state_code = state_code.upper()
+    if state_code not in _zcta_centroids_cache:
+        path = os.path.join(ROOT, 'data', state_code, 'zcta', 'grid_scores.geojson')
+        if not os.path.exists(path):
+            return None
+        with open(path, 'r') as fh:
+            gj = json.load(fh)
+        entries = []
+        for feat in gj.get('features', []):
+            geom  = feat.get('geometry') or {}
+            props = feat.get('properties') or {}
+            gtype = geom.get('type', '')
+            if gtype == 'Polygon':
+                ring = geom['coordinates'][0]
+            elif gtype == 'MultiPolygon':
+                ring = max(geom['coordinates'], key=lambda p: len(p[0]))[0]
+            else:
+                continue
+            cx = sum(c[0] for c in ring) / len(ring)
+            cy = sum(c[1] for c in ring) / len(ring)
+            entries.append((cx, cy, props))
+        _zcta_centroids_cache[state_code] = entries
+    entries = _zcta_centroids_cache[state_code]
+    if not entries:
+        return None
+    lat_f = float(lat)
+    lon_f = float(lon)
+    return min(entries, key=lambda e: (e[0] - lon_f) ** 2 + (e[1] - lat_f) ** 2)[2]
+
+
+def _build_report_context(case_row, props):
+    """Build Jinja2 template context dict from a case DB row and ZCTA feature props."""
+    generated_at = datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')
+    # Indicator rows
+    inds = []
+    for ind in _REPORT_INDICATORS:
+        raw = props.get(ind['nat_col'])
+        if raw is None:
+            raw = 0.0
+        nat = float(raw)
+        pct = min(100, max(0, round(nat * 100)))
+        if pct >= 75:
+            quartile = 'Q4'
+        elif pct >= 50:
+            quartile = 'Q3'
+        elif pct >= 25:
+            quartile = 'Q2'
+        else:
+            quartile = 'Q1'
+        inds.append({
+            'label':      ind['label'],
+            'k':          ind['k'],
+            'nat':        nat,
+            'pct':        pct,
+            'quartile':   quartile,
+            'confidence': ind['confidence'],
+            'source':     ind['source'],
+            'method':     ind['method'],
+            'freq':       ind['freq'],
+        })
+    inds_sorted  = sorted(inds, key=lambda x: -x['nat'])
+    strengths    = [i for i in inds_sorted if i['nat'] >= 0.5][:3]
+    challenges   = [i for i in reversed(inds_sorted) if i['nat'] < 0.5][:3]
+    # Hard gates
+    # Use explicit None-check so that flood_score=0.0 is not swallowed by `or`.
+    _flood_raw  = props.get('flood_score')
+    flood_pass  = (_flood_raw is None) or (float(_flood_raw) > 0)
+    protected_frac = float(props.get('protected_frac', 0) or 0)
+    protected_pass = protected_frac <= 0.25
+    gates = [
+        {'label': 'Federal / tribal protected land', 'pass': protected_pass,
+         'note': 'protected_frac = {:.0%} (> 25% threshold)'.format(protected_frac)},
+        {'label': 'FEMA flood zone (SFHA)',          'pass': flood_pass,
+         'note': 'flood_score = 0 — site intersects Special Flood Hazard Area'},
+    ]
+    composite = float((case_row or {}).get('score') or 0)
+    if composite == 0 and props:
+        # Explorer route: compute Balanced preset (tx 40 / water 35 / community 25)
+        balanced = {'tx_score_nat': 40, 'water_score_nat': 35, 'ej_score_nat': 25}
+        total_w  = 100.0
+        composite = sum(float(props.get(col, 0) or 0) * w for col, w in balanced.items()) / total_w
+    return {
+        'site_name':     (case_row or {}).get('site') or 'Unnamed site',
+        'applicant':     (case_row or {}).get('applicant') or '',
+        'state_code':    (case_row or {}).get('state_code') or '',
+        'zcta':          props.get('zcta', ''),
+        'composite':     composite,
+        'composite_pct': min(100, max(0, round(composite * 100))),
+        'stage':         (case_row or {}).get('stage') or '',
+        'anchor':        (case_row or {}).get('anchor'),
+        'weights':       (case_row or {}).get('weights'),
+        'inds':          inds_sorted,
+        'strengths':     strengths,
+        'challenges':    challenges,
+        'gates':         gates,
+        'all_gates_pass': all(g['pass'] for g in gates),
+        'generated_at':  generated_at,
+        'version':       'v2026.06.25',
+    }
+
+
+@app.route('/report/<case_id>')
+def report_case(case_id):
+    user    = _session_user()
+    is_demo = case_id.startswith('demo-')
+    with get_db() as db:
+        if is_demo:
+            row = db.execute('SELECT * FROM demo_cases WHERE case_id=?', (case_id,)).fetchone()
+        else:
+            row = db.execute('SELECT * FROM cases WHERE case_id=?', (case_id,)).fetchone()
+    if not row:
+        return 'Case not found', 404
+    if not is_demo and not _can_access_case(user, row):
+        return 'Unauthorized', 403
+    r = dict(row)
+    if r.get('weights_json'):
+        r['weights'] = json.loads(r.pop('weights_json'))
+    else:
+        r.pop('weights_json', None)
+    if not is_demo:
+        with get_db() as db:
+            anchor = db.execute(
+                'SELECT hash, anchored_at FROM case_anchors WHERE case_id=?', (case_id,)
+            ).fetchone()
+        if anchor:
+            r['anchor'] = {'hash': anchor['hash'], 'anchored_at': anchor['anchored_at']}
+    props = _load_zcta_feature(r.get('state_code'), r.get('lat'), r.get('lon')) or {}
+    ctx = _build_report_context(r, props)
+    ctx.update({'case_id': case_id, 'is_demo': is_demo})
+    return render_template('report.html', **ctx)
+
+
+@app.route('/report')
+def report_explorer():
+    """Explorer report — no case required. Query params: state, lat, lon, name."""
+    state = (request.args.get('state') or '').upper()
+    lat   = request.args.get('lat')
+    lon   = request.args.get('lon')
+    name  = request.args.get('name') or 'Unnamed site'
+    props = _load_zcta_feature(state, lat, lon) or {}
+    fake  = {'site': name, 'applicant': '', 'state_code': state,
+             'score': 0, 'stage': '', 'anchor': None, 'weights': None}
+    ctx = _build_report_context(fake, props)
+    ctx.update({'case_id': None, 'is_demo': False})
+    return render_template('report.html', **ctx)
+
 
 # ── static file serving ────────────────────────────────────────────────────────
 

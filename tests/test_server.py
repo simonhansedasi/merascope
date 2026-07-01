@@ -30,6 +30,7 @@ _TABLES = [
     'case_meta', 'cases', 'case_stage_overrides', 'case_impasse_routes',
     'study_checks', 'case_rebuttals', 'crm_state',
     'steward_zones', 'steward_templates',
+    'case_anchors', 'demo_cases',
 ]
 
 def _pg_available():
@@ -682,3 +683,530 @@ class TestActiveZones:
         county_zone = next((z for z in data if z.get('zone_type') == 'county'), None)
         assert county_zone is not None
         assert county_zone['county_fips'] == '033'
+
+
+# ---------------------------------------------------------------------------
+# Weight logging  (weights_json stored at submit, returned as dict in GET)
+# ---------------------------------------------------------------------------
+
+def _authed_submit(client, cookies, payload=None):
+    """Submit a builder inquiry as the seeded steward and return case_id."""
+    p = dict(FULL_INQUIRY, **(payload or {}))
+    r = client.post(
+        '/api/builder/submit',
+        data=json.dumps(p),
+        content_type='application/json',
+        headers={'Cookie': 'mera_sess=' + cookies['mera_sess']},
+    )
+    return r.get_json()['case_id']
+
+
+def _authed_get_case(client, cookies, case_id):
+    return client.get(
+        '/api/builder/case/' + case_id,
+        headers={'Cookie': 'mera_sess=' + cookies['mera_sess']},
+    ).get_json()
+
+
+def _authed_patch_stage(client, cookies, case_id, stage):
+    return client.patch(
+        '/api/case/' + case_id + '/stage',
+        data=json.dumps({'stage': stage}),
+        content_type='application/json',
+        headers={'Cookie': 'mera_sess=' + cookies['mera_sess']},
+    )
+
+
+class TestWeightLogging:
+
+    def test_weights_stored_and_returned_as_dict(self, client):
+        cookies = _seed_steward(client)
+        w = {'transmission': 40.0, 'water': 35.0, 'community': 25.0}
+        case_id = _authed_submit(client, cookies, {'weights': w})
+        row = _authed_get_case(client, cookies, case_id)
+        assert isinstance(row.get('weights'), dict)
+        assert abs(row['weights']['transmission'] - 40.0) < 1e-6
+        assert abs(row['weights']['water'] - 35.0) < 1e-6
+        assert abs(row['weights']['community'] - 25.0) < 1e-6
+
+    def test_weights_absent_when_not_submitted(self, client):
+        cookies = _seed_steward(client)
+        case_id = _authed_submit(client, cookies)
+        row = _authed_get_case(client, cookies, case_id)
+        assert row.get('weights') is None
+        assert 'weights_json' not in row
+
+    def test_raw_weights_json_col_not_exposed(self, client):
+        cookies = _seed_steward(client)
+        case_id = _authed_submit(client, cookies, {'weights': {'transmission': 50.0}})
+        row = _authed_get_case(client, cookies, case_id)
+        assert 'weights_json' not in row
+
+    def test_empty_weights_dict_treated_as_no_weights(self, client):
+        cookies = _seed_steward(client)
+        case_id = _authed_submit(client, cookies, {'weights': {}})
+        row = _authed_get_case(client, cookies, case_id)
+        assert row.get('weights') is None
+
+
+# ---------------------------------------------------------------------------
+# Cryptographic record anchoring
+# ---------------------------------------------------------------------------
+
+class TestRecordAnchoring:
+
+    def test_anchor_absent_before_resolution(self, client):
+        cookies = _seed_steward(client)
+        case_id = _authed_submit(client, cookies)
+        r = client.get('/api/case/' + case_id + '/anchor',
+                       headers={'Cookie': 'mera_sess=' + cookies['mera_sess']})
+        assert r.status_code == 404
+
+    def test_builder_case_has_no_anchor_before_resolution(self, client):
+        cookies = _seed_steward(client)
+        case_id = _authed_submit(client, cookies)
+        row = _authed_get_case(client, cookies, case_id)
+        assert row.get('anchor') is None
+
+    def test_anchor_created_on_resolution(self, client):
+        cookies = _seed_steward(client)
+        case_id = _authed_submit(client, cookies)
+        _authed_patch_stage(client, cookies, case_id, 'Resolution')
+        r = client.get('/api/case/' + case_id + '/anchor',
+                       headers={'Cookie': 'mera_sess=' + cookies['mera_sess']})
+        assert r.status_code == 200
+
+    def test_anchor_fields_present(self, client):
+        cookies = _seed_steward(client)
+        case_id = _authed_submit(client, cookies)
+        _authed_patch_stage(client, cookies, case_id, 'Resolution')
+        d = client.get('/api/case/' + case_id + '/anchor',
+                       headers={'Cookie': 'mera_sess=' + cookies['mera_sess']}).get_json()
+        assert d['case_id'] == case_id
+        assert d['algorithm'] == 'SHA-256'
+        assert d['hash']
+        assert d['anchored_at']
+        assert isinstance(d['payload'], dict)
+        assert d['payload']['case_id'] == case_id
+
+    def test_anchor_hash_is_sha256_hex(self, client):
+        cookies = _seed_steward(client)
+        case_id = _authed_submit(client, cookies)
+        _authed_patch_stage(client, cookies, case_id, 'Resolution')
+        d = client.get('/api/case/' + case_id + '/anchor',
+                       headers={'Cookie': 'mera_sess=' + cookies['mera_sess']}).get_json()
+        h = d['hash']
+        assert len(h) == 64
+        assert all(c in '0123456789abcdef' for c in h)
+
+    def test_anchor_idempotent_on_re_resolution(self, client):
+        cookies = _seed_steward(client)
+        case_id = _authed_submit(client, cookies)
+        _authed_patch_stage(client, cookies, case_id, 'Resolution')
+        h1 = client.get('/api/case/' + case_id + '/anchor',
+                        headers={'Cookie': 'mera_sess=' + cookies['mera_sess']}).get_json()['hash']
+        _authed_patch_stage(client, cookies, case_id, 'Resolution')
+        h2 = client.get('/api/case/' + case_id + '/anchor',
+                        headers={'Cookie': 'mera_sess=' + cookies['mera_sess']}).get_json()['hash']
+        assert h1 == h2
+
+    def test_builder_case_includes_anchor_after_resolution(self, client):
+        cookies = _seed_steward(client)
+        case_id = _authed_submit(client, cookies)
+        _authed_patch_stage(client, cookies, case_id, 'Resolution')
+        row = _authed_get_case(client, cookies, case_id)
+        assert row.get('anchor') is not None
+        assert row['anchor']['hash']
+        assert row['anchor']['anchored_at']
+
+    def test_anchor_payload_matches_submitted_data(self, client):
+        cookies = _seed_steward(client)
+        case_id = _authed_submit(client, cookies)
+        _authed_patch_stage(client, cookies, case_id, 'Resolution')
+        d = client.get('/api/case/' + case_id + '/anchor',
+                       headers={'Cookie': 'mera_sess=' + cookies['mera_sess']}).get_json()
+        p = d['payload']
+        assert p['site'] == FULL_INQUIRY['site']
+        assert p['applicant'] == FULL_INQUIRY['applicant']
+        assert p['stage'] == 'Resolution'
+
+    def test_anchor_unknown_case_returns_404(self, client):
+        r = client.get('/api/case/99-0000/anchor')
+        assert r.status_code == 404
+
+    def test_non_resolution_stage_does_not_anchor(self, client):
+        cookies = _seed_steward(client)
+        case_id = _authed_submit(client, cookies)
+        for stage in ('Intake', 'Analysis', 'Findings Exchange', 'Negotiation'):
+            _authed_patch_stage(client, cookies, case_id, stage)
+        r = client.get('/api/case/' + case_id + '/anchor',
+                       headers={'Cookie': 'mera_sess=' + cookies['mera_sess']})
+        assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Permit justification report routes  /report/<case_id>  and  /report
+# ---------------------------------------------------------------------------
+
+class TestReportRoutes:
+
+    def _make_demo_case(self, client):
+        r = post_json(client, '/api/builder/submit', FULL_INQUIRY)
+        d = r.get_json()
+        assert d.get('is_demo'), 'Expected demo case (unauthenticated submit)'
+        return d['case_id']
+
+    def test_demo_case_report_returns_200(self, client):
+        case_id = self._make_demo_case(client)
+        r = client.get('/report/' + case_id)
+        assert r.status_code == 200
+
+    def test_demo_case_report_is_html(self, client):
+        case_id = self._make_demo_case(client)
+        r = client.get('/report/' + case_id)
+        assert 'text/html' in r.content_type
+
+    def test_demo_case_report_contains_site_name(self, client):
+        case_id = self._make_demo_case(client)
+        r = client.get('/report/' + case_id)
+        assert FULL_INQUIRY['site'].encode() in r.data
+
+    def test_unknown_case_report_returns_404(self, client):
+        r = client.get('/report/nonexistent-99abc')
+        assert r.status_code == 404
+
+    def test_real_case_report_accessible_without_auth(self, client):
+        cookies = _seed_steward(client)
+        case_id = _authed_submit(client, cookies)
+        r = client.get('/report/' + case_id)
+        assert r.status_code == 200
+
+    def test_real_case_report_contains_case_id(self, client):
+        cookies = _seed_steward(client)
+        case_id = _authed_submit(client, cookies)
+        r = client.get('/report/' + case_id)
+        assert case_id.encode() in r.data
+
+    def test_explorer_report_returns_200(self, client):
+        r = client.get('/report?state=WA&lat=47.5&lon=-120.3&name=Test+Site')
+        assert r.status_code == 200
+
+    def test_explorer_report_is_html(self, client):
+        r = client.get('/report?state=WA&lat=47.5&lon=-120.3&name=Test+Site')
+        assert 'text/html' in r.content_type
+
+    def test_explorer_report_contains_site_name(self, client):
+        r = client.get('/report?state=WA&lat=47.5&lon=-120.3&name=My+Site')
+        assert b'My Site' in r.data
+
+    def test_explorer_report_no_params_returns_200(self, client):
+        r = client.get('/report')
+        assert r.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# _build_report_context  (pure-function unit tests, no DB required)
+# ---------------------------------------------------------------------------
+
+_FULL_PROPS = {
+    'zcta':                    '98001',
+    'tx_score_nat':            0.85,
+    'water_score_nat':         0.72,
+    'ej_score_nat':            0.30,
+    'seismic_score_nat':       0.60,
+    'flood_score_nat':         1.00,
+    'flood_score':             1.0,
+    'contamination_score_nat': 0.55,
+    'waterway_score_nat':      0.40,
+    'geothermal_score_nat':    0.20,
+    'flatness_score_nat':      0.65,
+    'aquifer_score_nat':       0.10,
+    'soil_score_nat':          0.50,
+    'slope_score_nat':         0.45,
+    'pop_exposure_score_nat':  0.80,
+    'soil_profile_score_nat':  0.35,
+    'ksat_score_nat':          0.25,
+    'substation_score_nat':    0.90,
+    'superfund_score_nat':     0.78,
+    'rcra_score_nat':          0.68,
+    'air_quality_score_nat':   0.95,
+    'fiber_score_nat':         0.15,
+    'water_stress_score_nat':  0.05,
+    'grid_capacity_score_nat': 0.42,
+    'protected_frac':          0.05,
+}
+
+_DUMMY_CASE = {
+    'site':       'Test Ridge',
+    'applicant':  'Cascade Data LLC',
+    'state_code': 'WA',
+    'score':      0.712,
+    'stage':      'Analysis',
+    'anchor':     None,
+    'weights':    None,
+}
+
+
+class TestBuildReportContext:
+
+    def _ctx(self, case_row=None, props=None):
+        return srv._build_report_context(
+            case_row if case_row is not None else _DUMMY_CASE,
+            props if props is not None else dict(_FULL_PROPS),
+        )
+
+    def test_inds_sorted_strongest_first(self):
+        ctx = self._ctx()
+        nats = [i['nat'] for i in ctx['inds']]
+        assert nats == sorted(nats, reverse=True)
+
+    def test_all_22_indicators_present(self):
+        ctx = self._ctx()
+        assert len(ctx['inds']) == 22
+
+    def test_strengths_all_above_50th_pct(self):
+        ctx = self._ctx()
+        for s in ctx['strengths']:
+            assert s['nat'] >= 0.5
+
+    def test_challenges_all_below_50th_pct(self):
+        ctx = self._ctx()
+        for c in ctx['challenges']:
+            assert c['nat'] < 0.5
+
+    def test_strengths_capped_at_3(self):
+        ctx = self._ctx()
+        assert len(ctx['strengths']) <= 3
+
+    def test_challenges_capped_at_3(self):
+        ctx = self._ctx()
+        assert len(ctx['challenges']) <= 3
+
+    def test_quartile_q4_at_75_pct(self):
+        props = {**_FULL_PROPS, 'tx_score_nat': 0.75}
+        ctx = self._ctx(props=props)
+        tx = next(i for i in ctx['inds'] if i['k'] == 'transmission')
+        assert tx['quartile'] == 'Q4'
+
+    def test_quartile_q3_at_50_pct(self):
+        props = {**_FULL_PROPS, 'tx_score_nat': 0.50}
+        ctx = self._ctx(props=props)
+        tx = next(i for i in ctx['inds'] if i['k'] == 'transmission')
+        assert tx['quartile'] == 'Q3'
+
+    def test_quartile_q2_at_25_pct(self):
+        props = {**_FULL_PROPS, 'tx_score_nat': 0.25}
+        ctx = self._ctx(props=props)
+        tx = next(i for i in ctx['inds'] if i['k'] == 'transmission')
+        assert tx['quartile'] == 'Q2'
+
+    def test_quartile_q1_below_25_pct(self):
+        props = {**_FULL_PROPS, 'tx_score_nat': 0.10}
+        ctx = self._ctx(props=props)
+        tx = next(i for i in ctx['inds'] if i['k'] == 'transmission')
+        assert tx['quartile'] == 'Q1'
+
+    def test_all_gates_pass_when_both_ok(self):
+        ctx = self._ctx()
+        assert ctx['all_gates_pass'] is True
+        assert all(g['pass'] for g in ctx['gates'])
+
+    def test_protected_gate_fails_above_threshold(self):
+        props = {**_FULL_PROPS, 'protected_frac': 0.30}
+        ctx = self._ctx(props=props)
+        protected = next(g for g in ctx['gates'] if 'protected' in g['label'].lower())
+        assert protected['pass'] is False
+        assert ctx['all_gates_pass'] is False
+
+    def test_flood_gate_fails_when_score_zero(self):
+        props = {**_FULL_PROPS, 'flood_score': 0.0}
+        ctx = self._ctx(props=props)
+        flood = next(g for g in ctx['gates'] if 'flood' in g['label'].lower())
+        assert flood['pass'] is False
+        assert ctx['all_gates_pass'] is False
+
+    def test_composite_from_case_row_score(self):
+        ctx = self._ctx(case_row={**_DUMMY_CASE, 'score': 0.712})
+        assert abs(ctx['composite'] - 0.712) < 1e-6
+
+    def test_composite_balanced_fallback_when_score_zero(self):
+        # With score=0, should compute tx*40 + water*35 + ej*25 / 100
+        props = {**_FULL_PROPS, 'tx_score_nat': 1.0, 'water_score_nat': 0.0, 'ej_score_nat': 0.0}
+        case = {**_DUMMY_CASE, 'score': 0}
+        ctx = self._ctx(case_row=case, props=props)
+        expected = (1.0 * 40 + 0.0 * 35 + 0.0 * 25) / 100
+        assert abs(ctx['composite'] - expected) < 1e-6
+
+    def test_composite_pct_clamped_to_100(self):
+        ctx = self._ctx(case_row={**_DUMMY_CASE, 'score': 1.0})
+        assert ctx['composite_pct'] == 100
+
+    def test_composite_pct_clamped_to_0(self):
+        ctx = self._ctx(case_row={**_DUMMY_CASE, 'score': 0.0},
+                        props={**_FULL_PROPS, 'tx_score_nat': 0.0,
+                               'water_score_nat': 0.0, 'ej_score_nat': 0.0})
+        assert ctx['composite_pct'] == 0
+
+    def test_site_name_from_case_row(self):
+        ctx = self._ctx()
+        assert ctx['site_name'] == 'Test Ridge'
+
+    def test_site_name_fallback_when_none(self):
+        ctx = self._ctx(case_row={**_DUMMY_CASE, 'site': None})
+        assert ctx['site_name'] == 'Unnamed site'
+
+    def test_zcta_from_props(self):
+        ctx = self._ctx()
+        assert ctx['zcta'] == '98001'
+
+    def test_confidence_preserved_in_inds(self):
+        ctx = self._ctx()
+        tx = next(i for i in ctx['inds'] if i['k'] == 'transmission')
+        assert tx['confidence'] == 'High'
+
+    def test_empty_props_does_not_crash(self):
+        ctx = self._ctx(props={})
+        assert len(ctx['inds']) == 22
+        assert 'composite_pct' in ctx
+        assert 'gates' in ctx
+
+    def test_empty_props_with_zero_score_gives_zero_pct(self):
+        ctx = self._ctx(case_row={**_DUMMY_CASE, 'score': 0}, props={})
+        assert ctx['composite_pct'] == 0
+
+    def test_none_nat_value_treated_as_zero(self):
+        props = {**_FULL_PROPS, 'tx_score_nat': None}
+        ctx = self._ctx(props=props)
+        tx = next(i for i in ctx['inds'] if i['k'] == 'transmission')
+        assert tx['nat'] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# _load_zcta_feature  (filesystem unit tests, no DB required)
+# ---------------------------------------------------------------------------
+
+class TestLoadZctaFeature:
+
+    def setup_method(self):
+        srv._zcta_centroids_cache.clear()
+
+    def test_returns_none_without_state_code(self):
+        assert srv._load_zcta_feature(None, 47.5, -120.3) is None
+
+    def test_returns_none_without_lat(self):
+        assert srv._load_zcta_feature('WA', None, -120.3) is None
+
+    def test_returns_none_without_lon(self):
+        assert srv._load_zcta_feature('WA', 47.5, None) is None
+
+    def test_returns_none_for_missing_geojson(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(srv, 'ROOT', str(tmp_path))
+        result = srv._load_zcta_feature('WA', 47.5, -120.3)
+        assert result is None
+
+    def test_nearest_centroid_selected(self, monkeypatch, tmp_path):
+        import json as _json
+        feat_near = {
+            'type': 'Feature',
+            'geometry': {'type': 'Polygon', 'coordinates': [[
+                [-120.5, 47.0], [-120.4, 47.0],
+                [-120.4, 47.1], [-120.5, 47.1], [-120.5, 47.0],
+            ]]},
+            'properties': {'zcta': '98001', 'tx_score_nat': 0.9},
+        }
+        feat_far = {
+            'type': 'Feature',
+            'geometry': {'type': 'Polygon', 'coordinates': [[
+                [-121.5, 47.0], [-121.4, 47.0],
+                [-121.4, 47.1], [-121.5, 47.1], [-121.5, 47.0],
+            ]]},
+            'properties': {'zcta': '98002', 'tx_score_nat': 0.1},
+        }
+        gj = {'type': 'FeatureCollection', 'features': [feat_near, feat_far]}
+        state_dir = tmp_path / 'data' / 'WA' / 'zcta'
+        state_dir.mkdir(parents=True)
+        (state_dir / 'grid_scores.geojson').write_text(_json.dumps(gj))
+        monkeypatch.setattr(srv, 'ROOT', str(tmp_path))
+        result = srv._load_zcta_feature('WA', 47.05, -120.45)
+        assert result['zcta'] == '98001'
+
+    def test_far_centroid_selected_when_closer(self, monkeypatch, tmp_path):
+        import json as _json
+        feat_a = {
+            'type': 'Feature',
+            'geometry': {'type': 'Polygon', 'coordinates': [[
+                [-120.5, 47.0], [-120.4, 47.0],
+                [-120.4, 47.1], [-120.5, 47.1], [-120.5, 47.0],
+            ]]},
+            'properties': {'zcta': '98001'},
+        }
+        feat_b = {
+            'type': 'Feature',
+            'geometry': {'type': 'Polygon', 'coordinates': [[
+                [-121.5, 47.0], [-121.4, 47.0],
+                [-121.4, 47.1], [-121.5, 47.1], [-121.5, 47.0],
+            ]]},
+            'properties': {'zcta': '98002'},
+        }
+        gj = {'type': 'FeatureCollection', 'features': [feat_a, feat_b]}
+        state_dir = tmp_path / 'data' / 'WA' / 'zcta'
+        state_dir.mkdir(parents=True)
+        (state_dir / 'grid_scores.geojson').write_text(_json.dumps(gj))
+        monkeypatch.setattr(srv, 'ROOT', str(tmp_path))
+        result = srv._load_zcta_feature('WA', 47.05, -121.45)
+        assert result['zcta'] == '98002'
+
+    def test_cache_populated_after_first_call(self, monkeypatch, tmp_path):
+        import json as _json
+        feat = {
+            'type': 'Feature',
+            'geometry': {'type': 'Polygon', 'coordinates': [[
+                [-120.5, 47.0], [-120.4, 47.0],
+                [-120.4, 47.1], [-120.5, 47.1], [-120.5, 47.0],
+            ]]},
+            'properties': {'zcta': '98001'},
+        }
+        gj = {'type': 'FeatureCollection', 'features': [feat]}
+        state_dir = tmp_path / 'data' / 'WA' / 'zcta'
+        state_dir.mkdir(parents=True)
+        (state_dir / 'grid_scores.geojson').write_text(_json.dumps(gj))
+        monkeypatch.setattr(srv, 'ROOT', str(tmp_path))
+        srv._load_zcta_feature('WA', 47.05, -120.45)
+        assert 'WA' in srv._zcta_centroids_cache
+        assert len(srv._zcta_centroids_cache['WA']) == 1
+
+    def test_multipolygon_uses_largest_ring(self, monkeypatch, tmp_path):
+        import json as _json
+        feat = {
+            'type': 'Feature',
+            'geometry': {'type': 'MultiPolygon', 'coordinates': [
+                [[[-120.5, 47.0], [-120.4, 47.0], [-120.4, 47.1],
+                  [-120.5, 47.1], [-120.5, 47.0]]],
+            ]},
+            'properties': {'zcta': '98001'},
+        }
+        gj = {'type': 'FeatureCollection', 'features': [feat]}
+        state_dir = tmp_path / 'data' / 'WA' / 'zcta'
+        state_dir.mkdir(parents=True)
+        (state_dir / 'grid_scores.geojson').write_text(_json.dumps(gj))
+        monkeypatch.setattr(srv, 'ROOT', str(tmp_path))
+        result = srv._load_zcta_feature('WA', 47.05, -120.45)
+        assert result['zcta'] == '98001'
+
+    def test_state_code_normalized_to_uppercase(self, monkeypatch, tmp_path):
+        import json as _json
+        feat = {
+            'type': 'Feature',
+            'geometry': {'type': 'Polygon', 'coordinates': [[
+                [-120.5, 47.0], [-120.4, 47.0],
+                [-120.4, 47.1], [-120.5, 47.1], [-120.5, 47.0],
+            ]]},
+            'properties': {'zcta': '98001'},
+        }
+        gj = {'type': 'FeatureCollection', 'features': [feat]}
+        state_dir = tmp_path / 'data' / 'WA' / 'zcta'
+        state_dir.mkdir(parents=True)
+        (state_dir / 'grid_scores.geojson').write_text(_json.dumps(gj))
+        monkeypatch.setattr(srv, 'ROOT', str(tmp_path))
+        result = srv._load_zcta_feature('wa', 47.05, -120.45)
+        assert result['zcta'] == '98001'

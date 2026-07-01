@@ -52,7 +52,7 @@ function EngineVisual() {
         <Arrow />
 
         <div style={{ padding: '20px 20px', borderRight: '1px solid var(--line-soft)' }}>
-          <div className="eyebrow" style={{ marginBottom: 12 }}>22 indicators · 0-1 normalized</div>
+          <div className="eyebrow" style={{ marginBottom: 12 }}>23 indicators · 0-1 normalized</div>
           {INDS.map(ind => (
             <div key={ind.label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
               <span style={{ width: 132, color: 'var(--slate)', fontSize: 12, flexShrink: 0 }}>{ind.label}</span>
@@ -118,10 +118,10 @@ function LandingPage() {
           <div style={{ textAlign: 'center', maxWidth: 660, margin: '0 auto 44px' }}>
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 18 }}><AnimatedGlyph size={60} /></div>
             <h1 style={{ fontSize: 'clamp(28px, 3.8vw, 44px)', lineHeight: 1.12, fontWeight: 700 }}>
-              One engine. One score.<br />For everyone.
+              Reproducible evidence<br />for infrastructure siting.
             </h1>
             <p style={{ fontSize: 17, lineHeight: 1.6, color: 'var(--slate)', margin: '18px auto 28px', maxWidth: 560 }}>
-              Twenty-one public sources. Twenty-two normalized indicators. One composite score per cell; methodology published, weights adjustable, scores identical for everyone in the room.
+              When the score changes between rooms, the hearing fails. Merascope is a shared evidence platform — twenty-three public sources, twenty-two normalized indicators, one composite score that's identical for the developer, the agency, and the community at the table.
             </p>
             <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
               <a className="btn btn-primary" href="#/explorer" style={{ fontSize: 15, padding: '11px 22px' }}>Explore the live map — free</a>
@@ -139,13 +139,13 @@ function LandingPage() {
       <section style={{ padding: '30px 24px 0', maxWidth: 980, margin: '0 auto' }}>
         <div className="dual-doors" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 22 }}>
           <Door icon="gavel" h3="I review and approve projects"
-            body="You're staffing a moratorium study, reviewing an application, or writing the bill. The applicant arrives with consultants. You should arrive with more. Independent scoring, mandated-study workbenches, and a case system that turns hearings into records; built for agencies, counties, commissions, and tribal governments."
-            bullets={['Statewide atlases & report cards', 'The Docket: findings, conditions, rebuttals, versioned', 'Expert testimony backed by a scientific bench']}
+            body="The applicant arrives with consultants and a PDF. You should arrive with evidence they can't dispute. Merascope gives agencies, counties, commissions, and tribal governments independent scoring, mandated-study workbenches, and a case system that turns a hearing into a permanent record."
+            bullets={['Statewide atlases & scored report cards', 'The Docket: findings, conditions, rebuttals, versioned', 'Expert testimony backed by a reproducible scientific record']}
             cta="Enter the Steward console" ctaHref="#/steward"
             micro="Entra ID single sign-on · procurement-friendly contracting" />
           <Door icon="pylon" h3="I site and build projects"
-            body="A siting mistake is a nine-figure mistake. Browse land the way Zillow browses homes: every parcel scored for water rights, grid access, hazard and insurance posture, community sentiment, and heat-reuse upside. The fastest path to power is the site nobody has to fight about."
-            bullets={['Parcel-grade listing cards & comparables', 'Watchlists with bill, rate-case & moratorium alerts', 'One-click board-ready dossiers']}
+            body="A siting mistake is a nine-figure mistake. The fastest path to a permit is a site nobody has to fight about. Merascope gives developers an evidence record the agency already recognizes — twenty-three public datasets on the same scale, a composite score that survives a hearing, and a permitting dossier ready before you ask for it."
+            bullets={['Scored site comparables with indicator breakdowns', 'Watchlists with moratorium, rate-case & bill alerts', 'One-click board-ready dossiers with reproducibility metadata']}
             cta="Enter the Builder workspace" ctaHref="#/builder"
             micro="Portfolio screening · field surveys proctored & tracked" />
         </div>
@@ -185,9 +185,9 @@ function LandingPage() {
       <section style={{ padding: '58px 24px 10px', maxWidth: 1000, margin: '0 auto' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 26 }}>
           {[
-            ['1', 'SCORE', 'Twenty-two indicators, normalized 0–1, weighted your way. Two hard gates no slider can override: FEMA flood zones and protected or sovereign land.'],
-            ['2', 'SEE', 'From state report cards down to the parcel. Existing, proposed, and recommended sites on one continuous surface.'],
-            ['3', 'DECIDE', 'Dossiers for builders. Dockets for stewards. Fact sheets for everyone at the hearing; same numbers on every page.']
+            ['1', 'ANALYZE', 'Twenty-three public sources feed twenty-two normalized indicators. Two hard gates no slider overrides: FEMA flood zones and protected or sovereign land. Same model for every party.'],
+            ['2', 'FILE', 'A site inquiry creates a shared evidentiary record. Scores, weights, indicator breakdowns, and hard-gate analysis are locked at submission — visible to the developer, the agency, and any co-party.'],
+            ['3', 'RESOLVE', 'Dossiers for builders. Dockets for stewards. Fact sheets for everyone at the hearing. When the record closes, the evidence is anchored — same numbers on every page, permanently.']
           ].map(([n, t, b]) => (
             <div key={n}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>

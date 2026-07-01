@@ -71,7 +71,8 @@ CREATE TABLE IF NOT EXISTS cases (
     imported           INTEGER DEFAULT 0,
     agency_tracking_id TEXT,
     confirmed_at       TEXT,
-    owner_email        TEXT
+    owner_email        TEXT,
+    weights_json       TEXT
 );
 
 CREATE TABLE IF NOT EXISTS case_stage_overrides (

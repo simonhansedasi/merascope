@@ -14,20 +14,21 @@ Same Score Promise: methodology is public and identical for all users. No party 
 ## Quick start
 
 ```bash
-# Activate the pipeline environment (Python 3.7, geopandas 0.10.x)
+# Activate the pipeline environment (Python 3.7 + geopandas 0.10.x — intentionally pinned; see environment.yml)
 conda activate merascope
 PYTHON=/home/simonhans/anaconda3/envs/merascope/bin/python3
 
-# Run a single state end-to-end (core steps 01-10)
-$PYTHON -u scripts/run_pipeline.py WA
+# Run a single state end-to-end (ZCTA pipeline, steps 02-16)
+$PYTHON -u scripts/zcta/run_zcta_study.py WA
 
-# After steps 01-10, run supplemental indicators (VPS has system Python with geopandas)
-for SCRIPT in 11_substations 12_superfund 13_air_quality 14_fiber 15_water_stress 16_iso_queue; do
-  /usr/bin/python3 -u scripts/${SCRIPT}.py WA
-done
+# Resume at a specific step (e.g. after a failure)
+$PYTHON -u scripts/zcta/run_zcta_study.py WA --start 06
+
+# Run all 48 states (outputs to data/{STATE}/zcta/grid_scores.geojson)
+bash scripts/run_all_zcta.sh 2>&1 | tee logs/zcta_master.log
 
 # National normalization pass (run once after all 48 states are complete)
-$PYTHON -u scripts/normalize_national.py
+$PYTHON -u scripts/normalize_zcta_national.py
 ```
 
 See [PIPELINE_GUIDE.md](contexts/PIPELINE_GUIDE.md) for full setup, step descriptions, and troubleshooting.
@@ -76,21 +77,21 @@ All 7 supplemental indicators are present in every state's `grid_scores.geojson`
 
 ### Raw columns
 
-Fishnet `grid_scores.geojson` files carry raw physical-value columns. ZCTA files carry step-09+ raw columns only (steps 02-08 raw values were lost in a restore operation — steps 09-16 raw values are intact):
+All 48 states carry the full raw column set in their ZCTA files.
 
 | Column | Units | Added by | In ZCTA? |
 |---|---|---|---|
-| tx_dist_m | m to nearest HV line | step 02 | no |
-| ann_precip_mm | mm/yr (PRISM 30-yr normal) | step 02 | no |
-| pop_density | persons/km2 | step 02 | no |
-| seismic_pga_g | PGA (g) | step 03 | no |
-| tri_dist_m | m to nearest TRI facility | step 04 | no |
-| river_dist_m | m to nearest major river | step 04 | no |
-| heatflow_mwm2 | mW/m2 | step 05 | no |
-| flat_frac | fraction with slope < 5 deg | step 06 | no |
-| slope_mean_deg | mean slope in degrees | step 06 | no |
-| protected_frac | fraction covered by protected land | step 07 | no |
-| aquifer_depth_ft | ft to water table (IDW from USGS wells) | step 08 | no |
+| tx_dist_m | m to nearest HV line | step 02 | yes |
+| ann_precip_mm | mm/yr (PRISM 30-yr normal) | step 02 | yes |
+| pop_density | persons/km2 | step 02 | no (not stored) |
+| seismic_pga_g | PGA (g) | step 03 | yes |
+| tri_dist_m | m to nearest TRI facility | step 04 | yes |
+| river_dist_m | m to nearest major river | step 04 | yes |
+| heatflow_mwm2 | mW/m2 | step 05 | yes |
+| flat_frac | fraction with slope < 5 deg | step 06 | yes |
+| slope_mean_deg | mean slope in degrees | step 06 | yes |
+| protected_frac | fraction covered by protected land | step 07 | yes |
+| aquifer_depth_ft | ft to water table (IDW from USGS wells) | step 08 | yes |
 | substation_dist_m | m to nearest 345kV+ substation | step 11 | yes |
 | superfund_dist_m | m to nearest Superfund site | step 12 | yes |
 | rcra_dist_m | m to nearest RCRA site | step 12 | yes |
@@ -100,16 +101,9 @@ Fishnet `grid_scores.geojson` files carry raw physical-value columns. ZCTA files
 
 ## States completed
 
-All 48 contiguous states complete (AK/HI excluded).
+All 48 contiguous states complete (AK/HI excluded) as of 2026-06-23.
 
-All 48 contiguous states complete as of 2026-06-23 with 7 supplemental indicators.
-
-| Raw column coverage | States |
-|---|---|
-| 10-raw (no flat_frac/slope_mean_deg) | WA OR TX CA NV UT ID MT AZ |
-| 12-raw (full set) | CO WY NM ND SD NE KS OK MN IA MO AR LA MI WI IL IN KY TN MS GA OH AL FL SC NC VA WV PA NY NJ CT RI MA VT NH ME DE MD |
-
-All 48 states carry the 7 supplemental score columns added by scripts 11-16. Raw columns are added automatically by `run_pipeline.py` at the end of every full run (`patch_raws.py` is called as a post-processing step). For early states already in the dataset, run once manually: `python scripts/patch_raws.py WA OR TX CA NV UT ID MT AZ`
+All 48 contiguous states carry the full 66-column ZCTA dataset (23 scores × 2 normalization windows + raw physical columns).
 
 ## Product surfaces
 
@@ -118,10 +112,14 @@ Workspace tab (saved cells, comparison panel), Status tab (CRM tracker per site:
 
 **Site inquiry flow:** Builder selects a saved site from a card grid → confirms site name and score → lead agency is auto-detected via Nominatim reverse geocode → fills contact details → submits. Merascope routes the inquiry to the relevant agency; the agency runs their own jurisdiction-specific permitting process from there. Merascope is the first contact point and routing layer, not the permitting system itself.
 
+**Permit justification report** (`/report/<case_id>`): after submission, the case intake view shows a "Download permit justification report" link that opens a printable HTML document in a new tab. The report includes: composite score block, hard gate analysis (PASS/FAIL), 22-indicator scorecard with national percentile bars and H/M/L confidence tiers, strengths/challenges summary, data sources table, and reproducibility block (pipeline version, SHA-256 anchor hash if at Resolution stage, verification URL). Explorer mode also supported: `/report?state=WA&lat=X&lon=Y&name=...` (no case required). Print-to-PDF via the browser "Print / Save PDF" button.
+
 ### Steward surface (`#/steward`)
 Kanban docket across all stages. Case file: versioned findings, conditions negotiation (propose/accept/reject), co-party coordination, rebuttal clock, document chain, CSV exports. Impasse register (route to mediation). Mandated studies workbench (section checklists, live progress). **Weight templates** (`#/steward/templates`): define named weight profiles and attach them to geographic zones; lock a template to gate builders whose cells score below the minimum threshold.
 
 **Evidence record** (`#/evidence?case=:id`): per-finding cards with score, citation, source, formula. Each card shows whether an independent study has been mandated (green badge + days-to-deadline). Stewards can commission a study directly from the evidence record — study is linked to the specific indicator via the `finding` DB column and appears immediately. Non-stewards see a read-only card. Builders rebut findings; stewards commission independent review.
+
+**Evidentiary record integrity (added 2026-07-01):** At the Resolution stage, the full case record (conditions, rebuttals, co-parties, weights) is serialized to canonical JSON and hashed with SHA-256. The hash is stored in the `case_anchors` table and shown in the case file as a "Record anchored" card. `GET /api/case/<id>/anchor` returns the hash and original payload for independent verification. Scoring weights at submission are also logged in `weights_json` and displayed in the case file (green "Platform defaults" chip or amber "Custom weights" chip).
 
 **EXAMPLE case** (`demo-EX-0001`): fully wired showcase visible to all users on the docket. Shows a complete end-to-end flow: 6 findings (2 contested), 6 conditions (1 countered), 3 mandated studies linked to specific indicators by `finding` key, evidence record with live study badges, workbench entries. Hideable via the docket UI.
 
@@ -195,7 +193,7 @@ In local dev, omit `S3_ENDPOINT` (falls back to disk) and omit SMTP vars (magic 
 ## Testing and deploy
 
 ```bash
-# Unit + pipeline tests (143 tests)
+# Unit + pipeline tests (200 tests total)
 /home/simonhans/anaconda3/envs/merascope/bin/python3 -m pytest tests/ -v
 
 # Browser smoke test (26 checks — starts its own server, headless Chromium)
@@ -205,7 +203,7 @@ In local dev, omit `S3_ENDPOINT` (falls back to disk) and omit SMTP vars (magic 
 bash scripts/deploy_hetzner.sh
 ```
 
-`tests/test_server.py` — 64 tests covering all server API routes including steward templates/zones CRUD and gate check. Requires PostgreSQL (`TEST_DATABASE_URL`); skips cleanly if unavailable.
+`tests/test_server.py` — 121 tests covering all server API routes including weight logging, cryptographic record anchoring, permit justification report routes, `_build_report_context` and `_load_zcta_feature` unit tests, steward templates/zones CRUD and gate check. Requires PostgreSQL (`TEST_DATABASE_URL`); skips cleanly if unavailable.
 `tests/test_config.py`, `test_gates.py`, `test_indicators.py` — 79 pipeline tests (no DB needed).
 `tests/smoke_test.py` — Playwright end-to-end: builder submit form, progressive reveal, steward docket, intake case view, case lookup.
 
@@ -234,6 +232,7 @@ Dev server: `cd ~/coding/merascope && python3 server.py` (Flask, port 8877 — N
 merascope/
   index.html              — frontend entry point
   merascope/              — JSX source files + compiled dist/ (gitignored, built on deploy)
+  templates/              — Jinja2 HTML templates (report.html = permit justification report)
   server.py               — Flask app (port 8877)
   package.json            — Babel build config
   babel.config.json       — JSX compile settings (classic runtime)
@@ -244,9 +243,13 @@ merascope/
     setup_env.sh          — conda environment setup
     sync_data_hetzner.sh  — push GeoJSON data to VPS (run separately from code deploy)
     config.py             — state bboxes, FIPS, UTM zones for all 50 states
-    run_pipeline.py       — orchestrator (steps 01-10 in sequence)
+    run_pipeline.py       — fishnet orchestrator (legacy; superseded by zcta/run_zcta_study.py)
+    run_all_zcta.sh       — full national ZCTA pipeline (all 48 states, steps 02-16)
     01_basemap.py         — state boundary, data centers, transmission, EIA plants
-    02_indicators.py      — fishnet grid + tx, water, ej, pop_exposure scores
+    02_indicators.py      — fishnet grid + tx, water, ej, pop_exposure scores (legacy)
+    zcta/                 — ZCTA-specific scripts
+      02_zcta_indicators.py — ZCTA grid + tx_score, water_score, ej_score, pop_exposure_score
+      run_zcta_study.py   — per-state ZCTA orchestrator (steps 02-16)
     03_risk.py            — seismic, flood scores
     04_environment.py     — contamination, waterway scores
     05_geothermal.py      — geothermal score (IHFC heat flow)
@@ -261,7 +264,7 @@ merascope/
     14_fiber.py           — carrier-hotel/colo proximity score (PeeringDB)
     15_water_stress.py    — watershed water stress score (WRI Aqueduct 3.0)
     16_iso_queue.py       — grid interconnection queue capacity score (EIA 860M)
-    normalize_national.py — cross-state normalization pass (run after all 48 states)
+    normalize_zcta_national.py — cross-state normalization pass (run after all 48 states)
     grade_states.py       — letter grade computation + data.js patcher
     patch_raws.py         — retrofit raw physical columns on completed states
   data/                   — generated GeoJSON + CSVs (gitignored; sync with sync_data_hetzner.sh)

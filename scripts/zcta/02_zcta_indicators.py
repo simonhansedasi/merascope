@@ -299,7 +299,7 @@ def main():
     print(f"  pop_exposure_score: {grid['pop_exposure_score'].min():.3f} - {grid['pop_exposure_score'].max():.3f}")
 
     grid_out = grid.drop(
-        columns=["tx_dist_m", "ann_precip_mm", "demog_index", "area_km2", "pop_density", "pop"],
+        columns=["demog_index", "area_km2", "pop_density", "pop"],
         errors="ignore",
     )
     grid_out.to_file(grid_path, driver="GeoJSON")
