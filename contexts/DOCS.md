@@ -525,7 +525,7 @@ Flask application backed by PostgreSQL. Serves the SPA (`index.html`, `merascope
 
 **`require_auth`** decorator — hard-requires a valid session. Sets `g.user_email`, `g.user_role`, `g.agency_key`. Returns 401 if missing or expired.
 
-**`require_steward`** decorator — requires steward role, but has a special case: if no cookie is present, grants demo steward access (`demo@merascope.com` / `DEMO`). Returns 403 (not 401) if the user is authenticated but not a steward.
+**`require_steward`** decorator — requires a valid steward session: returns 401 if no session cookie, 403 if authenticated but not a steward. (The former "no cookie → demo steward" backdoor was removed 2026-06-24.)
 
 **`_can_access_case(user, case_row)`** — row-level access logic:
 - `None` user (unauthenticated) → allow (demo access)
@@ -533,7 +533,7 @@ Flask application backed by PostgreSQL. Serves the SPA (`index.html`, `merascope
 - `co-party` → allow (co-party filtering happens at the SQL query level via `case_invites` JOIN)
 - `builder` → allow only if `case_row.owner_email == user.email` or `owner_email IS NULL`
 
-**`_check_case_access(case_id)`** — combines `_session_user()` and `_can_access_case()` for per-request access checks in document routes. Returns `(case_row, None)` on success or `(None, error_response)` on denial.
+**`_case_write_guard(case_id)`** (replaced `_check_case_access`, 2026-07-02) — the access guard used by every case read, write, and document route. Demo (`demo-*`) and unknown case ids stay open (the public demo needs it); a real case row requires the owner, a steward/admin, or an invited co-party. Returns an error `(response, status)` tuple to abort, or `None` to allow.
 
 ### Object Storage
 
@@ -552,7 +552,7 @@ Flask application backed by PostgreSQL. Serves the SPA (`index.html`, `merascope
 | Method | Route | Description |
 |---|---|---|
 | POST | `/api/log` | Write an event to `event_log`. Requires `event_type`; `session_id` and `fid` optional. |
-| GET | `/api/export/workspace` | CSV of all `save_cell` events (one row per unique `fid`). Includes composite scores and state rank. |
+| GET | `/api/export/workspace` | CSV of all `save_cell` events (one row per unique `fid`). Includes composite scores, state rank, and all 22 national indicator columns. |
 | GET | `/api/export/status` | CSV of status changes, activity logs, contact events, notes. |
 | GET | `/api/admin/log` | Returns up to 500 raw event rows. Requires `?key=MERA_ADMIN_KEY`. |
 
@@ -560,8 +560,8 @@ Flask application backed by PostgreSQL. Serves the SPA (`index.html`, `merascope
 
 | Method | Route | Description |
 |---|---|---|
-| GET | `/api/cases` | Paginated case list (`?limit`, `?offset`). Filtered by role: builder sees own cases, co-party sees invited cases, steward sees all. Returns `{cases, total, limit, offset}`. |
-| POST | `/api/cases` | Create a case (minimal: `site`, `applicant`). Auto-generates `case_id` as `{YY}-{1000+count}`. |
+| GET | `/api/cases` | Paginated case list (`?limit`, `?offset`). Filtered by role: builder sees own cases, co-party sees invited cases, steward/admin see all. **Anonymous or incomplete-role callers get an empty list** — no leak. Returns `{cases, total, limit, offset}`. |
+| POST | `/api/cases` | Create a case (minimal: `site`, `applicant`). **Steward/admin only.** `case_id` minted from the `case_seq` Postgres sequence (was `{YY}-{1000+count}`, which collided on deletes/races). |
 | POST | `/api/builder/submit` | Full builder case submission with lat/lon, contact info, lead agency, external permit ID. Sets `owner_email` from session. |
 | GET | `/api/builder/case/<case_id>` | Fetch one case; respects row-level access control. |
 | PATCH | `/api/builder/case/<case_id>/confirm` | Agency confirms receipt; sets `agency_tracking_id`, `confirmed_at`, advances stage to `Intake`. |
@@ -742,7 +742,7 @@ Standalone script for managing the indicator-ranking survey stored in a SQLite d
 - `test_indicators.py` — loads `data/WA/grid_scores.geojson` and validates: all score columns present, all values in [0, 1], binary scores only 0/1, `cell_id` unique, `_nat` columns present after normalization.
 - `test_gates.py` — validates hard gate invariants: cells with `protected_score=0` have `protected_frac > 0`, cells with `flatness_score=0` have `flat_frac < 0.03` (or flat_frac missing for early states).
 
-**45 server tests** (`test_server.py`): Flask route integration tests via `app.test_client()`. Requires PostgreSQL (`TEST_DATABASE_URL` or `DATABASE_URL`). Skips cleanly if PostgreSQL is unavailable. Tests cover: case CRUD, stage transitions, conditions, invites, rebuttals, deadlines, study checks, CRM, impasse routing, steward templates, steward zones, gate_check, auth flow (login, verify, me, logout).
+**132 server tests** (`test_server.py`): Flask route integration tests via `app.test_client()`. Requires PostgreSQL (`TEST_DATABASE_URL` or `DATABASE_URL`). Skips cleanly if PostgreSQL is unavailable. Tests cover: case CRUD, case access control (anon/owner/steward/co-party read+write+doc guards), stage transitions, conditions, invites, rebuttals, deadlines, study checks, CRM, impasse routing, steward templates, steward zones, gate_check, record anchoring, weight logging, report context, and auth flow (login, verify, me, logout). Auth in tests uses `client.set_cookie` (a `Cookie:` header is ignored by the werkzeug 3.x test client). A sibling `test_static_guard.py` covers the serving allowlist (no DB).
 
 **26 smoke checks** (`smoke_test.py`): Playwright headless Chromium browser test. Starts its own Flask server on a free port. Checks: page loads, map renders, at least one polygon visible, score panels respond to click, export links work.
 

@@ -148,6 +148,24 @@ Two normalization windows live:
 1. **National (`*_nat` columns)** — `normalize_zcta_national.py` runs global p01-p99 percentile normalization across all ~33k ZCTAs after all 48 states complete. Binary gates (flood, protected, air quality) are copied directly. Used in Explorer national view.
 2. **State** — scores normalized 0-1 within state. Used in Explorer state view (default when a state is selected).
 
+## Security model
+
+- **Static serving is allowlisted.** The catch-all route only serves front-end
+  asset extensions (`.js/.css/.json/.geojson/.csv/fonts/images`) and refuses
+  dotfiles. The whole repo is rsynced to the server, so this is what keeps
+  `.env`, `server.py`, `*.db`, `*.pdf`, `schema.sql`, and docs from being
+  downloadable. Anything sensitive must never carry an allowlisted extension.
+- **Case endpoints are ownership-guarded.** `_case_write_guard()` protects every
+  case read, write, and document endpoint: `demo-*` ids and ids with no row in
+  `cases` stay open (the public demo depends on this), but a real case requires
+  the owner, a steward/admin, or an invited co-party. `create_case` is
+  steward/admin-only, and `/api/cases` never returns the full list to an
+  anonymous caller.
+- **Rate limiting** keys on the real client IP (`CF-Connecting-IP` /
+  `X-Forwarded-For`), not the proxy address.
+- **`init_db()` is fresh-DB safe** — tables are created before they are altered,
+  so a clean database (e.g. a migration target) initializes without error.
+
 ## Server setup
 
 `server.py` requires PostgreSQL. For a fresh VPS:
@@ -171,7 +189,10 @@ SMTP_PASS=SG.<sendgrid-api-key>
 FROM_EMAIL=noreply@merascope.com
 APP_URL=https://merascope.com
 APP_ENV=production
+MERA_ADMIN_KEY=<strong-random-value>
 ```
+
+`MERA_ADMIN_KEY` gates `/api/admin/log`. It falls back to `devonly` in code, so it **must** be set to a strong random value in production (`openssl rand -hex 32`) — do not leave it as a placeholder. Set it in exactly one place (the env file, not also inline in the unit) to avoid the two diverging.
 
 Pre-seed the lead steward before the pilot:
 
@@ -193,23 +214,43 @@ In local dev, omit `S3_ENDPOINT` (falls back to disk) and omit SMTP vars (magic 
 ## Testing and deploy
 
 ```bash
-# Unit + pipeline tests (200 tests total)
-/home/simonhans/anaconda3/envs/merascope/bin/python3 -m pytest tests/ -v
+# Full suite (232 tests). The DB-backed tests need Postgres via TEST_DATABASE_URL;
+# they skip cleanly if it is unset.
+TEST_DATABASE_URL=postgresql://merascope:merascope@localhost/merascope_test \
+  /home/simonhans/anaconda3/envs/merascope/bin/python3 -m pytest tests/ -q
 
-# Browser smoke test (26 checks — starts its own server, headless Chromium)
+# Browser smoke test (starts its own server, headless Chromium)
 /home/simonhans/anaconda3/envs/merascope/bin/python3 tests/smoke_test.py
 
 # Deploy (runs lint + tests + build before rsync — aborts on failure)
 bash scripts/deploy_hetzner.sh
 ```
 
-`tests/test_server.py` — 121 tests covering all server API routes including weight logging, cryptographic record anchoring, permit justification report routes, `_build_report_context` and `_load_zcta_feature` unit tests, steward templates/zones CRUD and gate check. Requires PostgreSQL (`TEST_DATABASE_URL`); skips cleanly if unavailable.
-`tests/test_config.py`, `test_gates.py`, `test_indicators.py` — 79 pipeline tests (no DB needed).
-`tests/smoke_test.py` — Playwright end-to-end: builder submit form, progressive reveal, steward docket, intake case view, case lookup.
+`tests/test_server.py` — 132 tests covering all server API routes: case access
+control (read/write/docs guards), weight logging, cryptographic record anchoring,
+permit justification report routes, `_build_report_context` / `_load_zcta_feature`
+units, steward templates/zones CRUD, and gate check. Requires PostgreSQL
+(`TEST_DATABASE_URL`); skips cleanly if unavailable.
+`tests/test_static_guard.py` — verifies the static-serving allowlist (no DB).
+`tests/test_config.py`, `test_gates.py`, `test_indicators.py` — pipeline tests
+(`test_gates` skips without state data; `test_indicators` needs geopandas).
+`tests/smoke_test.py` — Playwright end-to-end: builder submit, steward docket, case lookup.
+
+**No local Postgres?** Spin up a disposable one to run the DB suite:
+`conda create -n pgtmp -c conda-forge postgresql`, `initdb`, start it on a spare
+port, `createdb merascope_test`, then point `TEST_DATABASE_URL` at it.
+
+### CI (GitHub Actions — `.github/workflows/deploy.yml`)
+
+`lint` (flake8) → `test` (full suite against a `postgres:16` service) → `deploy`
+(rsync to Hetzner on push to `master`). The deploy is gated on both `lint` and
+`test`, so a red suite blocks the release. **CI deploys from git**, while
+`deploy_hetzner.sh` deploys from the local working tree — keep the two in sync by
+committing local changes before pushing `master`, or a git deploy will revert them.
 
 ## Frontend
 
-React + Leaflet, pre-compiled via Babel CLI. All 16 JSX source files compile to `merascope/dist/bundle.js` — no Babel standalone CDN, no runtime compilation. React, ReactDOM, Leaflet, and fonts (IBM Plex Sans, Source Sans 3, Source Serif 4) are vendored locally in `vendor/`; no external calls on page load.
+React + Leaflet, pre-compiled via Babel CLI. All 15 JSX source files compile to `merascope/dist/bundle.js` — no Babel standalone CDN, no runtime compilation. React, ReactDOM, Leaflet, and fonts (IBM Plex Sans, Source Sans 3, Source Serif 4) are vendored locally in `vendor/`; no external calls on page load.
 
 Build the bundle (runs automatically in `deploy_hetzner.sh`):
 
