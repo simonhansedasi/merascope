@@ -13,8 +13,6 @@ const STATE_NAMES = {
   WV:'West Virginia', WY:'Wyoming',
 };
 
-const CELL_PX = 15; // kept for sitelab.jsx compat
-
 const GRID_URLS = [
   'data/WA/zcta/grid_scores.geojson',
   'data/OR/zcta/grid_scores.geojson',
@@ -608,7 +606,7 @@ function WeightPanel({ weights, setWeights, minScore = 0, setMinScore = null, do
       </button>
       {!collapsed && (
         <div style={{ padding: '12px 15px 14px' }}>
-          <p className="microcopy" style={{ margin: '0 0 8px' }}>22 indicators, equal weight by default. Percentages show each indicator's share of the total. The map recolors as you drag.</p>
+          <p className="microcopy" style={{ margin: '0 0 8px' }}>22 indicators. Defaults weight transmission, water, and community burden at 40 / 35 / 25; the other 19 start at zero. Percentages show each indicator's share of the total. The map recolors as you drag.</p>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 11 }}>
             {[['Default', null],
               ['Builder lens', { transmission: 50, water: 20, community: 10, seismic: 5, flood: 5, contamination: 5, flatness: 5 }],
@@ -744,4 +742,4 @@ function computeCellRank(composite, stateCode) {
   return { rank: rank > 0 ? rank : scores.length, total: scores.length };
 }
 
-Object.assign(window, { WAMap, MapLegend, WeightPanel, SiteThumb, StateSelector, normalizeWeights, CELL_PX, getStateFeatures, getFeaturesById, computeCellRank, findNearestCell, findZip, STATE_NAMES, propsToInd, loadGridCache });
+Object.assign(window, { WAMap, MapLegend, WeightPanel, SiteThumb, StateSelector, normalizeWeights, getStateFeatures, getFeaturesById, computeCellRank, findNearestCell, findZip, STATE_NAMES, propsToInd, loadGridCache });

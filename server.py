@@ -29,6 +29,18 @@ _rl_store  = {}   # ip -> list of timestamps
 _RL_WINDOW = 900  # seconds
 _RL_LIMIT  = 3
 
+def _client_ip():
+    """Real client IP behind Cloudflare/APISIX. remote_addr is the proxy, so
+    without this every visitor shares one rate-limit bucket."""
+    hdr = request.headers
+    return (
+        hdr.get('CF-Connecting-IP')
+        or hdr.get('X-Real-IP')
+        or (hdr.get('X-Forwarded-For', '').split(',')[0].strip() or None)
+        or request.remote_addr
+    )
+
+
 def _check_rate_limit(ip):
     now = time.time()
     with _rl_lock:
@@ -165,6 +177,12 @@ def _can_access_case(user, case_row):
     # builder
     owner = (case_row or {}).get('owner_email')
     return owner is None or owner == user['email']
+
+
+def _next_case_id(db):
+    """Mint a unique case id (YY-NNNN) from the case_seq sequence."""
+    n = db.execute("SELECT nextval('case_seq') AS n").fetchone()['n']
+    return '{}-{}'.format(datetime.now().strftime('%y'), n)
 
 
 @contextmanager
@@ -365,11 +383,13 @@ def init_db():
             created_at   TIMESTAMP DEFAULT NOW()
         )''')
 
+        # Monotonic case-number source. Immune to deletes/races, unlike COUNT(*).
+        db.execute("CREATE SEQUENCE IF NOT EXISTS case_seq START WITH 1001")
+
         db.execute("ALTER TABLE studies ADD COLUMN IF NOT EXISTS case_id TEXT")
         db.execute("ALTER TABLE studies ADD COLUMN IF NOT EXISTS finding TEXT")
         db.execute("ALTER TABLE studies DROP CONSTRAINT IF EXISTS studies_name_key")
         db.execute("ALTER TABLE cases ADD COLUMN IF NOT EXISTS weights_json TEXT")
-        db.execute("ALTER TABLE demo_cases ADD COLUMN IF NOT EXISTS weights_json TEXT")
         db.execute('''CREATE TABLE IF NOT EXISTS case_anchors (
             case_id      TEXT PRIMARY KEY,
             hash         TEXT NOT NULL,
@@ -394,6 +414,9 @@ def init_db():
             weights_json  TEXT,
             created_at    TIMESTAMP DEFAULT NOW()
         )''')
+        # Migration for pre-existing demo_cases tables that predate weights_json.
+        # Must run AFTER the CREATE above so a fresh database doesn't fail here.
+        db.execute("ALTER TABLE demo_cases ADD COLUMN IF NOT EXISTS weights_json TEXT")
 
 
 # ── event log ─────────────────────────────────────────────────────────────────
@@ -426,14 +449,14 @@ def export_workspace():
             (sid, sid)
         ).fetchall()
 
+    # Every indicator's national-scale score, not just a hand-picked six.
+    nat_cols = [ind['nat_col'] for ind in _REPORT_INDICATORS]
     out = io.StringIO()
     w = csv.writer(out)
     w.writerow(['fid', 'session_id', 'state', 'lat', 'lon', 'municipality',
                 'nat_composite', 'state_composite', 'state_rank', 'state_rank_total',
-                'flat_frac', 'protected_frac', 'flood_score',
-                'tx_score_nat', 'water_score_nat', 'ej_score_nat',
-                'seismic_score_nat', 'geothermal_score_nat', 'aquifer_score_nat',
-                'saved_at'])
+                'flat_frac', 'protected_frac', 'flood_score']
+               + nat_cols + ['saved_at'])
     seen = set()
     for row in rows:
         fid = row['fid']
@@ -449,11 +472,10 @@ def export_workspace():
             p.get('municipality'),
             p.get('nat_composite'), p.get('state_composite'),
             rank.get('rank'), rank.get('total'),
-            pr.get('flat_frac'), pr.get('protected_frac'), pr.get('flood_score'),
-            pr.get('tx_score_nat'), pr.get('water_score_nat'), pr.get('ej_score_nat'),
-            pr.get('seismic_score_nat'), pr.get('geothermal_score_nat'), pr.get('aquifer_score_nat'),
-            row['ts'],
-        ])
+            pr.get('flat_frac'), pr.get('protected_frac'), pr.get('flood_score')]
+            + [pr.get(c) for c in nat_cols]
+            + [row['ts']]
+        )
 
     return Response(
         out.getvalue(), mimetype='text/csv',
@@ -520,6 +542,9 @@ def admin_log():
 
 @app.route('/api/case/<case_id>/invites')
 def get_invites(case_id):
+    err = _case_write_guard(case_id)
+    if err:
+        return err
     with get_db() as db:
         rows = db.execute(
             'SELECT agency_key FROM case_invites WHERE case_id=? ORDER BY ts', (case_id,)
@@ -528,6 +553,9 @@ def get_invites(case_id):
 
 @app.route('/api/case/<case_id>/invite', methods=['POST'])
 def add_invite(case_id):
+    err = _case_write_guard(case_id)
+    if err:
+        return err
     data = request.get_json(silent=True) or {}
     key  = (data.get('agency_key') or '').strip()
     if not key:
@@ -544,6 +572,9 @@ def add_invite(case_id):
 
 @app.route('/api/case/<case_id>/conditions')
 def get_conditions(case_id):
+    err = _case_write_guard(case_id)
+    if err:
+        return err
     with get_db() as db:
         rows = db.execute(
             'SELECT * FROM case_conditions WHERE case_id=? ORDER BY id', (case_id,)
@@ -552,6 +583,9 @@ def get_conditions(case_id):
 
 @app.route('/api/case/<case_id>/conditions', methods=['POST'])
 def add_condition(case_id):
+    err = _case_write_guard(case_id)
+    if err:
+        return err
     data = request.get_json(silent=True) or {}
     with get_db() as db:
         cur = db.execute(
@@ -567,6 +601,9 @@ def add_condition(case_id):
 
 @app.route('/api/case/<case_id>/conditions/<int:cond_id>', methods=['PATCH'])
 def update_condition(case_id, cond_id):
+    err = _case_write_guard(case_id)
+    if err:
+        return err
     data = request.get_json(silent=True) or {}
     with get_db() as db:
         if data.get('approve'):
@@ -583,6 +620,9 @@ def update_condition(case_id, cond_id):
 
 @app.route('/api/case/<case_id>/conditions/<int:cond_id>', methods=['DELETE'])
 def delete_condition(case_id, cond_id):
+    err = _case_write_guard(case_id)
+    if err:
+        return err
     with get_db() as db:
         db.execute('DELETE FROM case_conditions WHERE id=? AND case_id=?', (cond_id, case_id))
     return jsonify({'ok': True})
@@ -590,19 +630,55 @@ def delete_condition(case_id, cond_id):
 
 # ── documents ─────────────────────────────────────────────────────────────────
 
-def _check_case_access(case_id):
-    """Return (case_row_or_None, error_response_or_None). None case_row = demo case, allow."""
-    user = _session_user()
+def _case_write_guard(case_id):
+    """
+    Guard mutations on a case. Returns an (response, status) error tuple to
+    abort, or None to allow.
+
+    Demo cases (``demo-*`` ids) and ids with no row in ``cases`` (frontend
+    example fixtures) stay open so the public demo keeps working. For a real
+    case row, require an authenticated user who is the owner, a steward/admin,
+    or a co-party invited to that case.
+    """
+    if case_id.startswith('demo-'):
+        return None
     with get_db() as db:
-        case_row = db.execute('SELECT owner_email FROM cases WHERE case_id=?', (case_id,)).fetchone()
-    if not _can_access_case(user, case_row):
-        return None, (jsonify({'ok': False, 'err': 'not found'}), 403)
-    return case_row, None
+        row = db.execute(
+            'SELECT owner_email FROM cases WHERE case_id=?', (case_id,)
+        ).fetchone()
+    if not row:
+        return None  # unknown id → treat as demo/fixture, open
+    user = _session_user()
+    if not user:
+        return jsonify({'ok': False, 'err': 'authentication required'}), 401
+    role = user.get('role') or 'builder'
+    if role in ('steward', 'admin'):
+        return None
+    if role == 'builder' and row.get('owner_email') and row['owner_email'] == user['email']:
+        return None
+    if role == 'co-party' and user.get('agency_key'):
+        with get_db() as db:
+            inv = db.execute(
+                'SELECT 1 FROM case_invites WHERE case_id=? AND agency_key=?',
+                (case_id, user['agency_key'])
+            ).fetchone()
+        if inv:
+            return None
+    return jsonify({'ok': False, 'err': 'forbidden'}), 403
+
+
+def _require_steward_or_admin():
+    """Return an error tuple unless the caller is a steward or admin."""
+    user = _session_user()
+    role = (user or {}).get('role')
+    if role not in ('steward', 'admin'):
+        return jsonify({'ok': False, 'err': 'steward role required'}), 403
+    return None
 
 
 @app.route('/api/case/<case_id>/docs')
 def get_docs(case_id):
-    _, err = _check_case_access(case_id)
+    err = _case_write_guard(case_id)
     if err:
         return err
     with get_db() as db:
@@ -617,7 +693,7 @@ def get_docs(case_id):
 
 @app.route('/api/case/<case_id>/docs', methods=['POST'])
 def upload_doc(case_id):
-    _, err = _check_case_access(case_id)
+    err = _case_write_guard(case_id)
     if err:
         return err
     if 'file' not in request.files:
@@ -652,7 +728,7 @@ def upload_doc(case_id):
 
 @app.route('/api/case/<case_id>/docs/<filename>')
 def serve_doc(case_id, filename):
-    _, err = _check_case_access(case_id)
+    err = _case_write_guard(case_id)
     if err:
         return err
     safe = secure_filename(filename)
@@ -671,6 +747,9 @@ def serve_doc(case_id, filename):
 
 @app.route('/api/case/<case_id>/deadline')
 def get_deadline(case_id):
+    err = _case_write_guard(case_id)
+    if err:
+        return err
     with get_db() as db:
         row = db.execute('SELECT * FROM case_meta WHERE case_id=?', (case_id,)).fetchone()
     if not row or not row['rebuttal_due_date']:
@@ -684,6 +763,9 @@ def get_deadline(case_id):
 
 @app.route('/api/case/<case_id>/deadline', methods=['POST'])
 def set_deadline(case_id):
+    err = _case_write_guard(case_id)
+    if err:
+        return err
     data  = request.get_json(silent=True) or {}
     due   = data.get('due_date', '')
     cycle = int(data.get('cycle', 1))
@@ -706,9 +788,12 @@ def set_deadline(case_id):
 @app.route('/api/cases')
 def list_cases():
     user   = _session_user()
-    role   = (user or {}).get('role')
+    role   = (user or {}).get('role') or ('builder' if user else None)
     limit  = min(int(request.args.get('limit', 50)), 200)
     offset = max(int(request.args.get('offset', 0)), 0)
+    # Never expose the full case list to an unauthenticated caller.
+    if not user:
+        return jsonify({'cases': [], 'total': 0, 'limit': limit, 'offset': offset})
     with get_db() as db:
         if user and role == 'builder':
             total = db.execute(
@@ -748,15 +833,17 @@ def list_cases():
                 (user['agency_key'], limit, offset)
             ).fetchall()
         else:
-            total = db.execute('SELECT COUNT(*) as n FROM cases').fetchone()['n']
-            rows  = db.execute(
-                'SELECT * FROM cases ORDER BY ts DESC LIMIT ? OFFSET ?',
-                (limit, offset)
-            ).fetchall()
+            # Authenticated but with an incomplete role (e.g. steward/co-party
+            # with no agency_key). Scope to nothing rather than leak all cases.
+            total = 0
+            rows  = []
     return jsonify({'cases': rows, 'total': total, 'limit': limit, 'offset': offset})
 
 @app.route('/api/cases', methods=['POST'])
 def create_case():
+    err = _require_steward_or_admin()
+    if err:
+        return err
     data      = request.get_json(silent=True) or {}
     site      = (data.get('site') or '').strip()
     applicant = (data.get('applicant') or '').strip()
@@ -764,9 +851,7 @@ def create_case():
     if not site or not applicant:
         return jsonify({'ok': False, 'err': 'site and applicant required'}), 400
     with get_db() as db:
-        count   = db.execute('SELECT COUNT(*) as n FROM cases').fetchone()['n']
-        yr      = datetime.now().strftime('%y')
-        case_id = '{}-{}'.format(yr, 1000 + count + 1)
+        case_id = _next_case_id(db)
         db.execute(
             'INSERT INTO cases (case_id, site, applicant, score, stage) VALUES (?,?,?,?,?)',
             (case_id, site, applicant, score, 'Site Inquiry')
@@ -812,9 +897,7 @@ def builder_submit():
     owner_email = user['email']
 
     with get_db() as db:
-        count   = db.execute('SELECT COUNT(*) as n FROM cases').fetchone()['n']
-        yr      = datetime.now().strftime('%y')
-        case_id = '{}-{}'.format(yr, 1000 + count + 1)
+        case_id = _next_case_id(db)
         db.execute(
             '''INSERT INTO cases
                (case_id, site, applicant, score, stage,
@@ -831,6 +914,9 @@ def builder_submit():
 
 @app.route('/api/builder/case/<case_id>/confirm', methods=['PATCH'])
 def confirm_case(case_id):
+    err = _case_write_guard(case_id)
+    if err:
+        return err
     data     = request.get_json(silent=True) or {}
     tracking = (data.get('agency_tracking_id') or '').strip()
     now      = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
@@ -956,12 +1042,18 @@ def _compute_anchor(db, case_id):
 
 @app.route('/api/case/<case_id>/stage')
 def get_stage(case_id):
+    err = _case_write_guard(case_id)
+    if err:
+        return err
     with get_db() as db:
         row = db.execute('SELECT stage FROM case_stage_overrides WHERE case_id=?', (case_id,)).fetchone()
     return jsonify(row['stage'] if row else None)
 
 @app.route('/api/case/<case_id>/stage', methods=['PATCH'])
 def set_stage(case_id):
+    err = _case_write_guard(case_id)
+    if err:
+        return err
     data  = request.get_json(silent=True) or {}
     stage = (data.get('stage') or '').strip()
     if not stage:
@@ -1003,6 +1095,10 @@ def add_impasse_route():
     case_id = (data.get('case_id') or '').strip()
     if not key:
         return jsonify({'ok': False, 'err': 'key required'}), 400
+    if case_id:
+        err = _case_write_guard(case_id)
+        if err:
+            return err
     with get_db() as db:
         db.execute(
             'INSERT INTO case_impasse_routes (item_key) VALUES (?) ON CONFLICT DO NOTHING', (key,)
@@ -1013,10 +1109,11 @@ def add_impasse_route():
                 (case_id,)
             )
             db.execute(
-                '''INSERT INTO event_log (session_id, fid, event_type, payload_json)
-                   VALUES (?,?,?,?)''',
-                ('', case_id, 'status_change',
-                 json.dumps({'stage': 'Mediation', 'note': 'Routed to mediation via impasse register'}))
+                '''INSERT INTO event_log (session_id, event_type, payload)
+                   VALUES (?,?,?)''',
+                ('', 'status_change',
+                 json.dumps({'case_id': case_id, 'stage': 'Mediation',
+                             'note': 'Routed to mediation via impasse register'}))
             )
     return jsonify({'ok': True})
 
@@ -1114,6 +1211,9 @@ def delete_litigation(lit_id):
 
 @app.route('/api/case/<case_id>/rebuttals')
 def get_rebuttals(case_id):
+    err = _case_write_guard(case_id)
+    if err:
+        return err
     with get_db() as db:
         rows = db.execute(
             'SELECT * FROM case_rebuttals WHERE case_id=? ORDER BY id', (case_id,)
@@ -1122,6 +1222,9 @@ def get_rebuttals(case_id):
 
 @app.route('/api/case/<case_id>/rebuttal', methods=['POST'])
 def add_rebuttal(case_id):
+    err = _case_write_guard(case_id)
+    if err:
+        return err
     data = request.get_json(silent=True) or {}
     text = (data.get('text') or '').strip()
     if not text:
@@ -1240,7 +1343,7 @@ def _send_magic_email(to_email, token):
 
 @app.route('/api/auth/request', methods=['POST'])
 def auth_request():
-    ip = request.headers.get('X-Real-IP') or request.remote_addr
+    ip = _client_ip()
     if not _check_rate_limit(ip):
         return jsonify({'ok': False, 'err': 'Too many requests. Try again in 15 minutes.'}), 429
     data  = request.get_json(silent=True) or {}
@@ -2026,6 +2129,16 @@ def report_explorer():
 
 # ── static file serving ────────────────────────────────────────────────────────
 
+# Only front-end asset types are served by the catch-all route. Anything else
+# (source, secrets, databases, docs) is refused even if it sits in ROOT — the
+# repo is rsynced to the server wholesale, so loose files must not be reachable.
+_ALLOWED_STATIC_EXT = {
+    '.js', '.mjs', '.css', '.map', '.json', '.geojson', '.csv', '.txt',
+    '.html', '.htm', '.ico', '.png', '.jpg', '.jpeg', '.gif', '.svg',
+    '.webp', '.woff', '.woff2', '.ttf', '.otf', '.eot',
+}
+
+
 def _bundle_version():
     try:
         return str(int(os.path.getmtime(os.path.join(ROOT, 'merascope', 'dist', 'bundle.js'))))
@@ -2045,6 +2158,12 @@ def index():
 
 @app.route('/<path:path>')
 def static_files(path):
+    # Refuse dotfiles / dot-directories (.env, .git, ...) at any depth.
+    if any(seg.startswith('.') for seg in path.split('/')):
+        return 'Not found', 404
+    # Serve only known front-end asset types; blocks .py/.db/.pdf/.sql/.md/etc.
+    if os.path.splitext(path)[1].lower() not in _ALLOWED_STATIC_EXT:
+        return 'Not found', 404
     return send_from_directory(ROOT, path)
 
 

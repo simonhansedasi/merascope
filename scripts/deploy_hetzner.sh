@@ -32,6 +32,16 @@ rsync -av --checksum --delete \
   --exclude='merascope_test.db' \
   --exclude='data/' \
   --exclude='docs/' \
+  --exclude='*.db' \
+  --exclude='*.pdf' \
+  --exclude='*.zip' \
+  --exclude='*.ipynb' \
+  --exclude='outreach/' \
+  --exclude='for_tom/' \
+  --exclude='funding/' \
+  --exclude='whitepaper/' \
+  --exclude='contexts/' \
+  --exclude='parcels/' \
   ./ \
   "$HETZNER:$REMOTE_DIR/"
 

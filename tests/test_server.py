@@ -51,7 +51,6 @@ def _create_schema():
     """Create all tables once per test session."""
     if not _PG_OK:
         return
-    import psycopg2
     import psycopg2.pool as pgpool
     pool = pgpool.ThreadedConnectionPool(1, 3, dsn=TEST_DSN)
     original = srv._pool
@@ -97,6 +96,24 @@ def post_json(client, url, payload):
                        content_type='application/json')
 
 
+def login(client, email='admin@example.com', role='admin', agency_key=None):
+    """Insert a user/session/role and attach the session cookie to the client."""
+    import secrets as _secrets
+    from datetime import datetime as _dt, timedelta as _td
+    token = _secrets.token_urlsafe(16)
+    with srv.get_db() as db:
+        db.execute('INSERT INTO users (email) VALUES (?) ON CONFLICT DO NOTHING', (email,))
+        db.execute('INSERT INTO sessions (token, email, expires_at) VALUES (?,?,?)',
+                   (token, email, _dt.utcnow() + _td(days=1)))
+        if role:
+            db.execute(
+                'INSERT INTO user_roles (email, role, agency_key) VALUES (?,?,?) '
+                'ON CONFLICT (email, role) DO UPDATE SET agency_key=EXCLUDED.agency_key',
+                (email, role, agency_key))
+    client.set_cookie('mera_sess', token)
+    return email
+
+
 FULL_INQUIRY = {
     'site':          'Test Ridge',
     'applicant':     'Cascade Data LLC',
@@ -117,6 +134,10 @@ FULL_INQUIRY = {
 # ---------------------------------------------------------------------------
 
 class TestBuilderSubmit:
+
+    @pytest.fixture(autouse=True)
+    def _as_builder(self, client):
+        login(client, email='builder@example.com', role='builder', agency_key=None)
 
     def test_happy_path_returns_ok_and_case_id(self, client):
         r = post_json(client, '/api/builder/submit', FULL_INQUIRY)
@@ -200,6 +221,10 @@ class TestBuilderSubmit:
 
 class TestGetBuilderCase:
 
+    @pytest.fixture(autouse=True)
+    def _as_builder(self, client):
+        login(client, email='builder@example.com', role='builder', agency_key=None)
+
     def test_returns_case_after_submit(self, client):
         r = post_json(client, '/api/builder/submit', FULL_INQUIRY)
         case_id = r.get_json()['case_id']
@@ -219,7 +244,13 @@ class TestGetBuilderCase:
 
 class TestCreateCase:
 
+    def test_requires_steward_or_admin(self, client):
+        # Unauthenticated create is rejected.
+        r = post_json(client, '/api/cases', {'site': 'Alpha', 'applicant': 'Corp'})
+        assert r.status_code == 403
+
     def test_happy_path(self, client):
+        login(client)
         r = post_json(client, '/api/cases', {'site': 'Alpha', 'applicant': 'Corp', 'score': 0.6})
         assert r.status_code == 200
         d = r.get_json()
@@ -227,6 +258,7 @@ class TestCreateCase:
         assert 'case_id' in d
 
     def test_stage_defaults_to_site_inquiry(self, client):
+        login(client)
         r = post_json(client, '/api/cases', {'site': 'Alpha', 'applicant': 'Corp', 'score': 0.6})
         case_id = r.get_json()['case_id']
         d = client.get('/api/cases').get_json()
@@ -234,10 +266,12 @@ class TestCreateCase:
         assert match['stage'] == 'Site Inquiry'
 
     def test_missing_site_returns_400(self, client):
+        login(client)
         r = post_json(client, '/api/cases', {'applicant': 'Corp'})
         assert r.status_code == 400
 
     def test_missing_applicant_returns_400(self, client):
+        login(client)
         r = post_json(client, '/api/cases', {'site': 'Alpha'})
         assert r.status_code == 400
 
@@ -247,6 +281,10 @@ class TestCreateCase:
 # ---------------------------------------------------------------------------
 
 class TestListCases:
+
+    @pytest.fixture(autouse=True)
+    def _as_builder(self, client):
+        login(client, email='builder@example.com', role='builder', agency_key=None)
 
     def test_empty_initially(self, client):
         d = client.get('/api/cases').get_json()
@@ -279,6 +317,10 @@ class TestListCases:
 # ---------------------------------------------------------------------------
 
 class TestStageTransitions:
+
+    @pytest.fixture(autouse=True)
+    def _as_builder(self, client):
+        login(client, email='builder@example.com', role='builder', agency_key=None)
 
     def _create(self, client):
         r = post_json(client, '/api/builder/submit', FULL_INQUIRY)
@@ -459,60 +501,118 @@ class TestImpasseRouting:
         r = post_json(client, '/api/impasse/route', {})
         assert r.status_code == 400
 
+    def test_route_with_demo_case_id_records_event(self, client):
+        # Exercises the event_log insert that previously used a non-existent
+        # payload_json column (and mis-typed fid). Demo ids stay open.
+        r = post_json(client, '/api/impasse/route',
+                      {'key': 'item-2', 'case_id': 'demo-XYZ'})
+        assert r.get_json()['ok'] is True
+        logs = client.get('/api/admin/log?key=devonly&event_type=status_change')
+        # admin key may be overridden in the test env; only assert no 500 above.
+        assert logs.status_code in (200, 403)
+
+
+# ---------------------------------------------------------------------------
+# Case access control  (anonymous callers must not read/write real cases)
+# ---------------------------------------------------------------------------
+
+class TestCaseAuthGuards:
+
+    def test_anon_cases_list_is_empty_even_with_cases(self, client):
+        login(client)  # admin
+        post_json(client, '/api/cases', {'site': 'Secret', 'applicant': 'Corp'})
+        client.delete_cookie('mera_sess')
+        d = client.get('/api/cases').get_json()
+        assert d['cases'] == []
+        assert d['total'] == 0
+
+    def test_anon_create_case_forbidden(self, client):
+        r = post_json(client, '/api/cases', {'site': 'X', 'applicant': 'Y'})
+        assert r.status_code == 403
+
+    def test_anon_write_to_real_case_rejected(self, client):
+        login(client)  # admin
+        cid = post_json(client, '/api/cases', {'site': 'X', 'applicant': 'Y'}).get_json()['case_id']
+        client.delete_cookie('mera_sess')
+        r = post_json(client, '/api/case/' + cid + '/conditions', {'text': 'injected'})
+        assert r.status_code == 401
+        # nothing was written (verify as the authenticated owner)
+        login(client)
+        assert client.get('/api/case/' + cid + '/conditions').get_json() == []
+
+    def test_anon_read_of_real_case_rejected(self, client):
+        login(client)  # admin
+        cid = post_json(client, '/api/cases', {'site': 'X', 'applicant': 'Y'}).get_json()['case_id']
+        post_json(client, '/api/case/' + cid + '/conditions', {'text': 'sensitive'})
+        client.delete_cookie('mera_sess')
+        # anon cannot read a real case's conditions or rebuttals
+        assert client.get('/api/case/' + cid + '/conditions').status_code == 401
+        assert client.get('/api/case/' + cid + '/rebuttals').status_code == 401
+
+    def test_demo_case_reads_stay_open(self, client):
+        # The public demo reads demo-* ids without auth; this must keep working.
+        assert client.get('/api/case/demo-EX-0001/conditions').status_code == 200
+        assert client.get('/api/case/demo-EX-0001/stage').status_code == 200
+
+    def test_anon_stage_change_on_real_case_rejected(self, client):
+        login(client)  # admin
+        cid = post_json(client, '/api/cases', {'site': 'X', 'applicant': 'Y'}).get_json()['case_id']
+        client.delete_cookie('mera_sess')
+        r = client.patch('/api/case/' + cid + '/stage',
+                         data=json.dumps({'stage': 'Resolution'}),
+                         content_type='application/json')
+        assert r.status_code == 401
+
+    def test_demo_case_writes_stay_open(self, client):
+        # The public demo posts to demo-* ids without auth; this must keep working.
+        r = post_json(client, '/api/case/demo-EX-0001/conditions', {'text': 'demo condition'})
+        assert r.get_json()['ok'] is True
+
+    def test_unknown_case_id_writes_stay_open(self, client):
+        # Frontend example fixtures use ids with no row in `cases`.
+        r = post_json(client, '/api/case/26-9999/conditions', {'text': 'fixture'})
+        assert r.get_json()['ok'] is True
+
+    def test_owner_can_write_to_own_case(self, client):
+        login(client, email='builder@example.com', role='builder', agency_key=None)
+        cid = post_json(client, '/api/builder/submit',
+                        {'site': 'Mine', 'applicant': 'Me', 'contact_email': 'me@x.com'}).get_json()['case_id']
+        r = post_json(client, '/api/case/' + cid + '/rebuttal', {'text': 'my rebuttal'})
+        assert r.get_json()['ok'] is True
+
 
 # ---------------------------------------------------------------------------
 # Steward templates + zones
 # ---------------------------------------------------------------------------
 
 def _seed_steward(client):
-    """Insert a steward user+role+session and return a cookie dict."""
-    import psycopg2
-    from datetime import datetime, timedelta
-    import secrets as _sec
-    conn = psycopg2.connect(dsn=TEST_DSN)
-    token = _sec.token_urlsafe(16)
-    exp   = (datetime.utcnow() + timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')
-    try:
-        with conn.cursor() as cur:
-            cur.execute("INSERT INTO users (email) VALUES ('steward@test.gov') ON CONFLICT DO NOTHING")
-            cur.execute(
-                "INSERT INTO user_roles (email, role, agency_key) VALUES ('steward@test.gov','steward','TESTCO') "
-                "ON CONFLICT DO NOTHING"
-            )
-            cur.execute(
-                "INSERT INTO sessions (token, email, expires_at) VALUES (%s,'steward@test.gov',%s)",
-                (token, exp)
-            )
-        conn.commit()
-    finally:
-        conn.close()
-    return {'mera_sess': token}
+    """Insert a steward user+role+session and attach the cookie to the client.
+
+    Cookie is set on the client's jar via set_cookie — passing a Cookie header
+    per-request is ignored by the werkzeug 3.x test client.
+    """
+    login(client, email='steward@test.gov', role='steward', agency_key='TESTCO')
+    return {'mera_sess': None}
 
 
 def _steward_get(client, url):
-    cookies = _seed_steward(client)
-    return client.get(url, headers={'Cookie': 'mera_sess=' + cookies['mera_sess']})
+    _seed_steward(client)
+    return client.get(url)
 
 
 def _steward_post(client, url, payload):
-    cookies = _seed_steward(client)
-    return client.post(
-        url, data=json.dumps(payload), content_type='application/json',
-        headers={'Cookie': 'mera_sess=' + cookies['mera_sess']}
-    )
+    _seed_steward(client)
+    return client.post(url, data=json.dumps(payload), content_type='application/json')
 
 
 def _steward_patch(client, url, payload):
-    cookies = _seed_steward(client)
-    return client.patch(
-        url, data=json.dumps(payload), content_type='application/json',
-        headers={'Cookie': 'mera_sess=' + cookies['mera_sess']}
-    )
+    _seed_steward(client)
+    return client.patch(url, data=json.dumps(payload), content_type='application/json')
 
 
 def _steward_delete(client, url):
-    cookies = _seed_steward(client)
-    return client.delete(url, headers={'Cookie': 'mera_sess=' + cookies['mera_sess']})
+    _seed_steward(client)
+    return client.delete(url)
 
 
 class TestStewardPresets:
@@ -690,31 +790,19 @@ class TestActiveZones:
 # ---------------------------------------------------------------------------
 
 def _authed_submit(client, cookies, payload=None):
-    """Submit a builder inquiry as the seeded steward and return case_id."""
+    """Submit a builder inquiry as the seeded steward (cookie already on jar)."""
     p = dict(FULL_INQUIRY, **(payload or {}))
-    r = client.post(
-        '/api/builder/submit',
-        data=json.dumps(p),
-        content_type='application/json',
-        headers={'Cookie': 'mera_sess=' + cookies['mera_sess']},
-    )
+    r = client.post('/api/builder/submit', data=json.dumps(p), content_type='application/json')
     return r.get_json()['case_id']
 
 
 def _authed_get_case(client, cookies, case_id):
-    return client.get(
-        '/api/builder/case/' + case_id,
-        headers={'Cookie': 'mera_sess=' + cookies['mera_sess']},
-    ).get_json()
+    return client.get('/api/builder/case/' + case_id).get_json()
 
 
 def _authed_patch_stage(client, cookies, case_id, stage):
-    return client.patch(
-        '/api/case/' + case_id + '/stage',
-        data=json.dumps({'stage': stage}),
-        content_type='application/json',
-        headers={'Cookie': 'mera_sess=' + cookies['mera_sess']},
-    )
+    return client.patch('/api/case/' + case_id + '/stage',
+                        data=json.dumps({'stage': stage}), content_type='application/json')
 
 
 class TestWeightLogging:
@@ -758,8 +846,7 @@ class TestRecordAnchoring:
     def test_anchor_absent_before_resolution(self, client):
         cookies = _seed_steward(client)
         case_id = _authed_submit(client, cookies)
-        r = client.get('/api/case/' + case_id + '/anchor',
-                       headers={'Cookie': 'mera_sess=' + cookies['mera_sess']})
+        r = client.get('/api/case/' + case_id + '/anchor')
         assert r.status_code == 404
 
     def test_builder_case_has_no_anchor_before_resolution(self, client):
@@ -772,16 +859,14 @@ class TestRecordAnchoring:
         cookies = _seed_steward(client)
         case_id = _authed_submit(client, cookies)
         _authed_patch_stage(client, cookies, case_id, 'Resolution')
-        r = client.get('/api/case/' + case_id + '/anchor',
-                       headers={'Cookie': 'mera_sess=' + cookies['mera_sess']})
+        r = client.get('/api/case/' + case_id + '/anchor')
         assert r.status_code == 200
 
     def test_anchor_fields_present(self, client):
         cookies = _seed_steward(client)
         case_id = _authed_submit(client, cookies)
         _authed_patch_stage(client, cookies, case_id, 'Resolution')
-        d = client.get('/api/case/' + case_id + '/anchor',
-                       headers={'Cookie': 'mera_sess=' + cookies['mera_sess']}).get_json()
+        d = client.get('/api/case/' + case_id + '/anchor').get_json()
         assert d['case_id'] == case_id
         assert d['algorithm'] == 'SHA-256'
         assert d['hash']
@@ -793,8 +878,7 @@ class TestRecordAnchoring:
         cookies = _seed_steward(client)
         case_id = _authed_submit(client, cookies)
         _authed_patch_stage(client, cookies, case_id, 'Resolution')
-        d = client.get('/api/case/' + case_id + '/anchor',
-                       headers={'Cookie': 'mera_sess=' + cookies['mera_sess']}).get_json()
+        d = client.get('/api/case/' + case_id + '/anchor').get_json()
         h = d['hash']
         assert len(h) == 64
         assert all(c in '0123456789abcdef' for c in h)
@@ -803,11 +887,9 @@ class TestRecordAnchoring:
         cookies = _seed_steward(client)
         case_id = _authed_submit(client, cookies)
         _authed_patch_stage(client, cookies, case_id, 'Resolution')
-        h1 = client.get('/api/case/' + case_id + '/anchor',
-                        headers={'Cookie': 'mera_sess=' + cookies['mera_sess']}).get_json()['hash']
+        h1 = client.get('/api/case/' + case_id + '/anchor').get_json()['hash']
         _authed_patch_stage(client, cookies, case_id, 'Resolution')
-        h2 = client.get('/api/case/' + case_id + '/anchor',
-                        headers={'Cookie': 'mera_sess=' + cookies['mera_sess']}).get_json()['hash']
+        h2 = client.get('/api/case/' + case_id + '/anchor').get_json()['hash']
         assert h1 == h2
 
     def test_builder_case_includes_anchor_after_resolution(self, client):
@@ -823,8 +905,7 @@ class TestRecordAnchoring:
         cookies = _seed_steward(client)
         case_id = _authed_submit(client, cookies)
         _authed_patch_stage(client, cookies, case_id, 'Resolution')
-        d = client.get('/api/case/' + case_id + '/anchor',
-                       headers={'Cookie': 'mera_sess=' + cookies['mera_sess']}).get_json()
+        d = client.get('/api/case/' + case_id + '/anchor').get_json()
         p = d['payload']
         assert p['site'] == FULL_INQUIRY['site']
         assert p['applicant'] == FULL_INQUIRY['applicant']
@@ -839,8 +920,7 @@ class TestRecordAnchoring:
         case_id = _authed_submit(client, cookies)
         for stage in ('Intake', 'Analysis', 'Findings Exchange', 'Negotiation'):
             _authed_patch_stage(client, cookies, case_id, stage)
-        r = client.get('/api/case/' + case_id + '/anchor',
-                       headers={'Cookie': 'mera_sess=' + cookies['mera_sess']})
+        r = client.get('/api/case/' + case_id + '/anchor')
         assert r.status_code == 404
 
 
