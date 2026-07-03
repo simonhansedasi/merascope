@@ -13,7 +13,7 @@ from functools import wraps
 import psycopg2
 import psycopg2.extras
 import psycopg2.pool
-import json, csv, io, os, secrets, smtplib, time, threading, hashlib
+import json, csv, io, os, secrets, smtplib, time, threading, hashlib, math
 
 try:
     import boto3
@@ -568,6 +568,46 @@ def add_invite(case_id):
     return jsonify({'ok': True})
 
 
+def _haversine_km(lat1, lon1, lat2, lon2):
+    r = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lon2 - lon1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return r * 2 * math.asin(math.sqrt(a))
+
+@app.route('/api/case/<case_id>/nearby')
+def nearby_cases(case_id):
+    err = _case_write_guard(case_id)
+    if err:
+        return err
+    try:
+        radius_km = float(request.args.get('radius_km', 5))
+    except ValueError:
+        radius_km = 5.0
+    with get_db() as db:
+        origin = db.execute(
+            'SELECT lat, lon, lead_agency FROM cases WHERE case_id=?', (case_id,)
+        ).fetchone()
+        if not origin or origin['lat'] is None or origin['lon'] is None:
+            return jsonify([])
+        candidates = db.execute(
+            '''SELECT * FROM cases
+               WHERE case_id != ? AND lat IS NOT NULL AND lon IS NOT NULL
+                 AND stage != 'Resolution' AND lead_agency = ?''',
+            (case_id, origin['lead_agency'])
+        ).fetchall()
+    out = []
+    for c in candidates:
+        dist = _haversine_km(origin['lat'], origin['lon'], c['lat'], c['lon'])
+        if dist <= radius_km:
+            entry = dict(c)
+            entry['distance_km'] = round(dist, 2)
+            out.append(entry)
+    out.sort(key=lambda r: r['distance_km'])
+    return jsonify(out)
+
+
 # ── conditions ────────────────────────────────────────────────────────────────
 
 @app.route('/api/case/<case_id>/conditions')
@@ -839,6 +879,94 @@ def list_cases():
             rows  = []
     return jsonify({'cases': rows, 'total': total, 'limit': limit, 'offset': offset})
 
+
+STUCK_DAYS_THRESHOLD = 21
+DUE_SOON_DAYS        = 7
+
+@app.route('/api/steward/inbox')
+def steward_inbox():
+    """Triage view for a permitter with a large caseload: overdue items, items
+    due soon, new inbound inquiries (oldest first), and cases stuck in their
+    current stage. Scoped to the caller's agency the same way list_cases is."""
+    user = _session_user()
+    role = (user or {}).get('role')
+    if not user or role not in ('steward', 'admin'):
+        return jsonify({'ok': False, 'err': 'steward or admin required'}), 401
+
+    agency_key = user.get('agency_key')
+    if role == 'steward' and not agency_key:
+        return jsonify({'overdue': [], 'due_soon': [], 'new_inquiries': [], 'stuck': []})
+
+    agency_clause = 'WHERE c.lead_agency = ?' if role == 'steward' else ''
+    agency_params = (agency_key,) if role == 'steward' else ()
+
+    with get_db() as db:
+        # Deadline-bearing cases: rebuttal deadlines (case_meta) and mandated
+        # study deadlines (studies.case_id), unioned and joined back to cases.
+        deadline_rows = db.execute(
+            '''SELECT c.*, d.due_date, d.kind FROM cases c
+               JOIN (
+                 SELECT case_id, rebuttal_due_date AS due_date, 'rebuttal' AS kind
+                 FROM case_meta WHERE rebuttal_due_date IS NOT NULL AND rebuttal_due_date != ''
+                 UNION ALL
+                 SELECT case_id, due AS due_date, 'study' AS kind
+                 FROM studies WHERE case_id IS NOT NULL AND due IS NOT NULL AND due != ''
+               ) d ON d.case_id = c.case_id
+               {}'''.format(agency_clause),
+            agency_params
+        ).fetchall()
+
+        new_inquiries = db.execute(
+            '''SELECT * FROM cases c {} {} stage = 'Site Inquiry'
+               ORDER BY ts ASC LIMIT 50'''.format(
+                agency_clause, 'AND' if agency_clause else 'WHERE'
+            ),
+            agency_params
+        ).fetchall()
+
+        # days-in-current-stage: prefer case_stage_overrides.ts (set on every
+        # stage PATCH — see set_stage) and fall back to case creation time for
+        # cases that have never had an explicit stage transition recorded.
+        stuck_rows = db.execute(
+            '''SELECT c.*,
+                      EXTRACT(DAY FROM NOW() - COALESCE(cso.ts, c.ts))::int AS days_in_stage
+               FROM cases c
+               LEFT JOIN case_stage_overrides cso ON cso.case_id = c.case_id
+               {} {} c.stage NOT IN ('Resolution')
+               ORDER BY days_in_stage DESC'''.format(
+                agency_clause, 'AND' if agency_clause else 'WHERE'
+            ),
+            agency_params
+        ).fetchall()
+
+    today    = _date.today()
+    overdue  = []
+    due_soon = []
+    for row in deadline_rows:
+        try:
+            due = _date.fromisoformat(row['due_date'])
+        except (ValueError, TypeError):
+            continue
+        delta = (due - today).days
+        entry = dict(row)
+        entry['days_until_due'] = delta
+        if delta < 0:
+            overdue.append(entry)
+        elif delta <= DUE_SOON_DAYS:
+            due_soon.append(entry)
+    overdue.sort(key=lambda r: r['days_until_due'])
+    due_soon.sort(key=lambda r: r['days_until_due'])
+
+    stuck = [r for r in stuck_rows if (r.get('days_in_stage') or 0) > STUCK_DAYS_THRESHOLD]
+
+    return jsonify({
+        'overdue': overdue,
+        'due_soon': due_soon,
+        'new_inquiries': new_inquiries,
+        'stuck': stuck,
+    })
+
+
 @app.route('/api/cases', methods=['POST'])
 def create_case():
     err = _require_steward_or_admin()
@@ -911,6 +1039,51 @@ def builder_submit():
              external_permit_id, imported, owner_email, weights_json)
         )
     return jsonify({'ok': True, 'case_id': case_id})
+
+@app.route('/api/steward/bulk_import', methods=['POST'])
+def bulk_import():
+    """Bulk-create case files from a permitter's own spreadsheet of existing
+    applications (not new inbound leads — so stage defaults to Intake, not
+    Site Inquiry). A bad row is reported but does not fail the whole batch."""
+    err = _require_steward_or_admin()
+    if err:
+        return err
+    user = _session_user()
+    data = request.get_json(silent=True) or {}
+    rows = data.get('rows') or []
+    if not isinstance(rows, list) or not rows:
+        return jsonify({'ok': False, 'err': 'rows required'}), 400
+
+    default_agency = (user.get('agency_key') or '').strip()
+    created = []
+    errors  = []
+    with get_db() as db:
+        for i, row in enumerate(rows):
+            site      = (row.get('site') or '').strip()
+            applicant = (row.get('applicant') or '').strip()
+            if not site or not applicant:
+                errors.append({'row': i, 'err': 'site and applicant required'})
+                continue
+            try:
+                lat = float(row['lat']) if row.get('lat') not in (None, '') else None
+                lon = float(row['lon']) if row.get('lon') not in (None, '') else None
+            except (TypeError, ValueError):
+                errors.append({'row': i, 'err': 'invalid lat/lon'})
+                continue
+            case_id = _next_case_id(db)
+            db.execute(
+                '''INSERT INTO cases
+                   (case_id, site, applicant, score, stage, lat, lon,
+                    contact_name, contact_email, lead_agency, notes,
+                    external_permit_id, imported, owner_email)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                (case_id, site, applicant, float(row.get('score', 0.5)), 'Intake', lat, lon,
+                 (row.get('contact_name') or '').strip(), (row.get('contact_email') or '').strip(),
+                 (row.get('lead_agency') or '').strip() or default_agency, (row.get('notes') or '').strip(),
+                 (row.get('external_permit_id') or '').strip(), 1, user['email'])
+            )
+            created.append(case_id)
+    return jsonify({'ok': True, 'created': len(created), 'case_ids': created, 'errors': errors})
 
 @app.route('/api/builder/case/<case_id>/confirm', methods=['PATCH'])
 def confirm_case(case_id):

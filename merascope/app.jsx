@@ -189,6 +189,8 @@ function App() {
   else if (path === '/steward/litigation') page = <LitigationPage />;
   else if (path === '/steward/studies') page = <StudiesPage />;
   else if (path === '/steward/templates') page = <StewardTemplatesPage />;
+  else if (path === '/steward/inbox') page = <InboxPage />;
+  else if (path === '/steward/bulk-import') page = <BulkIntakePage />;
   else if (path.startsWith('/steward')) page = <DocketPage />;
   else if (path.startsWith('/co-party/case/')) page = <CaseFilePage id={path.split('/')[3]} />;
   else if (path.startsWith('/co-party')) page = <CoDocketPage />;

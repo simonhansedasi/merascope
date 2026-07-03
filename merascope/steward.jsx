@@ -1,7 +1,7 @@
 /* ── Surface C: Steward console — "The Docket" ── */
 
 function StewardSubNav({ active }) {
-  const tabs = [['docket', 'Docket', '#/steward'], ['templates', 'Weight templates', '#/steward/templates'], ['impasse', 'Impasse register', '#/steward/impasse'], ['litigation', 'Litigation tracker', '#/steward/litigation'], ['studies', 'Mandated studies', '#/steward/studies']];
+  const tabs = [['inbox', 'Inbox', '#/steward/inbox'], ['docket', 'Docket', '#/steward'], ['bulk-import', 'Bulk import', '#/steward/bulk-import'], ['templates', 'Weight templates', '#/steward/templates'], ['impasse', 'Impasse register', '#/steward/impasse'], ['litigation', 'Litigation tracker', '#/steward/litigation'], ['studies', 'Mandated studies', '#/steward/studies']];
   return (
     <div className="tabs" style={{ marginBottom: 18 }}>
       {tabs.map(([k, label, href]) => (
@@ -39,7 +39,7 @@ function CaseCard({ k }) {
       <div className="microcopy" style={{ marginTop: 1 }}>{k.applicant}</div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 9 }}>
         <span className="score-badge" style={{ background: M.rampColor(k.score, ramp), color: M.rampText(k.score, ramp), fontSize: 12.5 }}>{k.score.toFixed(3)}</span>
-        <span className="microcopy"><span className="score-serif">{k.days}</span>d in stage</span>
+        <span className="microcopy"><span className="score-serif">{Math.abs(k.days)}</span>{k.dayLabel || 'd in stage'}</span>
         <PartyAvatars parties={k.parties} />
       </div>
       {k.is_example && <div style={{ marginTop: 7 }}><Chip tone="med">EXAMPLE</Chip></div>}
@@ -268,6 +268,7 @@ function CaseFilePage({ id }) {
   const [trackingInput, setTrackingInput] = React.useState('');
   const [confirming, setConfirming] = React.useState(false);
   const [caseStudies, setCaseStudies] = React.useState(function() { return (C && !isDynamic && (id || '').startsWith('demo-') && C.studies) ? C.studies : []; });
+  const [nearbyCases, setNearbyCases] = React.useState([]);
   const [mandateForm, setMandateForm] = React.useState(false);
   const [mandateTemplate, setMandateTemplate] = React.useState('Water-availability assessment');
   const MANDATE_TEMPLATES = ['Moratorium impact study — NY-style', 'Application review scorecard', 'Water-availability assessment', 'Rate-impact memorandum'];
@@ -347,8 +348,11 @@ function CaseFilePage({ id }) {
     setDeadline(null);
     setCaseStage(C.stage);
     setServerRebuttals([]);
+    setNearbyCases([]);
 
     if ((id || '').startsWith('demo-')) return;
+
+    fetch('/api/case/' + id + '/nearby').then(r => r.ok ? r.json() : []).then(setNearbyCases);
 
     fetch('/api/case/' + id + '/conditions')
       .then(r => r.json())
@@ -617,6 +621,25 @@ function CaseFilePage({ id }) {
           <div className="card" style={{ padding: '14px 16px', marginBottom: 16 }}>
             <div style={{ fontSize: 11, color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 5 }}>External permit / application ID</div>
             <div style={{ fontWeight: 650, fontSize: 14, fontFamily: 'monospace' }}>{dc.external_permit_id}</div>
+          </div>
+        )}
+
+        {nearbyCases.length > 0 && (
+          <div className="card" style={{ padding: '14px 16px', marginBottom: 16 }}>
+            <div style={{ fontSize: 11, color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 8 }}>
+              Nearby cases <span className="score-serif">{nearbyCases.length}</span>
+            </div>
+            <div style={{ display: 'grid', gap: 8 }}>
+              {nearbyCases.map(function(n) {
+                return (
+                  <a key={n.case_id} href={'#/steward/case/' + n.case_id}
+                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, color: 'inherit', textDecoration: 'none', padding: '6px 8px', borderRadius: 6, background: 'var(--mist)' }}>
+                    <span><b>{n.case_id}</b> — {n.site} <span style={{ color: 'var(--slate)' }}>({n.stage})</span></span>
+                    <span className="microcopy">{n.distance_km} km</span>
+                  </a>
+                );
+              })}
+            </div>
           </div>
         )}
 

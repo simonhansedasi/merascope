@@ -176,7 +176,7 @@ def run(page, base):
 
     # ── 6. API round-trip ─────────────────────────────────────────────────
     print('\n[6. API round-trip]')
-    cases = api_get(base, '/api/cases')
+    cases = api_get(base, '/api/cases').get('cases', [])
     check('Submitted case in /api/cases', len(cases) >= 1)
 
     case_id = None
@@ -209,6 +209,28 @@ def run(page, base):
               page.locator('text=Smoke Test Corp').count() > 0
               or page.locator('text=Washington #42').count() > 0
               or page.locator(f'text={case_id}').count() > 0)
+
+    # ── 7b. Permitter inbox ────────────────────────────────────────────────
+    print('\n[7b. Permitter inbox]')
+    nav(page, '#/steward/inbox')
+    page.wait_for_timeout(1000)
+    check('Inbox page rendered',
+          page.locator('[data-screen-label*="Inbox"]').count() > 0)
+    check('"New inquiries" bucket visible',
+          page.locator('text=New inquiries').count() > 0)
+    check('"Stuck" bucket visible',
+          page.locator('text=Stuck').count() > 0)
+    check('No Babel/JS error on inbox page',
+          page.locator('text=Uncaught SyntaxError').count() == 0)
+
+    # ── 7c. Bulk import page ────────────────────────────────────────────────
+    print('\n[7c. Bulk import page]')
+    nav(page, '#/steward/bulk-import')
+    page.wait_for_timeout(500)
+    check('Bulk import page rendered',
+          page.locator('[data-screen-label*="Bulk import"]').count() > 0)
+    check('Upload CSV control visible',
+          page.locator('text=Upload CSV').count() > 0)
 
     # ── 8. Steward intake case view ───────────────────────────────────────
     if case_id:

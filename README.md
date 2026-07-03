@@ -117,6 +117,12 @@ Workspace tab (saved cells, comparison panel), Status tab (CRM tracker per site:
 ### Steward surface (`#/steward`)
 Kanban docket across all stages. Case file: versioned findings, conditions negotiation (propose/accept/reject), co-party coordination, rebuttal clock, document chain, CSV exports. Impasse register (route to mediation). Mandated studies workbench (section checklists, live progress). **Weight templates** (`#/steward/templates`): define named weight profiles and attach them to geographic zones; lock a template to gate builders whose cells score below the minimum threshold.
 
+**Permitter Inbox** (`#/steward/inbox`, added 2026-07-03): triage view for a caseload too large to scroll through as a kanban — four buckets: Overdue (past a rebuttal or mandated-study deadline), Due soon (within 7 days), New inquiries (stage = Site Inquiry, oldest first), Stuck (>21 days in the current stage, measured from `case_stage_overrides.ts` where present, falling back to case creation time). `GET /api/steward/inbox`, scoped to the caller's `lead_agency` the same way the docket is; admins see all agencies.
+
+**Bulk CSV intake** (`#/steward/bulk-import`, added 2026-07-03): upload a spreadsheet of existing applications to create case files in one pass instead of hand-entering each one. Same CSV-parse/column-mapping UI as Portfolio screening. `POST /api/steward/bulk_import` creates cases at `stage='Intake'` (not Site Inquiry — these are pre-existing applications, not new inbound leads) with `imported=1`; a bad row is reported in the response but doesn't fail the rest of the batch. Lead agency defaults to the caller's `agency_key` if a row doesn't specify one.
+
+**Nearby cases** (case file panel, added 2026-07-03): surfaces other pending cases within 5km (haversine, pure Python — no GDAL) that share the same `lead_agency`, excluding the case itself and anything already at Resolution. `GET /api/case/<case_id>/nearby?radius_km=5`.
+
 **Evidence record** (`#/evidence?case=:id`): per-finding cards with score, citation, source, formula. Each card shows whether an independent study has been mandated (green badge + days-to-deadline). Stewards can commission a study directly from the evidence record — study is linked to the specific indicator via the `finding` DB column and appears immediately. Non-stewards see a read-only card. Builders rebut findings; stewards commission independent review.
 
 **Evidentiary record integrity (added 2026-07-01):** At the Resolution stage, the full case record (conditions, rebuttals, co-parties, weights) is serialized to canonical JSON and hashed with SHA-256. The hash is stored in the `case_anchors` table and shown in the case file as a "Record anchored" card. `GET /api/case/<id>/anchor` returns the hash and original payload for independent verification. Scoring weights at submission are also logged in `weights_json` and displayed in the case file (green "Platform defaults" chip or amber "Custom weights" chip).
@@ -214,7 +220,7 @@ In local dev, omit `S3_ENDPOINT` (falls back to disk) and omit SMTP vars (magic 
 ## Testing and deploy
 
 ```bash
-# Full suite (232 tests). The DB-backed tests need Postgres via TEST_DATABASE_URL;
+# Full suite (259 tests). The DB-backed tests need Postgres via TEST_DATABASE_URL;
 # they skip cleanly if it is unset.
 TEST_DATABASE_URL=postgresql://merascope:merascope@localhost/merascope_test \
   /home/simonhans/anaconda3/envs/merascope/bin/python3 -m pytest tests/ -q
@@ -226,19 +232,27 @@ TEST_DATABASE_URL=postgresql://merascope:merascope@localhost/merascope_test \
 bash scripts/deploy_hetzner.sh
 ```
 
-`tests/test_server.py` — 132 tests covering all server API routes: case access
+`tests/test_server.py` — 159 tests covering all server API routes: case access
 control (read/write/docs guards), weight logging, cryptographic record anchoring,
 permit justification report routes, `_build_report_context` / `_load_zcta_feature`
-units, steward templates/zones CRUD, and gate check. Requires PostgreSQL
-(`TEST_DATABASE_URL`); skips cleanly if unavailable.
+units, steward templates/zones CRUD, gate check, and the Phase 1 permitter-upgrade
+routes (`TestStewardInbox`, `TestBulkImport`, `TestNearbyCases`, added 2026-07-03).
+Requires PostgreSQL (`TEST_DATABASE_URL`); skips cleanly if unavailable.
 `tests/test_static_guard.py` — verifies the static-serving allowlist (no DB).
 `tests/test_config.py`, `test_gates.py`, `test_indicators.py` — pipeline tests
 (`test_gates` skips without state data; `test_indicators` needs geopandas).
-`tests/smoke_test.py` — Playwright end-to-end: builder submit, steward docket, case lookup.
+`tests/smoke_test.py` — Playwright end-to-end: builder submit, steward docket, case
+lookup, Permitter Inbox render, bulk-import page render.
 
 **No local Postgres?** Spin up a disposable one to run the DB suite:
 `conda create -n pgtmp -c conda-forge postgresql`, `initdb`, start it on a spare
-port, `createdb merascope_test`, then point `TEST_DATABASE_URL` at it.
+port, `createdb merascope_test`, then point `TEST_DATABASE_URL` at it. Note that
+`tests/smoke_test.py` connects using `DATABASE_URL` (or its hardcoded default
+`postgresql://merascope:merascope@localhost/merascope`), a **different, literally
+named `merascope` database** from the `merascope_test` DB used by pytest — both
+must exist locally to run the full local verification pass. `playwright install
+--with-deps chromium` (one-time, needs sudo for system deps) is required before
+`smoke_test.py` can run.
 
 ### CI (GitHub Actions — `.github/workflows/deploy.yml`)
 
@@ -250,7 +264,7 @@ committing local changes before pushing `master`, or a git deploy will revert th
 
 ## Frontend
 
-React + Leaflet, pre-compiled via Babel CLI. All 15 JSX source files compile to `merascope/dist/bundle.js` — no Babel standalone CDN, no runtime compilation. React, ReactDOM, Leaflet, and fonts (IBM Plex Sans, Source Sans 3, Source Serif 4) are vendored locally in `vendor/`; no external calls on page load.
+React + Leaflet, pre-compiled via Babel CLI. All 17 JSX source files compile to `merascope/dist/bundle.js` — no Babel standalone CDN, no runtime compilation. React, ReactDOM, Leaflet, and fonts (IBM Plex Sans, Source Sans 3, Source Serif 4) are vendored locally in `vendor/`; no external calls on page load.
 
 Build the bundle (runs automatically in `deploy_hetzner.sh`):
 
@@ -310,7 +324,7 @@ merascope/
     patch_raws.py         — retrofit raw physical columns on completed states
   data/                   — generated GeoJSON + CSVs (gitignored; sync with sync_data_hetzner.sh)
   vendor/                 — React, Leaflet, fonts (gitignored; built by fetch_vendor.sh)
-  tests/                  — pytest suite (79 pipeline + 64 server tests)
+  tests/                  — pytest suite (100 pipeline/static/config + 159 server tests)
 ```
 
 Full developer docs live in `~/coding/contexts/merascope/` (symlinked to repo root):

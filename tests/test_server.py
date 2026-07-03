@@ -1290,3 +1290,251 @@ class TestLoadZctaFeature:
         monkeypatch.setattr(srv, 'ROOT', str(tmp_path))
         result = srv._load_zcta_feature('wa', 47.05, -120.45)
         assert result['zcta'] == '98001'
+
+
+# ---------------------------------------------------------------------------
+# Permitter inbox  GET /api/steward/inbox
+# ---------------------------------------------------------------------------
+
+class TestStewardInbox:
+
+    def _create_case(self, client, **overrides):
+        payload = dict(FULL_INQUIRY, **overrides)
+        r = _steward_post(client, '/api/cases',
+                          {'site': payload['site'], 'applicant': payload['applicant'],
+                           'score': payload.get('score', 0.5)})
+        case_id = r.get_json()['case_id']
+        with srv.get_db() as db:
+            db.execute('UPDATE cases SET lead_agency=? WHERE case_id=?', ('TESTCO', case_id))
+        return case_id
+
+    def test_unauthenticated_returns_401(self, client):
+        r = client.get('/api/steward/inbox')
+        assert r.status_code == 401
+
+    def test_builder_returns_401(self, client):
+        login(client, email='builder@example.com', role='builder')
+        r = client.get('/api/steward/inbox')
+        assert r.status_code == 401
+
+    def test_empty_buckets_initially(self, client):
+        _seed_steward(client)
+        d = client.get('/api/steward/inbox').get_json()
+        assert d['overdue'] == []
+        assert d['due_soon'] == []
+        assert d['new_inquiries'] == []
+        assert d['stuck'] == []
+
+    def test_new_case_appears_in_new_inquiries(self, client):
+        case_id = self._create_case(client, site='Inquiry Site')
+        d = _steward_get(client, '/api/steward/inbox').get_json()
+        ids = [c['case_id'] for c in d['new_inquiries']]
+        assert case_id in ids
+
+    def test_new_inquiries_oldest_first(self, client):
+        first = self._create_case(client, site='First')
+        second = self._create_case(client, site='Second')
+        with srv.get_db() as db:
+            db.execute("UPDATE cases SET ts = NOW() - INTERVAL '2 days' WHERE case_id=?", (first,))
+            db.execute("UPDATE cases SET ts = NOW() - INTERVAL '1 days' WHERE case_id=?", (second,))
+        d = _steward_get(client, '/api/steward/inbox').get_json()
+        ids = [c['case_id'] for c in d['new_inquiries']]
+        assert ids.index(first) < ids.index(second)
+
+    def test_stuck_bucket_flags_case_over_threshold(self, client):
+        case_id = self._create_case(client, site='Old Case')
+        with srv.get_db() as db:
+            db.execute("UPDATE cases SET ts = NOW() - INTERVAL '30 days' WHERE case_id=?", (case_id,))
+        d = _steward_get(client, '/api/steward/inbox').get_json()
+        ids = [c['case_id'] for c in d['stuck']]
+        assert case_id in ids
+
+    def test_stuck_bucket_excludes_recent_case(self, client):
+        case_id = self._create_case(client, site='Recent Case')
+        d = _steward_get(client, '/api/steward/inbox').get_json()
+        ids = [c['case_id'] for c in d['stuck']]
+        assert case_id not in ids
+
+    def test_stuck_uses_stage_override_not_creation_ts(self, client):
+        case_id = self._create_case(client, site='Reopened Case')
+        with srv.get_db() as db:
+            db.execute("UPDATE cases SET ts = NOW() - INTERVAL '60 days' WHERE case_id=?", (case_id,))
+            db.execute(
+                '''INSERT INTO case_stage_overrides (case_id, stage) VALUES (?,?)
+                   ON CONFLICT (case_id) DO UPDATE SET stage=EXCLUDED.stage, ts=NOW()''',
+                (case_id, 'Intake')
+            )
+        d = _steward_get(client, '/api/steward/inbox').get_json()
+        ids = [c['case_id'] for c in d['stuck']]
+        assert case_id not in ids
+
+    def test_overdue_bucket_from_rebuttal_deadline(self, client):
+        _seed_steward(client)
+        case_id = self._create_case(client, site='Overdue Rebuttal')
+        client.post('/api/case/' + case_id + '/deadline',
+                   data=json.dumps({'due_date': '2020-01-01', 'cycle': 1, 'max_cycles': 3}),
+                   content_type='application/json')
+        d = client.get('/api/steward/inbox').get_json()
+        ids = [c['case_id'] for c in d['overdue']]
+        assert case_id in ids
+
+    def test_due_soon_bucket_from_study_deadline(self, client):
+        _seed_steward(client)
+        case_id = self._create_case(client, site='Study Due Soon')
+        from datetime import date as _d, timedelta as _td
+        soon = (_d.today() + _td(days=3)).isoformat()
+        post_json(client, '/api/studies', {'name': 'Water study', 'case_id': case_id, 'due': soon})
+        d = client.get('/api/steward/inbox').get_json()
+        ids = [c['case_id'] for c in d['due_soon']]
+        assert case_id in ids
+
+    def test_scoped_to_caller_agency(self, client):
+        case_id = self._create_case(client, site='Other Agency Case')
+        with srv.get_db() as db:
+            db.execute("UPDATE cases SET lead_agency='OTHERCO' WHERE case_id=?", (case_id,))
+        d = _steward_get(client, '/api/steward/inbox').get_json()
+        ids = [c['case_id'] for c in d['new_inquiries']]
+        assert case_id not in ids
+
+    def test_admin_sees_all_agencies(self, client):
+        case_id = self._create_case(client, site='Cross Agency Case')
+        with srv.get_db() as db:
+            db.execute("UPDATE cases SET lead_agency='OTHERCO' WHERE case_id=?", (case_id,))
+        login(client, email='admin@example.com', role='admin')
+        d = client.get('/api/steward/inbox').get_json()
+        ids = [c['case_id'] for c in d['new_inquiries']]
+        assert case_id in ids
+
+
+# ---------------------------------------------------------------------------
+# Bulk intake  POST /api/steward/bulk_import
+# ---------------------------------------------------------------------------
+
+class TestBulkImport:
+
+    GOOD_ROW = {
+        'site': 'Bulk Site A', 'applicant': 'Bulk Corp',
+        'lat': 47.1, 'lon': -121.2,
+        'contact_name': 'Pat', 'contact_email': 'pat@example.com',
+        'external_permit_id': 'EX-100',
+    }
+
+    def test_unauthenticated_returns_403(self, client):
+        r = post_json(client, '/api/steward/bulk_import', {'rows': [self.GOOD_ROW]})
+        assert r.status_code == 403
+
+    def test_builder_returns_403(self, client):
+        login(client, email='builder@example.com', role='builder')
+        r = post_json(client, '/api/steward/bulk_import', {'rows': [self.GOOD_ROW]})
+        assert r.status_code == 403
+
+    def test_missing_rows_returns_400(self, client):
+        _seed_steward(client)
+        r = post_json(client, '/api/steward/bulk_import', {'rows': []})
+        assert r.status_code == 400
+
+    def test_creates_cases_from_rows(self, client):
+        _seed_steward(client)
+        r = post_json(client, '/api/steward/bulk_import',
+                     {'rows': [self.GOOD_ROW, {**self.GOOD_ROW, 'site': 'Bulk Site B'}]})
+        d = r.get_json()
+        assert d['ok'] is True
+        assert d['created'] == 2
+        assert len(d['case_ids']) == 2
+
+    def test_imported_cases_default_to_intake_stage(self, client):
+        _seed_steward(client)
+        r = post_json(client, '/api/steward/bulk_import', {'rows': [self.GOOD_ROW]})
+        case_id = r.get_json()['case_ids'][0]
+        row = client.get('/api/builder/case/' + case_id).get_json()
+        assert row['stage'] == 'Intake'
+        assert row['imported'] == 1
+
+    def test_bad_row_does_not_fail_whole_batch(self, client):
+        _seed_steward(client)
+        bad_row = {'site': '', 'applicant': 'No Site'}
+        r = post_json(client, '/api/steward/bulk_import',
+                     {'rows': [self.GOOD_ROW, bad_row]})
+        d = r.get_json()
+        assert d['created'] == 1
+        assert len(d['errors']) == 1
+        assert d['errors'][0]['row'] == 1
+
+    def test_invalid_lat_lon_reported_as_error(self, client):
+        _seed_steward(client)
+        bad_row = {**self.GOOD_ROW, 'lat': 'not-a-number'}
+        r = post_json(client, '/api/steward/bulk_import', {'rows': [bad_row]})
+        d = r.get_json()
+        assert d['created'] == 0
+        assert len(d['errors']) == 1
+
+    def test_defaults_lead_agency_to_caller_agency(self, client):
+        _seed_steward(client)
+        r = post_json(client, '/api/steward/bulk_import', {'rows': [self.GOOD_ROW]})
+        case_id = r.get_json()['case_ids'][0]
+        row = client.get('/api/builder/case/' + case_id).get_json()
+        assert row['lead_agency'] == 'TESTCO'
+
+
+# ---------------------------------------------------------------------------
+# Proximity / conflict detection  GET /api/case/<case_id>/nearby
+# ---------------------------------------------------------------------------
+
+class TestNearbyCases:
+
+    def _create_case(self, client, site, lat, lon, agency='TESTCO', stage=None):
+        r = _steward_post(client, '/api/cases', {'site': site, 'applicant': 'Corp'})
+        case_id = r.get_json()['case_id']
+        with srv.get_db() as db:
+            db.execute('UPDATE cases SET lat=?, lon=?, lead_agency=? WHERE case_id=?',
+                      (lat, lon, agency, case_id))
+        if stage:
+            _steward_patch(client, '/api/case/' + case_id + '/stage', {'stage': stage})
+        return case_id
+
+    def test_finds_case_within_radius(self, client):
+        origin = self._create_case(client, 'Origin', 47.5, -120.3)
+        near = self._create_case(client, 'Near', 47.51, -120.31)
+        d = _steward_get(client, '/api/case/' + origin + '/nearby').get_json()
+        ids = [c['case_id'] for c in d]
+        assert near in ids
+
+    def test_excludes_case_outside_radius(self, client):
+        origin = self._create_case(client, 'Origin', 47.5, -120.3)
+        far = self._create_case(client, 'Far', 40.0, -100.0)
+        d = _steward_get(client, '/api/case/' + origin + '/nearby').get_json()
+        ids = [c['case_id'] for c in d]
+        assert far not in ids
+
+    def test_excludes_self(self, client):
+        origin = self._create_case(client, 'Origin', 47.5, -120.3)
+        d = _steward_get(client, '/api/case/' + origin + '/nearby').get_json()
+        ids = [c['case_id'] for c in d]
+        assert origin not in ids
+
+    def test_excludes_resolution_stage(self, client):
+        origin = self._create_case(client, 'Origin', 47.5, -120.3)
+        resolved = self._create_case(client, 'Resolved', 47.51, -120.31, stage='Resolution')
+        d = _steward_get(client, '/api/case/' + origin + '/nearby').get_json()
+        ids = [c['case_id'] for c in d]
+        assert resolved not in ids
+
+    def test_scoped_to_same_lead_agency(self, client):
+        origin = self._create_case(client, 'Origin', 47.5, -120.3, agency='TESTCO')
+        other_agency = self._create_case(client, 'OtherAgency', 47.51, -120.31, agency='OTHERCO')
+        d = _steward_get(client, '/api/case/' + origin + '/nearby').get_json()
+        ids = [c['case_id'] for c in d]
+        assert other_agency not in ids
+
+    def test_includes_distance_km(self, client):
+        origin = self._create_case(client, 'Origin', 47.5, -120.3)
+        self._create_case(client, 'Near', 47.51, -120.31)
+        d = _steward_get(client, '/api/case/' + origin + '/nearby').get_json()
+        assert 'distance_km' in d[0]
+        assert d[0]['distance_km'] >= 0
+
+    def test_no_lat_lon_returns_empty(self, client):
+        r = _steward_post(client, '/api/cases', {'site': 'No Coords', 'applicant': 'Corp'})
+        case_id = r.get_json()['case_id']
+        d = _steward_get(client, '/api/case/' + case_id + '/nearby').get_json()
+        assert d == []
