@@ -1,6 +1,7 @@
 geopandas
 pandas
 numpy
+scipy
 matplotlib
 folium
 requests
