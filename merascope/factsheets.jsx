@@ -1,30 +1,22 @@
 /* ── Fact sheets: print-styled US Letter previews ── */
 
-function QRPlaceholder({ seed = 7, size = 64 }) {
-  const n = 17, mods = [];
-  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
-    const inFinder = (x < 5 && y < 5) || (x > n - 6 && y < 5) || (x < 5 && y > n - 6);
-    if (inFinder) continue;
-    const v = Math.sin(x * 127.1 + y * 311.7 + seed * 53.7) * 43758.5453;
-    if (v - Math.floor(v) > 0.52) mods.push(<rect key={x + '-' + y} x={x} y={y} width="1" height="1" />);
-  }
-  const finder = (fx, fy) => (
-    <g key={fx + ',' + fy}><rect x={fx} y={fy} width="5" height="5" fill="none" stroke="#1A1A1A" strokeWidth="1" /><rect x={fx + 1.5} y={fy + 1.5} width="2" height="2" /></g>
-  );
-  return (
-    <svg width={size} height={size} viewBox={`-0.5 -0.5 ${n + 1} ${n + 1}`} fill="#1A1A1A" aria-label="QR code linking to live page">
-      {mods}{finder(0, 0)}{finder(n - 5, 0)}{finder(0, n - 5)}
-    </svg>
-  );
+// Human-readable date derived from the pipeline version string (vYYYY.MM.DD) so
+// the printed sheet's date can never drift from the data it was built with.
+function versionDate(v) {
+  const m = /v(\d{4})\.(\d{2})\.(\d{2})/.exec(v || '');
+  if (!m) return '';
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return months[+m[2] - 1] + ' ' + (+m[3]) + ', ' + m[1];
 }
 
-function SheetShell({ title, kicker, children, seed }) {
+function SheetShell({ title, kicker, children, seed, code }) {
   const M = window.MERA;
+  const permalink = 'merascope.com/#/factsheets/' + (code || '');
   return (
     <div className="sheet" data-screen-label={'Fact sheet — ' + title}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
         <Wordmark size={13} />
-        <div style={{ textAlign: 'right', fontSize: 11, color: 'var(--slate)' }}>{M.VERSION} · June 11, 2026</div>
+        <div style={{ textAlign: 'right', fontSize: 11, color: 'var(--slate)' }}>{M.VERSION} · {versionDate(M.VERSION)}</div>
       </div>
       <div style={{ borderTop: '2.5px solid var(--evergreen)', paddingTop: 14, marginTop: 8 }}>
         <div className="eyebrow" style={{ fontSize: 10.5 }}>{kicker}</div>
@@ -36,9 +28,9 @@ function SheetShell({ title, kicker, children, seed }) {
           Methodology: 23 indicators normalized 0-1, 2 hard gates (protected land {'>'} 25%, FEMA flood zone), ZCTA geography. Sources: OSM (ODbL) · Census ACS · PRISM Climate Group · USGS NWIS + ASCE 7-22 · FEMA NFHL · EPA TRI + Envirofacts NPL + RCRA · EPA Green Book · SSURGO SDM · IHFC 2024 GHFDB · SRTM1 · EIA Form 860 + 860M · WRI Aqueduct 3.0 · PeeringDB. {M.VERSION}. All scoring code reproducible.
           <div style={{ marginTop: 4, fontWeight: 700, color: 'var(--evergreen)' }}>◈ Same Score Promise — identical methodology, weights, and sources for every reader of this page.</div>
         </div>
-        <div style={{ textAlign: 'center' }}>
-          <QRPlaceholder seed={seed} />
-          <div style={{ fontSize: 8.5, color: 'var(--slate)', marginTop: 2 }}>live page</div>
+        <div style={{ textAlign: 'right', minWidth: 150 }}>
+          <div style={{ fontSize: 8.5, color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: '.08em' }}>Live, reproducible page</div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--evergreen)', marginTop: 2 }}>{permalink}</div>
         </div>
       </div>
     </div>
@@ -120,7 +112,7 @@ function FactSheetDynamic({ stateCode, onRawFeats, onGradeData }) {
   const hasRaw = props.length > 0;
 
   return (
-    <SheetShell kicker="State fact sheet" title={`${stateName} — data center siting posture`} seed={stateCode.charCodeAt(0) + stateCode.charCodeAt(1)}>
+    <SheetShell kicker="State fact sheet" title={`${stateName} — data center siting posture`} code={stateCode} seed={stateCode.charCodeAt(0) + stateCode.charCodeAt(1)}>
       <div style={{ display: 'grid', gridTemplateColumns: '185px 1fr', gap: 22 }}>
 
         {/* Left: grade block + category ranking list + grid stats */}
@@ -606,4 +598,4 @@ function FactSheetsPage({ which }) {
   );
 }
 
-Object.assign(window, { FactSheetsPage, RankingsPage, QRPlaceholder });
+Object.assign(window, { FactSheetsPage, RankingsPage });

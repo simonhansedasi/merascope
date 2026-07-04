@@ -180,29 +180,40 @@ Two normalization windows live:
   dotfiles. The whole repo is rsynced to the server, so this is what keeps
   `.env`, `server.py`, `*.db`, `*.pdf`, `schema.sql`, and docs from being
   downloadable. Anything sensitive must never carry an allowlisted extension.
+  `.txt` is deliberately **not** allowlisted (it would serve `requirements.txt`
+  from the repo root); add a dedicated route if a public `robots.txt` is needed.
 - **Case endpoints are ownership-guarded.** `_case_write_guard()` protects every
   case write and document endpoint; the single-case *read* endpoints
   (`/api/builder/case/<id>`, `/api/case/<id>/anchor`, `/report/<id>`) enforce
-  the matching check via `_can_access_case()`. `demo-*` ids and ids with no row
-  in `cases` stay open (the public demo depends on this), but a real case
+  the matching check via `_can_access_case()`. `demo-*` ids and the three static
+  frontend fixtures (`_DEMO_FIXTURE_IDS`) stay open so the public demo works, but
+  **any other id with no row requires a real session** (fixed 2026-07-04 — an
+  anonymous caller can no longer write to arbitrary made-up ids). A real case row
   requires an authenticated owner, a steward/admin, or a co-party **invited to
-  that specific case** — an anonymous caller and an uninvited co-party are both
-  refused (fixed 2026-07-04; read and write authorization now agree). Case ids
-  are sequential and enumerable, so this per-id check is what protects applicant
-  PII. `create_case` is steward/admin-only and stamps `lead_agency`/`owner_email`
-  so the case is visible in the creating steward's own docket; `/api/cases`
-  never returns the full list to an anonymous caller.
+  that specific case**. `upload_doc` additionally **always requires an
+  authenticated session** (even for demo/fixture ids) so anonymous callers can't
+  push files into object storage. Case ids are sequential and enumerable, so the
+  per-id check is what protects applicant PII. `create_case` is steward/admin-only.
+- **Session-scoped builder data.** The builder CRM/workspace is keyed by the
+  browser session UUID (`window.MERA_SESSION`), not by login. `crm_state` is keyed
+  on `(session_id, fid)` — never `fid` alone — and `/api/crm/<fid>`,
+  `/api/export/workspace`, `/api/export/status`, and `/api/demo/cases` all
+  **require the session id and scope strictly to it**. A missing session id
+  returns empty/`400`, never "all sessions" (fixed 2026-07-04 — previously these
+  leaked every user's CRM contacts, notes, and demo contact emails).
 - **`/api/case/<id>/nearby`** authorizes on the origin case, so it returns only
   map fields (`case_id`, `site`, `lat/lon`, `stage`, `lead_agency`) for
   neighbors — never their applicant contact PII.
 - **`/api/admin/log` fails closed** — disabled entirely unless `MERA_ADMIN_KEY`
   is set (no guessable default), compared with `secrets.compare_digest`.
 - **Rate limiting** keys on the real client IP (`CF-Connecting-IP` /
-  `X-Forwarded-For`), not the proxy address. Note: the limiter is in-process, so
-  it is per-gunicorn-worker (effective limit ≈ `3 × workers`) and resets on
-  redeploy — a speed bump, not a hard control.
+  `X-Forwarded-For`), not the proxy address. Magic-link requests are capped at
+  3 / 15 min; `/api/log` telemetry at 600 / min per IP. Note: the limiter is
+  in-process, so it is per-gunicorn-worker and resets on redeploy — a speed bump,
+  not a hard control.
 - **`init_db()` is fresh-DB safe** — tables are created before they are altered,
-  so a clean database (e.g. a migration target) initializes without error.
+  so a clean database (e.g. a migration target) initializes without error. The
+  `crm_state` primary-key migration (fid → session_id+fid) is idempotent.
 
 ## Server setup
 
@@ -252,7 +263,7 @@ In local dev, omit `S3_ENDPOINT` (falls back to disk) and omit SMTP vars (magic 
 ## Testing and deploy
 
 ```bash
-# Full suite (259 tests). The DB-backed tests need Postgres via TEST_DATABASE_URL;
+# Full suite (293 tests). The DB-backed tests need Postgres via TEST_DATABASE_URL;
 # they skip cleanly if it is unset.
 TEST_DATABASE_URL=postgresql://merascope:merascope@localhost/merascope_test \
   /home/simonhans/anaconda3/envs/merascope/bin/python3 -m pytest tests/ -q
@@ -264,14 +275,16 @@ TEST_DATABASE_URL=postgresql://merascope:merascope@localhost/merascope_test \
 bash scripts/deploy_hetzner.sh
 ```
 
-`tests/test_server.py` — 177 tests covering all server API routes: case access
+`tests/test_server.py` — server API routes: case access
 control (read/write/docs guards), weight logging, cryptographic record anchoring,
 permit justification report routes, `_build_report_context` / `_load_zcta_feature`
 units, steward templates/zones CRUD, gate check, the Phase 1 permitter-upgrade
 routes (`TestStewardInbox`, `TestBulkImport`, `TestNearbyCases`, added 2026-07-03),
-and the streamlining-pass additions (`TestEmailInvites`, `TestNotifications` — all
+the streamlining-pass additions (`TestEmailInvites`, `TestNotifications` — all
 notification assertions go through a monkeypatched `_send_notification` recorder,
-never real SMTP — plus the co-party `/api/cases` docket contract, added 2026-07-03).
+never real SMTP — plus the co-party `/api/cases` docket contract, added 2026-07-03),
+and the pre-launch hardening pass (`TestExportScoping`, `TestDemoScoping`, and the
+session-scoped `TestCRM` / arbitrary-id `TestCaseAuthGuards` cases, added 2026-07-04).
 Requires PostgreSQL (`TEST_DATABASE_URL`); skips cleanly if unavailable.
 `tests/test_static_guard.py` — verifies the static-serving allowlist (no DB).
 `tests/test_config.py`, `test_gates.py`, `test_indicators.py` — pipeline tests
@@ -371,7 +384,7 @@ merascope/
     patch_raws.py         — retrofit raw physical columns on completed states
   data/                   — generated GeoJSON + CSVs (gitignored; sync with sync_data_hetzner.sh)
   vendor/                 — React, Leaflet, fonts (gitignored; built by fetch_vendor.sh)
-  tests/                  — pytest suite (100 pipeline/static/config + 177 server tests)
+  tests/                  — pytest suite (293 total: pipeline/static/config + server tests)
 ```
 
 Full developer docs live in `~/coding/contexts/merascope/` (symlinked to repo root):

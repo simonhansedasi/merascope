@@ -196,7 +196,6 @@ function App() {
   else if (path.startsWith('/co-party')) page = <CoDocketPage />;
   else if (path.startsWith('/factsheets')) page = <FactSheetsPage which={path.split('/')[2]} />;
   else if (path.startsWith('/pricing')) page = <PricingPage />;
-  else if (path.startsWith('/tracker')) page = <TokenTrackerPage />;
   else if (path.startsWith('/login')) page = <LoginPage />;
   else if (path.startsWith('/methodology')) page = <MethodologyPage />;
   else if (path.startsWith('/evidence')) page = <EvidencePage caseId={route.query.case} />;

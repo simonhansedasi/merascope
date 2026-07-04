@@ -72,8 +72,7 @@ def test_python_source_blocked(client):
     assert client.get('/scripts/config.py').status_code == 404
 
 
-# requirements.txt is .txt (allowlisted) — document that .txt at root is
-# intentionally reachable, so nothing sensitive should ever be a root .txt.
-def test_txt_extension_is_allowlisted(client):
-    if os.path.exists(os.path.join(ROOT, 'requirements.txt')):
-        assert client.get('/requirements.txt').status_code == 200
+# .txt is intentionally NOT allowlisted, so requirements.txt (and any other loose
+# root .txt) is not downloadable.
+def test_txt_extension_is_blocked(client):
+    assert client.get('/requirements.txt').status_code == 404

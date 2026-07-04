@@ -171,12 +171,12 @@ function CrmPanel({ fid, cell, geo }) {
     fetch('/api/crm/' + fid, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(state)
+      body: JSON.stringify(Object.assign({ session_id: window.MERA_SESSION || '' }, state))
     });
   };
 
   React.useEffect(function() {
-    fetch('/api/crm/' + fid).then(function(r) { return r.json(); }).then(function(data) {
+    fetch('/api/crm/' + fid + '?session_id=' + (window.MERA_SESSION || '')).then(function(r) { return r.json(); }).then(function(data) {
       if (!data) return;
       setCrm(data);
       try {

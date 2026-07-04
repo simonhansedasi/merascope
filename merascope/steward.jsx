@@ -109,7 +109,7 @@ function DocketPage() {
 
   React.useEffect(function() {
     if (demoActive) {
-      fetch('/api/demo/cases')
+      fetch('/api/demo/cases?session=' + (window.MERA_SESSION || ''))
         .then(function(r) { return r.ok ? r.json() : null; })
         .then(function(d) {
           var shaped = (d ? (d.cases || []) : []).map(_shapeDynamic);

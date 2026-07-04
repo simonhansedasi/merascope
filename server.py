@@ -52,8 +52,32 @@ def _check_rate_limit(ip):
     return True
 
 
+# Telemetry (/api/log) limiter: generous per-IP cap so normal event streams pass
+# but an anonymous flood can't fill event_log. Separate store from magic links.
+_log_rl_lock   = threading.Lock()
+_log_rl_store  = {}
+_LOG_RL_WINDOW = 60
+_LOG_RL_LIMIT  = 600
+
+
+def _check_log_rate(ip):
+    now = time.time()
+    with _log_rl_lock:
+        hits = [t for t in _log_rl_store.get(ip, []) if now - t < _LOG_RL_WINDOW]
+        if len(hits) >= _LOG_RL_LIMIT:
+            return False
+        hits.append(now)
+        _log_rl_store[ip] = hits
+    return True
+
+
 ROOT     = os.path.dirname(os.path.abspath(__file__))
 DOCS_DIR = os.path.join(ROOT, 'data', 'docs')
+
+# Static demo case files that live in the frontend (data.js), not the DB. These
+# stay writable without auth so the public demo case view works. Any other id
+# with no DB row is treated as unknown and requires a real session.
+_DEMO_FIXTURE_IDS = {'26-0142', '26-0171', '26-0168'}
 
 # ── report indicator metadata (mirrors data.js INDICATORS) ────────────────────
 
@@ -349,9 +373,11 @@ def init_db():
         )''')
 
         db.execute('''CREATE TABLE IF NOT EXISTS crm_state (
-            fid   TEXT PRIMARY KEY,
-            state TEXT NOT NULL,
-            ts    TIMESTAMP DEFAULT NOW()
+            session_id TEXT NOT NULL DEFAULT '',
+            fid        TEXT NOT NULL,
+            state      TEXT NOT NULL,
+            ts         TIMESTAMP DEFAULT NOW(),
+            PRIMARY KEY (session_id, fid)
         )''')
 
         db.execute('''CREATE TABLE IF NOT EXISTS users (
@@ -453,11 +479,24 @@ def init_db():
         # Who proposed a condition — needed to notify them on approve/reject.
         db.execute("ALTER TABLE case_conditions ADD COLUMN IF NOT EXISTS submitted_by_email TEXT")
 
+        # CRM was originally keyed by fid alone, so every browser shared (and could
+        # read/overwrite) one record per cell. Migrate to a per-session key. Existing
+        # rows collapse under session_id='' and become unreachable by scoped reads.
+        db.execute("ALTER TABLE crm_state ADD COLUMN IF NOT EXISTS session_id TEXT NOT NULL DEFAULT ''")
+        db.execute("ALTER TABLE crm_state DROP CONSTRAINT IF EXISTS crm_state_pkey")
+        db.execute("ALTER TABLE crm_state ADD PRIMARY KEY (session_id, fid)")
+
+        # Demo submissions must be scoped to the submitting browser session, or the
+        # public demo docket leaks every visitor's contact info to every other visitor.
+        db.execute("ALTER TABLE demo_cases ADD COLUMN IF NOT EXISTS session TEXT")
+
 
 # ── event log ─────────────────────────────────────────────────────────────────
 
 @app.route('/api/log', methods=['POST'])
 def log_event():
+    if not _check_log_rate(_client_ip()):
+        return jsonify({'ok': False, 'err': 'rate limited'}), 429
     data  = request.get_json(silent=True) or {}
     sid   = data.get('session_id')
     fid   = data.get('fid')
@@ -474,14 +513,17 @@ def log_event():
 
 @app.route('/api/export/workspace')
 def export_workspace():
-    sid = request.args.get('session_id')
+    # Scope strictly to the caller's own session. A missing session_id must NOT
+    # fall through to "all sessions" — that would export every user's saved sites.
+    sid = (request.args.get('session_id') or '').strip()
+    if not sid:
+        return jsonify({'ok': False, 'err': 'session_id required'}), 400
     with get_db() as db:
         rows = db.execute(
             '''SELECT * FROM event_log
-               WHERE event_type = 'save_cell'
-               AND (? IS NULL OR session_id = ?)
+               WHERE event_type = 'save_cell' AND session_id = ?
                ORDER BY ts DESC''',
-            (sid, sid)
+            (sid,)
         ).fetchall()
 
     # Every indicator's national-scale score, not just a hand-picked six.
@@ -520,14 +562,19 @@ def export_workspace():
 
 @app.route('/api/export/status')
 def export_status():
-    sid = request.args.get('session_id')
+    # Scope strictly to the caller's own session. A missing session_id must NOT
+    # fall through to "all sessions" — that would export every user's CRM
+    # contacts, activity, and notes.
+    sid = (request.args.get('session_id') or '').strip()
+    if not sid:
+        return jsonify({'ok': False, 'err': 'session_id required'}), 400
     with get_db() as db:
         rows = db.execute(
             '''SELECT * FROM event_log
                WHERE event_type IN ('status_change','activity_log','contact_add','contact_remove','note_update')
-               AND (? IS NULL OR session_id = ?)
+               AND session_id = ?
                ORDER BY fid, ts''',
-            (sid, sid)
+            (sid,)
         ).fetchall()
 
     out = io.StringIO()
@@ -780,10 +827,12 @@ def _case_write_guard(case_id):
     Guard mutations on a case. Returns an (response, status) error tuple to
     abort, or None to allow.
 
-    Demo cases (``demo-*`` ids) and ids with no row in ``cases`` (frontend
-    example fixtures) stay open so the public demo keeps working. For a real
-    case row, require an authenticated user who is the owner, a steward/admin,
-    or a co-party invited to that case.
+    Demo cases (``demo-*`` ids) and the handful of static frontend fixture ids
+    (``_DEMO_FIXTURE_IDS``) stay open so the public demo keeps working. Any other
+    id with no row in ``cases`` requires a real session — otherwise an anonymous
+    caller could write to arbitrary made-up case ids. For a real case row, require
+    an authenticated user who is the owner, a steward/admin, or a co-party invited
+    to that case.
     """
     if case_id.startswith('demo-'):
         return None
@@ -792,7 +841,12 @@ def _case_write_guard(case_id):
             'SELECT owner_email FROM cases WHERE case_id=?', (case_id,)
         ).fetchone()
     if not row:
-        return None  # unknown id → treat as demo/fixture, open
+        if case_id in _DEMO_FIXTURE_IDS:
+            return None  # static frontend fixture — open for the public demo
+        # Unknown id with no backing row: don't let anonymous callers write to it.
+        if not _session_user():
+            return jsonify({'ok': False, 'err': 'authentication required'}), 401
+        return jsonify({'ok': False, 'err': 'forbidden'}), 403
     user = _session_user()
     if not user:
         return jsonify({'ok': False, 'err': 'authentication required'}), 401
@@ -841,6 +895,10 @@ def upload_doc(case_id):
     err = _case_write_guard(case_id)
     if err:
         return err
+    # File upload always requires a real session — even for demo/fixture ids —
+    # so anonymous callers can't push arbitrary files into object storage.
+    if not _session_user():
+        return jsonify({'ok': False, 'err': 'authentication required'}), 401
     if 'file' not in request.files:
         return jsonify({'ok': False, 'err': 'no file'}), 400
     f = request.files['file']
@@ -1122,15 +1180,16 @@ def builder_submit():
     user        = _session_user()
 
     if not user:
-        demo_id = 'demo-{}'.format(secrets.token_hex(4))
+        demo_id     = 'demo-{}'.format(secrets.token_hex(4))
+        demo_session = (data.get('session_id') or '').strip()
         with get_db() as db:
             db.execute(
                 '''INSERT INTO demo_cases
                    (case_id, site, applicant, score, stage, state_code, lat, lon,
-                    contact_name, contact_email, lead_agency, notes, weights_json)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                    contact_name, contact_email, lead_agency, notes, weights_json, session)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
                 (demo_id, site, applicant, score, stage, state_code, lat, lon,
-                 contact_name, contact_email, lead_agency, notes, weights_json)
+                 contact_name, contact_email, lead_agency, notes, weights_json, demo_session)
             )
         return jsonify({'ok': True, 'case_id': demo_id, 'is_demo': True})
 
@@ -1278,18 +1337,30 @@ def get_anchor(case_id):
 
 @app.route('/api/crm/<fid>')
 def get_crm(fid):
+    # CRM is private per browser session. No session id → nothing to return
+    # (never fall back to a global per-cell record).
+    sid = (request.args.get('session_id') or '').strip()
+    if not sid:
+        return jsonify(None)
     with get_db() as db:
-        row = db.execute('SELECT state FROM crm_state WHERE fid=?', (fid,)).fetchone()
+        row = db.execute(
+            'SELECT state FROM crm_state WHERE session_id=? AND fid=?', (sid, fid)
+        ).fetchone()
     return jsonify(json.loads(row['state']) if row else None)
 
 @app.route('/api/crm/<fid>', methods=['POST'])
 def save_crm(fid):
     data = request.get_json(silent=True) or {}
+    sid  = (data.get('session_id') or request.args.get('session_id') or '').strip()
+    if not sid:
+        return jsonify({'ok': False, 'err': 'session_id required'}), 400
+    # Don't persist the routing session id inside the stored blob.
+    payload = {k: v for k, v in data.items() if k != 'session_id'}
     with get_db() as db:
         db.execute(
-            '''INSERT INTO crm_state (fid, state) VALUES (?,?)
-               ON CONFLICT (fid) DO UPDATE SET state=EXCLUDED.state, ts=NOW()''',
-            (fid, json.dumps(data))
+            '''INSERT INTO crm_state (session_id, fid, state) VALUES (?,?,?)
+               ON CONFLICT (session_id, fid) DO UPDATE SET state=EXCLUDED.state, ts=NOW()''',
+            (sid, fid, json.dumps(payload))
         )
     return jsonify({'ok': True})
 
@@ -2281,9 +2352,16 @@ def gate_check():
 
 @app.route('/api/demo/cases')
 def demo_cases_list():
+    # Scope the demo docket to the caller's own browser session. Without this it
+    # returns every visitor's demo submission (contact email included) to everyone.
+    sid = (request.args.get('session') or request.args.get('session_id') or '').strip()
+    if not sid:
+        return jsonify({'cases': [], 'total': 0})
     with get_db() as db:
         cases = db.execute(
-            "SELECT * FROM demo_cases WHERE created_at > NOW() - INTERVAL '20 minutes' ORDER BY created_at DESC"
+            "SELECT * FROM demo_cases WHERE session = ? "
+            "AND created_at > NOW() - INTERVAL '20 minutes' ORDER BY created_at DESC",
+            (sid,)
         ).fetchall()
     return jsonify({'cases': cases, 'total': len(cases)})
 
@@ -2474,8 +2552,11 @@ def report_explorer():
 # Only front-end asset types are served by the catch-all route. Anything else
 # (source, secrets, databases, docs) is refused even if it sits in ROOT — the
 # repo is rsynced to the server wholesale, so loose files must not be reachable.
+# Note: '.txt' is intentionally NOT allowlisted — it would serve requirements.txt
+# (and any other loose .txt) from the rsynced repo root. Add a dedicated route if
+# a public robots.txt/security.txt is ever needed.
 _ALLOWED_STATIC_EXT = {
-    '.js', '.mjs', '.css', '.map', '.json', '.geojson', '.csv', '.txt',
+    '.js', '.mjs', '.css', '.map', '.json', '.geojson', '.csv',
     '.html', '.htm', '.ico', '.png', '.jpg', '.jpeg', '.gif', '.svg',
     '.webp', '.woff', '.woff2', '.ttf', '.otf', '.eot',
 }

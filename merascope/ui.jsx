@@ -166,12 +166,12 @@ function PersonaBadge({ surface }) {
   return null;
 }
 
-/* demo-only role switcher — stands in for SSO; hidden in production builds */
+/* Public role explorer — lets a visitor preview each workspace before signing in. */
 function DemoSwitch() {
   const { role, setRole } = React.useContext(AuthCtx);
   return (
-    <label title="Demo only — normally hidden. SSO is mocked." style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: 'var(--basalt)', fontWeight: 650 }}>
-      Demo:
+    <label title="Preview each workspace. Sign in for a live account." style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: 'var(--basalt)', fontWeight: 650 }}>
+      Explore as:
       <select className="demo-select" value={role} onChange={e => {
         const r = e.target.value; setRole(r);
         location.hash = r === 'builder' ? '#/builder' : r === 'steward' ? '#/steward' : r === 'reporter' ? '#/factsheets' : '#/';

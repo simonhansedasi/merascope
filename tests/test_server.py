@@ -382,9 +382,12 @@ class TestStageTransitions:
         r = post_json(client, '/api/builder/submit', FULL_INQUIRY)
         return r.get_json()['case_id']
 
-    def test_get_stage_unknown_returns_null(self, client):
+    def test_get_stage_unknown_rejected(self, client):
+        # This class is logged in as a builder (autouse _as_builder). An unknown
+        # id that isn't a demo/fixture case is no longer readable by a non-owner
+        # (previously it returned null and allowed existence probing).
         r = client.get('/api/case/99-0000/stage')
-        assert r.get_json() is None
+        assert r.status_code == 403
 
     def test_patch_stage_returns_ok(self, client):
         case_id = self._create(client)
@@ -424,36 +427,36 @@ class TestStageTransitions:
 class TestConditions:
 
     def test_empty_initially(self, client):
-        assert client.get('/api/case/26-0001/conditions').get_json() == []
+        assert client.get('/api/case/26-0142/conditions').get_json() == []
 
     def test_add_and_retrieve(self, client):
-        post_json(client, '/api/case/26-0001/conditions',
+        post_json(client, '/api/case/26-0142/conditions',
                   {'text': 'No blasting within 500m', 'by': 'OPCD', 'type': 'Noise'})
-        rows = client.get('/api/case/26-0001/conditions').get_json()
+        rows = client.get('/api/case/26-0142/conditions').get_json()
         assert len(rows) == 1
         assert rows[0]['text'] == 'No blasting within 500m'
         assert rows[0]['type'] == 'Noise'
 
     def test_pending_approval_flag(self, client):
-        post_json(client, '/api/case/26-0001/conditions',
+        post_json(client, '/api/case/26-0142/conditions',
                   {'text': 'Limit hours', 'pending_approval': True})
-        rows = client.get('/api/case/26-0001/conditions').get_json()
+        rows = client.get('/api/case/26-0142/conditions').get_json()
         assert rows[0]['pending_approval'] == 1
 
     def test_patch_status(self, client):
-        r = post_json(client, '/api/case/26-0001/conditions', {'text': 'Hold'})
+        r = post_json(client, '/api/case/26-0142/conditions', {'text': 'Hold'})
         cond_id = r.get_json()['id']
-        client.patch('/api/case/26-0001/conditions/' + str(cond_id),
+        client.patch('/api/case/26-0142/conditions/' + str(cond_id),
                      data=json.dumps({'status': 'Accepted'}),
                      content_type='application/json')
-        rows = client.get('/api/case/26-0001/conditions').get_json()
+        rows = client.get('/api/case/26-0142/conditions').get_json()
         assert rows[0]['status'] == 'Accepted'
 
     def test_delete_condition(self, client):
-        r = post_json(client, '/api/case/26-0001/conditions', {'text': 'Remove me'})
+        r = post_json(client, '/api/case/26-0142/conditions', {'text': 'Remove me'})
         cond_id = r.get_json()['id']
-        client.delete('/api/case/26-0001/conditions/' + str(cond_id))
-        assert client.get('/api/case/26-0001/conditions').get_json() == []
+        client.delete('/api/case/26-0142/conditions/' + str(cond_id))
+        assert client.get('/api/case/26-0142/conditions').get_json() == []
 
 
 # ---------------------------------------------------------------------------
@@ -463,19 +466,19 @@ class TestConditions:
 class TestInvites:
 
     def test_empty_initially(self, client):
-        assert client.get('/api/case/26-0001/invites').get_json() == []
+        assert client.get('/api/case/26-0142/invites').get_json() == []
 
     def test_add_and_retrieve(self, client):
-        post_json(client, '/api/case/26-0001/invite', {'agency_key': 'WW'})
-        assert client.get('/api/case/26-0001/invites').get_json() == ['WW']
+        post_json(client, '/api/case/26-0142/invite', {'agency_key': 'WW'})
+        assert client.get('/api/case/26-0142/invites').get_json() == ['WW']
 
     def test_duplicate_invite_is_idempotent(self, client):
-        post_json(client, '/api/case/26-0001/invite', {'agency_key': 'WW'})
-        post_json(client, '/api/case/26-0001/invite', {'agency_key': 'WW'})
-        assert client.get('/api/case/26-0001/invites').get_json() == ['WW']
+        post_json(client, '/api/case/26-0142/invite', {'agency_key': 'WW'})
+        post_json(client, '/api/case/26-0142/invite', {'agency_key': 'WW'})
+        assert client.get('/api/case/26-0142/invites').get_json() == ['WW']
 
     def test_missing_key_returns_400(self, client):
-        r = post_json(client, '/api/case/26-0001/invite', {})
+        r = post_json(client, '/api/case/26-0142/invite', {})
         assert r.status_code == 400
 
 
@@ -486,34 +489,34 @@ class TestInvites:
 class TestEmailInvites:
 
     def test_email_invite_ok_and_listed(self, client):
-        r = post_json(client, '/api/case/26-0001/invite', {'email': 'cp@example.gov'})
+        r = post_json(client, '/api/case/26-0142/invite', {'email': 'cp@example.gov'})
         assert r.status_code == 200
-        assert client.get('/api/case/26-0001/invites').get_json() == ['cp@example.gov']
+        assert client.get('/api/case/26-0142/invites').get_json() == ['cp@example.gov']
 
     def test_email_is_normalized(self, client):
-        post_json(client, '/api/case/26-0001/invite', {'email': '  CP@Example.GOV '})
-        assert client.get('/api/case/26-0001/invites').get_json() == ['cp@example.gov']
+        post_json(client, '/api/case/26-0142/invite', {'email': '  CP@Example.GOV '})
+        assert client.get('/api/case/26-0142/invites').get_json() == ['cp@example.gov']
 
     def test_duplicate_email_invite_is_idempotent(self, client):
-        post_json(client, '/api/case/26-0001/invite', {'email': 'cp@example.gov'})
-        post_json(client, '/api/case/26-0001/invite', {'email': 'cp@example.gov'})
-        assert client.get('/api/case/26-0001/invites').get_json() == ['cp@example.gov']
+        post_json(client, '/api/case/26-0142/invite', {'email': 'cp@example.gov'})
+        post_json(client, '/api/case/26-0142/invite', {'email': 'cp@example.gov'})
+        assert client.get('/api/case/26-0142/invites').get_json() == ['cp@example.gov']
 
     def test_invalid_email_returns_400(self, client):
-        r = post_json(client, '/api/case/26-0001/invite', {'email': 'not-an-email'})
+        r = post_json(client, '/api/case/26-0142/invite', {'email': 'not-an-email'})
         assert r.status_code == 400
 
     def test_agency_and_email_invites_coexist(self, client):
-        post_json(client, '/api/case/26-0001/invite', {'agency_key': 'WW'})
-        post_json(client, '/api/case/26-0001/invite', {'email': 'cp@example.gov'})
-        assert sorted(client.get('/api/case/26-0001/invites').get_json()) == \
+        post_json(client, '/api/case/26-0142/invite', {'agency_key': 'WW'})
+        post_json(client, '/api/case/26-0142/invite', {'email': 'cp@example.gov'})
+        assert sorted(client.get('/api/case/26-0142/invites').get_json()) == \
             ['WW', 'cp@example.gov']
 
     def test_email_invite_attempts_notification(self, client, monkeypatch):
         sent = []
         monkeypatch.setattr(srv, '_send_notification',
                             lambda to, subj, body: sent.append((to, subj)))
-        post_json(client, '/api/case/26-0001/invite', {'email': 'cp@example.gov'})
+        post_json(client, '/api/case/26-0142/invite', {'email': 'cp@example.gov'})
         assert len(sent) == 1
         assert sent[0][0] == 'cp@example.gov'
 
@@ -521,7 +524,7 @@ class TestEmailInvites:
         sent = []
         monkeypatch.setattr(srv, '_send_notification',
                             lambda to, subj, body: sent.append(to))
-        post_json(client, '/api/case/26-0001/invite', {'agency_key': 'WW'})
+        post_json(client, '/api/case/26-0142/invite', {'agency_key': 'WW'})
         assert sent == []
 
     def test_email_invite_does_not_grant_other_coparty_access(self, client):
@@ -632,8 +635,8 @@ class TestNotifications:
         assert rows[0]['submitted_by_email'] == 'steward@agency.gov'
 
     def test_submitted_by_email_null_when_anon(self, client):
-        post_json(client, '/api/case/26-0001/conditions', {'text': 'Anon condition'})
-        rows = client.get('/api/case/26-0001/conditions').get_json()
+        post_json(client, '/api/case/26-0142/conditions', {'text': 'Anon condition'})
+        rows = client.get('/api/case/26-0142/conditions').get_json()
         assert rows[0]['submitted_by_email'] is None
 
     def test_send_notification_disabled_never_raises(self, monkeypatch):
@@ -652,16 +655,16 @@ class TestNotifications:
 class TestRebuttals:
 
     def test_empty_initially(self, client):
-        assert client.get('/api/case/26-0001/rebuttals').get_json() == []
+        assert client.get('/api/case/26-0142/rebuttals').get_json() == []
 
     def test_add_and_retrieve(self, client):
-        post_json(client, '/api/case/26-0001/rebuttal', {'text': 'We dispute finding 3.'})
-        rows = client.get('/api/case/26-0001/rebuttals').get_json()
+        post_json(client, '/api/case/26-0142/rebuttal', {'text': 'We dispute finding 3.'})
+        rows = client.get('/api/case/26-0142/rebuttals').get_json()
         assert len(rows) == 1
         assert rows[0]['text'] == 'We dispute finding 3.'
 
     def test_empty_text_returns_400(self, client):
-        r = post_json(client, '/api/case/26-0001/rebuttal', {'text': ''})
+        r = post_json(client, '/api/case/26-0142/rebuttal', {'text': ''})
         assert r.status_code == 400
 
 
@@ -682,23 +685,98 @@ class TestEventLog:
 
 
 # ---------------------------------------------------------------------------
+# Export scoping — must never dump other sessions' data
+# ---------------------------------------------------------------------------
+
+class TestExportScoping:
+
+    def _seed(self, client, session_id):
+        post_json(client, '/api/log', {
+            'event_type': 'save_cell', 'fid': 7, 'session_id': session_id,
+            'payload': {'lat': 1, 'lon': 2, 'municipality': 'X', 'props': {'_state': 'WA'}},
+        })
+        post_json(client, '/api/log', {
+            'event_type': 'contact_add', 'fid': 7, 'session_id': session_id,
+            'payload': {'name': 'Jane', 'org': 'SecretCorp'},
+        })
+
+    def test_workspace_requires_session_id(self, client):
+        assert client.get('/api/export/workspace').status_code == 400
+
+    def test_status_requires_session_id(self, client):
+        assert client.get('/api/export/status').status_code == 400
+
+    def test_workspace_scopes_to_session(self, client):
+        self._seed(client, 'owner')
+        self._seed(client, 'someone_else')
+        body = client.get('/api/export/workspace?session_id=owner').get_data(as_text=True)
+        assert 'owner' in body
+        assert 'someone_else' not in body
+
+    def test_status_does_not_leak_other_session_contacts(self, client):
+        self._seed(client, 'owner')
+        self._seed(client, 'someone_else')
+        body = client.get('/api/export/status?session_id=owner').get_data(as_text=True)
+        # Only the owner's rows; the other session's identical contact is scoped out.
+        assert body.count('SecretCorp') == 1
+        assert 'someone_else' not in body
+
+
+# ---------------------------------------------------------------------------
+# Demo docket scoping — must not leak visitors' submissions to each other
+# ---------------------------------------------------------------------------
+
+class TestDemoScoping:
+
+    def _submit(self, client, session_id, email):
+        return post_json(client, '/api/builder/submit', {
+            'site': 'Demo Site', 'applicant': 'Demo Co', 'contact_email': email,
+            'session_id': session_id,
+        }).get_json()
+
+    def test_demo_list_requires_session(self, client):
+        self._submit(client, 's1', 'a@x.com')
+        d = client.get('/api/demo/cases').get_json()
+        assert d['cases'] == [] and d['total'] == 0
+
+    def test_demo_list_scoped_to_session(self, client):
+        self._submit(client, 's1', 'a@x.com')
+        self._submit(client, 's2', 'b@x.com')
+        d = client.get('/api/demo/cases?session=s1').get_json()
+        assert d['total'] == 1
+        assert d['cases'][0]['contact_email'] == 'a@x.com'
+        # s2's submission (and its contact email) is not visible to s1.
+        assert all(c['contact_email'] != 'b@x.com' for c in d['cases'])
+
+
+# ---------------------------------------------------------------------------
 # CRM state  /api/crm/<fid>
 # ---------------------------------------------------------------------------
 
 class TestCRM:
 
     def test_unknown_fid_returns_null(self, client):
-        assert client.get('/api/crm/999').get_json() is None
+        assert client.get('/api/crm/999?session_id=s1').get_json() is None
 
     def test_save_and_retrieve(self, client):
         state = {'status': 'Active', 'contacts': ['Jane']}
-        post_json(client, '/api/crm/42', state)
-        assert client.get('/api/crm/42').get_json() == state
+        post_json(client, '/api/crm/42', dict(state, session_id='s1'))
+        assert client.get('/api/crm/42?session_id=s1').get_json() == state
 
     def test_overwrite(self, client):
-        post_json(client, '/api/crm/42', {'status': 'Active'})
-        post_json(client, '/api/crm/42', {'status': 'Closed'})
-        assert client.get('/api/crm/42').get_json()['status'] == 'Closed'
+        post_json(client, '/api/crm/42', {'status': 'Active', 'session_id': 's1'})
+        post_json(client, '/api/crm/42', {'status': 'Closed', 'session_id': 's1'})
+        assert client.get('/api/crm/42?session_id=s1').get_json()['status'] == 'Closed'
+
+    def test_crm_is_session_scoped(self, client):
+        # A different session must not see another session's CRM record.
+        post_json(client, '/api/crm/42', {'status': 'Active', 'session_id': 'owner'})
+        assert client.get('/api/crm/42?session_id=other').get_json() is None
+        assert client.get('/api/crm/42').get_json() is None  # no session at all
+
+    def test_crm_requires_session_to_write(self, client):
+        r = post_json(client, '/api/crm/42', {'status': 'Active'})
+        assert r.status_code == 400
 
 
 # ---------------------------------------------------------------------------
@@ -790,10 +868,24 @@ class TestCaseAuthGuards:
         r = post_json(client, '/api/case/demo-EX-0001/conditions', {'text': 'demo condition'})
         assert r.get_json()['ok'] is True
 
-    def test_unknown_case_id_writes_stay_open(self, client):
-        # Frontend example fixtures use ids with no row in `cases`.
-        r = post_json(client, '/api/case/26-9999/conditions', {'text': 'fixture'})
+    def test_static_fixture_writes_stay_open(self, client):
+        # The three static frontend fixtures (data.js, no DB row) stay writable
+        # without auth so the public demo case view works.
+        r = post_json(client, '/api/case/26-0142/conditions', {'text': 'fixture'})
         assert r.get_json()['ok'] is True
+
+    def test_anon_write_to_unknown_case_id_rejected(self, client):
+        # An arbitrary made-up id that is neither a demo-* id nor a known fixture
+        # must NOT be writable anonymously (previously it fell through as "open").
+        r = post_json(client, '/api/case/26-9999/conditions', {'text': 'injected'})
+        assert r.status_code == 401
+
+    def test_authed_write_to_unknown_case_id_forbidden(self, client):
+        # Even logged in, there is no legitimate write to an id with no case row
+        # that isn't a known fixture — every real case has a row.
+        login(client)  # admin
+        r = post_json(client, '/api/case/26-8888/conditions', {'text': 'nope'})
+        assert r.status_code == 403
 
     def test_owner_can_write_to_own_case(self, client):
         login(client, email='builder@example.com', role='builder', agency_key=None)
