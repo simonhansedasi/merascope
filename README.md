@@ -112,6 +112,8 @@ Workspace tab (saved cells, comparison panel), Status tab (CRM tracker per site:
 
 **Site inquiry flow:** Builder selects a saved site from a card grid → confirms site name and score → lead agency is auto-detected via Nominatim reverse geocode → fills contact details → submits. Merascope routes the inquiry to the relevant agency; the agency runs their own jurisdiction-specific permitting process from there. Merascope is the first contact point and routing layer, not the permitting system itself.
 
+**Streamlined flow (added 2026-07-03):** signed-in builders see a **My cases** list on the lookup tab (`/api/cases` already owner-filters — no more typing case IDs); every saved-cell card and the Explorer report card carry a **Submit inquiry** deep link (`#/builder/case/?submit=<fid>`) that lands on the submit form with the cell pre-selected; contact email prefills from the signed-in account; and the submission carries the builder's **actual tuned Explorer weights** (persisted to localStorage `mera_weights_v1` via `window.setCurrentWeights`/`getCurrentWeights` in `data.js`) instead of silently substituting platform defaults — so the "Custom weights" badge on the case file now reflects reality and the submitted score matches the submitted weights.
+
 **Permit justification report** (`/report/<case_id>`): after submission, the case intake view shows a "Download permit justification report" link that opens a printable HTML document in a new tab. The report includes: composite score block, hard gate analysis (PASS/FAIL), 22-indicator scorecard with national percentile bars and H/M/L confidence tiers, strengths/challenges summary, data sources table, and reproducibility block (pipeline version, SHA-256 anchor hash if at Resolution stage, verification URL). Explorer mode also supported: `/report?state=WA&lat=X&lon=Y&name=...` (no case required). Print-to-PDF via the browser "Print / Save PDF" button.
 
 ### Steward surface (`#/steward`)
@@ -121,7 +123,15 @@ Kanban docket across all stages. Case file: versioned findings, conditions negot
 
 **Bulk CSV intake** (`#/steward/bulk-import`, added 2026-07-03): upload a spreadsheet of existing applications to create case files in one pass instead of hand-entering each one. Same CSV-parse/column-mapping UI as Portfolio screening. `POST /api/steward/bulk_import` creates cases at `stage='Intake'` (not Site Inquiry — these are pre-existing applications, not new inbound leads) with `imported=1`; a bad row is reported in the response but doesn't fail the rest of the batch. Lead agency defaults to the caller's `agency_key` if a row doesn't specify one.
 
-**Nearby cases** (case file panel, added 2026-07-03): surfaces other pending cases within 5km (haversine, pure Python — no GDAL) that share the same `lead_agency`, excluding the case itself and anything already at Resolution. `GET /api/case/<case_id>/nearby?radius_km=5`.
+**Nearby cases** (case file panel, added 2026-07-03): surfaces other pending cases within 5km (haversine, pure Python — no GDAL) that share the same `lead_agency`, excluding the case itself and anything already at Resolution. `GET /api/case/<case_id>/nearby?radius_km=5`. Now rendered in both case-file layouts and link-prefixed per persona (steward vs co-party).
+
+**Unified case file (added 2026-07-03):** real builder-submitted cases used to get a stripped-down intake view with none of the negotiation tooling. Once a case is confirmed (`confirmed_at` set), the intake view now unlocks the full negotiation surface — conditions table, invite-co-parties modal, rebuttal clock, co-party tracker, mandated studies — reusing the exact same panels as the demo fixture cases (hoisted as JSX variables inside `CaseFilePage`, not duplicated). The steward case file also links the permit justification report (previously builder-only).
+
+**Email invites (added 2026-07-03):** the invite modal's "Invite by email" input is now real — `POST /api/case/<id>/invite` with `{email}` stores an `invited_email` row in `case_invites` (schema: `agency_key` is now nullable, partial unique index on `(case_id, invited_email)`) and sends the invitee a notification email. Directory invites by `agency_key` unchanged.
+
+**Inbox badge (added 2026-07-03):** the steward sub-nav shows an urgent-count pill (overdue + new inquiries) on the Inbox tab, fetched once per steward page mount with a 60-second module-level cache.
+
+**Email notifications (added 2026-07-03):** `_send_notification()` in `server.py` — plain-text, fire-and-forget daemon thread reusing the magic-link SMTP env vars. Sent on: stage change and case confirmation (→ case owner/contact), email invite (→ invitee), and co-party condition approve/reject (→ the proposer, via the new `case_conditions.submitted_by_email` column). **Opt-in: emails only send when `NOTIFY_ENABLED=1` is set** (add to `/etc/merascope.env` on Hetzner); dev and CI never touch SMTP. A mail failure never fails or blocks the triggering request.
 
 **Evidence record** (`#/evidence?case=:id`): per-finding cards with score, citation, source, formula. Each card shows whether an independent study has been mandated (green badge + days-to-deadline). Stewards can commission a study directly from the evidence record — study is linked to the specific indicator via the `finding` DB column and appears immediately. Non-stewards see a read-only card. Builders rebut findings; stewards commission independent review.
 
@@ -131,6 +141,15 @@ Kanban docket across all stages. Case file: versioned findings, conditions negot
 
 ### Co-party surface (`#/co-party`)
 Filtered docket — only shows cases where the agency is invited. Same case file as steward, propose-only permissions. Co-party conditions show as "Pending lead approval" until lead approves.
+
+**Real docket (added 2026-07-03):** a signed-in co-party's docket now fetches `/api/cases` (which joins `case_invites` on the caller's `agency_key`) instead of filtering the static demo fixture — a directory invite from a steward actually appears on the invited agency's My Cases. The demo persona (localStorage `mera_party_key`, no real auth) keeps the fixture. Known limitation: an **email-invited** co-party only sees cases once their account's `agency_key` matches an agency invite — the `/api/cases` join is on `agency_key`, not email.
+
+### Reporter surface (`#/factsheets`)
+The reporter role ("Verified press") is read-only and shares the public pages; its home is the fact sheets. Journalist upgrades (added 2026-07-03):
+
+**All-state rankings** (`#/factsheets/rankings`): sortable leaderboard of all 48 states — overall grade/rank plus every category, top-5 / bottom-5 callout cards, one-click CSV download, each state linking to its fact sheet. Computed client-side by `computeAllStateGrades()` (`explorer.jsx`) in a **single pass** over the grid cache — never call `computeStateGrades()` per state for a leaderboard; each call recomputes every state's category means (O(n²)). Linked from the Explorer's report-card strip and the fact sheets header.
+
+**Fact sheet polish:** copy-permalink button (deep links `#/factsheets/<CODE>` already worked, now surfaced), per-state grades CSV download, prev/next state navigation, and an honest footnote on non-WA sheets noting that seismic PGA / water-table / hydraulic-conductivity raw medians are currently published for Washington only (scored indicators cover all 48 states — the raw-column gap is a data-pipeline backfill, deliberately not faked in the UI).
 
 ### Agency directory
 95 pre-registered WA state agencies (39 counties, 31 tribes, 12 utilities, 8 state agencies, 5 federal) in `AGENCY_DIRECTORY` (`data.js`). Lead agency invites from searchable directory modal with type filters. Email fallback for unregistered agencies.
@@ -232,17 +251,21 @@ TEST_DATABASE_URL=postgresql://merascope:merascope@localhost/merascope_test \
 bash scripts/deploy_hetzner.sh
 ```
 
-`tests/test_server.py` — 159 tests covering all server API routes: case access
+`tests/test_server.py` — 177 tests covering all server API routes: case access
 control (read/write/docs guards), weight logging, cryptographic record anchoring,
 permit justification report routes, `_build_report_context` / `_load_zcta_feature`
-units, steward templates/zones CRUD, gate check, and the Phase 1 permitter-upgrade
-routes (`TestStewardInbox`, `TestBulkImport`, `TestNearbyCases`, added 2026-07-03).
+units, steward templates/zones CRUD, gate check, the Phase 1 permitter-upgrade
+routes (`TestStewardInbox`, `TestBulkImport`, `TestNearbyCases`, added 2026-07-03),
+and the streamlining-pass additions (`TestEmailInvites`, `TestNotifications` — all
+notification assertions go through a monkeypatched `_send_notification` recorder,
+never real SMTP — plus the co-party `/api/cases` docket contract, added 2026-07-03).
 Requires PostgreSQL (`TEST_DATABASE_URL`); skips cleanly if unavailable.
 `tests/test_static_guard.py` — verifies the static-serving allowlist (no DB).
 `tests/test_config.py`, `test_gates.py`, `test_indicators.py` — pipeline tests
 (`test_gates` skips without state data; `test_indicators` needs geopandas).
-`tests/smoke_test.py` — Playwright end-to-end: builder submit, steward docket, case
-lookup, Permitter Inbox render, bulk-import page render.
+`tests/smoke_test.py` — Playwright end-to-end: builder submit, submit deep-link
+prefill, steward docket, case lookup, Permitter Inbox render, bulk-import page
+render, permit-report link on the steward case view.
 
 **No local Postgres?** Spin up a disposable one to run the DB suite:
 `conda create -n pgtmp -c conda-forge postgresql`, `initdb`, start it on a spare
@@ -261,6 +284,17 @@ must exist locally to run the full local verification pass. `playwright install
 `test`, so a red suite blocks the release. **CI deploys from git**, while
 `deploy_hetzner.sh` deploys from the local working tree — keep the two in sync by
 committing local changes before pushing `master`, or a git deploy will revert them.
+
+**`requirements.txt` must list every third-party import used by `scripts/`,
+`server.py`, and pytest-collected tests** (added 2026-07-03, after CI failed on
+`ModuleNotFoundError: No module named 'scipy'`). The local conda env
+(`merascope`) has packages installed outside `requirements.txt`, so a script can
+work locally while CI's clean `pip install -r requirements.txt` fails on the
+same import — `scipy` (used by `scripts/03_risk.py` for `cKDTree`, pulled in
+transitively by `tests/test_indicators.py`) was missing this way despite being
+in every local run. `deploy_hetzner.sh`'s local test run does **not** catch
+this class of bug since it uses the conda env, not a clean install — CI is the
+only place it surfaces.
 
 ## Frontend
 
@@ -324,7 +358,7 @@ merascope/
     patch_raws.py         — retrofit raw physical columns on completed states
   data/                   — generated GeoJSON + CSVs (gitignored; sync with sync_data_hetzner.sh)
   vendor/                 — React, Leaflet, fonts (gitignored; built by fetch_vendor.sh)
-  tests/                  — pytest suite (100 pipeline/static/config + 159 server tests)
+  tests/                  — pytest suite (100 pipeline/static/config + 177 server tests)
 ```
 
 Full developer docs live in `~/coding/contexts/merascope/` (symlinked to repo root):

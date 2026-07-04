@@ -25,6 +25,21 @@ window.serverLog = function(eventType, fid, payload) {
   } catch(e) {}
 };
 
+/* ── current scoring weights (localStorage) ─────────────────────────────────
+   The Explorer persists its tuned weights here so a submitted inquiry carries
+   the weights the builder actually explored with, not the platform defaults. */
+window.setCurrentWeights = function(w) {
+  try { localStorage.setItem('mera_weights_v1', JSON.stringify(w)); } catch(e) {}
+};
+window.getCurrentWeights = function() {
+  try {
+    var w = JSON.parse(localStorage.getItem('mera_weights_v1') || 'null');
+    if (w && typeof w === 'object') return w;
+  } catch(e) {}
+  return (window.MERA && window.MERA.DEFAULT_WEIGHTS)
+    ? Object.assign({}, window.MERA.DEFAULT_WEIGHTS) : {};
+};
+
 /* ── builder workspace: saved cells (localStorage) ── */
 (function() {
   var KEY = 'mera_saved_v1';

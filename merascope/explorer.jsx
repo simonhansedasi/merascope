@@ -142,6 +142,38 @@ function computeStateGrades(stateCode, weights) {
   return result;
 }
 
+/* All 48 states in ONE pass over the grid cache. Do NOT call
+   computeStateGrades per state for a leaderboard — each call recomputes
+   every state's category means, turning O(n) into O(n^2). */
+function computeAllStateGrades() {
+  if (!window.getStateFeatures || !window.STATE_NAMES) return null;
+  const allStates = Object.keys(window.STATE_NAMES);
+  const allScores = {};
+  for (const st of allStates) {
+    const sf = window.getStateFeatures(st);
+    if (sf.length) allScores[st] = _catMeans(sf);
+  }
+  const loaded = Object.keys(allScores);
+  const n = loaded.length;
+  if (!n) return null;
+  const overallOf = {};
+  loaded.forEach(st => {
+    const ss = allScores[st];
+    overallOf[st] = ss.reduce((a, b) => a + b, 0) / ss.length;
+  });
+  const states = loaded.map(st => {
+    const cats = _GRADE_CATS.map((cat, i) => {
+      const myScore = allScores[st][i];
+      const rank = loaded.filter(s => allScores[s][i] > myScore).length;
+      return { k: cat.k, g: _rankToGrade(rank, n), rank };
+    });
+    const overallRank = loaded.filter(s => overallOf[s] > overallOf[st]).length;
+    return { code: st, name: window.STATE_NAMES[st], overall: { g: _rankToGrade(overallRank, n), rank: overallRank }, cats };
+  });
+  states.sort((a, b) => a.overall.rank - b.overall.rank);
+  return { states, n, cats: _GRADE_CATS.map(c => c.k) };
+}
+
 function GradeStrip({ grades, stateGrade, stateName, stateCode }) {
   const M = window.MERA;
   const gs = grades || M.GRADES;
@@ -161,7 +193,10 @@ function GradeStrip({ grades, stateGrade, stateName, stateCode }) {
             <p className="microcopy" style={{ margin: 0 }}>Click a grade to read the plain-language finding. Scores relative to the lower 48. {M.VERSION}.</p>
           </div>
         </div>
-        {stateCode && <a className="btn btn-ghost btn-sm" href={'#/factsheets/' + stateCode}>Print fact sheet</a>}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <a className="btn btn-ghost btn-sm" href="#/factsheets/rankings">All-state rankings</a>
+          {stateCode && <a className="btn btn-ghost btn-sm" href={'#/factsheets/' + stateCode}>Print fact sheet</a>}
+        </div>
       </div>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         {gs.map((g, i) => (
@@ -452,6 +487,9 @@ function TileCard({ feats, weights, selectedState }) {
                 ? (n > 1 ? `★ ${n} cells in workspace` : '★ In workspace')
                 : (n > 1 ? `+ Save ${n} cells to workspace` : '+ Save to workspace')}
             </button>
+            {allSaved && n === 1 && (
+              <a className="btn btn-quiet btn-sm" href={'#/builder/case/?submit=' + feats[0].properties._fid}>Submit inquiry →</a>
+            )}
           </div>
         </div>
 
@@ -499,6 +537,8 @@ function ExplorerPage({ query }) {
     return { ...M.DEFAULT_WEIGHTS };
   }, []);
   const [weights, setWeights] = React.useState(initial);
+  /* persist tuned weights so a submitted inquiry carries them (data.js shim) */
+  React.useEffect(() => { if (window.setCurrentWeights) window.setCurrentWeights(weights); }, [weights]);
   const [selectedState, setSelectedState] = React.useState(null);
   const [gradeData, setGradeData] = React.useState(null);
   const [selectedCells, setSelectedCells] = React.useState(new Set());
@@ -618,4 +658,4 @@ function ExplorerPage({ query }) {
   );
 }
 
-Object.assign(window, { ExplorerPage, GradeStrip, ClusterTable, StateFactSheet, TileCard, computeStateGrades });
+Object.assign(window, { ExplorerPage, GradeStrip, ClusterTable, StateFactSheet, TileCard, computeStateGrades, computeAllStateGrades, _gradeColor });

@@ -179,7 +179,7 @@ function App() {
   let page;
   if (path === '/') page = <LandingPage />;
   else if (path.startsWith('/explorer')) page = <ExplorerPage query={route.query} />;
-  else if (path.startsWith('/builder/case/')) page = <BuilderCaseView id={path.split('/')[3]} />;
+  else if (path.startsWith('/builder/case/')) page = <BuilderCaseView id={path.split('/')[3]} query={route.query} />;
   else if (path.startsWith('/builder/site/')) page = <SiteProfile id={path.split('/')[3]} />;
   else if (path === '/builder/status') page = <StatusPage />;
   else if (path === '/builder/portfolio') page = <PortfolioPage />;

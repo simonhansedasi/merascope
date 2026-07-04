@@ -165,6 +165,7 @@ function SavedCellCard({ cell, inCompare, canAdd, onToggle, onRemove }) {
           title={(!inCompare && !canAdd) ? 'Max 4 selected' : ''}>
           {inCompare ? 'Comparing' : 'Compare'}
         </button>
+        <a className="btn btn-quiet btn-sm" href={'#/builder/case/?submit=' + cell.fid}>Submit inquiry</a>
         <button className="btn btn-ghost btn-sm" onClick={onRemove} style={{ marginLeft: 'auto', color: 'var(--slate)' }}>Remove</button>
       </div>
     </div>
@@ -436,9 +437,10 @@ function deriveJurisdictions(addr) {
   return results;
 }
 
-function BuilderCaseView({ id }) {
+function BuilderCaseView({ id, query }) {
   const M = window.MERA;
   const { ramp } = React.useContext(MeraCtx);
+  const { authUser } = React.useContext(AuthCtx);
   const [caseId, setCaseId] = React.useState(id || '');
   const [searched, setSearched] = React.useState(!!id);
   const [toast, setToast] = React.useState(null);
@@ -449,6 +451,7 @@ function BuilderCaseView({ id }) {
   const [mode, setMode] = React.useState(id ? 'lookup' : 'submit');
   const [dynCase, setDynCase] = React.useState(null);
   const [dynLoading, setDynLoading] = React.useState(false);
+  const [myCases, setMyCases] = React.useState([]);
 
   /* submission form state */
   const [savedCells]        = React.useState(window.getSavedCells ? window.getSavedCells() : []);
@@ -495,6 +498,34 @@ function BuilderCaseView({ id }) {
       .finally(() => setDynLoading(false));
   }, [id]);
 
+  /* deep-link: #/builder/case/?submit=<fid> pre-selects a saved cell.
+     Keyed on the param, not mount — in-app hash changes re-render this
+     component without remounting it. */
+  React.useEffect(function() {
+    if (id || !query || !query.submit) return;
+    var fid = Number(query.submit);
+    if (savedCells.some(function(c) { return c.fid === fid; })) {
+      setMode('submit');
+      handleCellSelect(fid);
+    }
+  }, [query ? query.submit : null]);
+
+  /* prefill contact email from the signed-in account */
+  React.useEffect(function() {
+    if (!authUser || !authUser.email) return;
+    setForm(function(f) { return f.contactEmail ? f : Object.assign({}, f, { contactEmail: authUser.email }); });
+    setImpForm(function(f) { return f.contactEmail ? f : Object.assign({}, f, { contactEmail: authUser.email }); });
+  }, [authUser ? authUser.email : null]);
+
+  /* the signed-in builder's own cases — no more typing case IDs */
+  React.useEffect(function() {
+    if (!authUser || mode !== 'lookup') return;
+    fetch('/api/cases?limit=50&offset=0')
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(d) { if (d && d.cases) setMyCases(d.cases); })
+      .catch(function() {});
+  }, [authUser ? authUser.email : null, mode]);
+
   /* Nominatim reverse geocode when a saved cell is selected */
   React.useEffect(function() {
     if (!selCell || selCell.lat == null) { setJurisdictions([]); setSelJur(null); return; }
@@ -535,7 +566,7 @@ function BuilderCaseView({ id }) {
       payload.lon = parseFloat(impForm.lon);
     }
     payload.session_id = window.MERA_SESSION || '';
-    payload.weights    = (window.MERA && window.MERA.DEFAULT_WEIGHTS) ? Object.assign({}, window.MERA.DEFAULT_WEIGHTS) : {};
+    payload.weights    = window.getCurrentWeights ? window.getCurrentWeights() : ((window.MERA && window.MERA.DEFAULT_WEIGHTS) ? Object.assign({}, window.MERA.DEFAULT_WEIGHTS) : {});
     fetch('/api/builder/submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -585,7 +616,8 @@ function BuilderCaseView({ id }) {
     if (cell) {
       var label = (window.cellLabel && window.cellLabel(cell.properties)) || (cell.properties._state || '');
       var pi = window.propsToInd;
-      var nat = (pi && M) ? M.composite(pi(cell.properties, true), M.DEFAULT_WEIGHTS) : null;
+      var w  = window.getCurrentWeights ? window.getCurrentWeights() : M.DEFAULT_WEIGHTS;
+      var nat = (pi && M) ? M.composite(pi(cell.properties, true), w) : null;
       setField('siteName', label);
       if (nat != null) setField('score', nat.toFixed(3));
     }
@@ -614,7 +646,7 @@ function BuilderCaseView({ id }) {
       payload.state_code = selCell.properties._state || '';
     }
     payload.session_id = window.MERA_SESSION || '';
-    payload.weights    = (window.MERA && window.MERA.DEFAULT_WEIGHTS) ? Object.assign({}, window.MERA.DEFAULT_WEIGHTS) : {};
+    payload.weights    = window.getCurrentWeights ? window.getCurrentWeights() : ((window.MERA && window.MERA.DEFAULT_WEIGHTS) ? Object.assign({}, window.MERA.DEFAULT_WEIGHTS) : {});
     fetch('/api/builder/submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -924,9 +956,32 @@ function BuilderCaseView({ id }) {
           {mode === 'lookup' ? (
             <div style={{ maxWidth: 480 }}>
               <h2 style={{ fontSize: 21, marginBottom: 6 }}>Find your inquiry</h2>
-              <p style={{ color: 'var(--slate)', fontSize: 14, marginBottom: 18, lineHeight: 1.6 }}>
-                Enter the case ID assigned by your lead agency to view your case file.
-              </p>
+              {authUser && myCases.length > 0 && (
+                <div style={{ marginBottom: 22 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 650, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--slate)' }}>My cases</div>
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    {myCases.map(function(c) {
+                      return (
+                        <div key={c.case_id}
+                          onClick={function() { location.hash = '#/builder/case/' + c.case_id; }}
+                          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 9, border: '1.5px solid var(--line)', background: 'var(--paper)', cursor: 'pointer' }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 650, fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.site || c.case_id}</div>
+                            <div className="microcopy" style={{ marginTop: 2 }}>{c.case_id}{c.ts ? ' · ' + String(c.ts).substring(0, 10) : ''}</div>
+                          </div>
+                          <Chip tone="low">{c.stage}</Chip>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="microcopy" style={{ marginTop: 10 }}>Or look up a case by ID:</div>
+                </div>
+              )}
+              {!(authUser && myCases.length > 0) && (
+                <p style={{ color: 'var(--slate)', fontSize: 14, marginBottom: 18, lineHeight: 1.6 }}>
+                  Enter the case ID assigned by your lead agency to view your case file.
+                </p>
+              )}
               <div style={{ display: 'flex', gap: 8 }}>
                 <input type="text" value={caseId} placeholder="e.g. 26-0142"
                   onChange={e => { setCaseId(e.target.value.trim()); setSearched(false); setDynCase(null); }}
@@ -1078,7 +1133,8 @@ function BuilderCaseView({ id }) {
                     {savedCells.map(function(c) {
                       var label = (window.cellLabel && window.cellLabel(c.properties)) || (c.properties._state || 'Cell ' + c.fid);
                       var pi = window.propsToInd;
-                      var nat = (pi && M) ? M.composite(pi(c.properties, true), M.DEFAULT_WEIGHTS) : null;
+                      var w  = window.getCurrentWeights ? window.getCurrentWeights() : M.DEFAULT_WEIGHTS;
+                      var nat = (pi && M) ? M.composite(pi(c.properties, true), w) : null;
                       var isSelected = selCell && selCell.fid === c.fid;
                       return (
                         <div key={c.fid}

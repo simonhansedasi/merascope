@@ -1,11 +1,31 @@
 /* ── Surface C: Steward console — "The Docket" ── */
 
+/* Inbox urgent-count cache — one fetch per steward page mount, 60s TTL */
+var _inboxCountCache = { n: null, ts: 0 };
+
 function StewardSubNav({ active }) {
   const tabs = [['inbox', 'Inbox', '#/steward/inbox'], ['docket', 'Docket', '#/steward'], ['bulk-import', 'Bulk import', '#/steward/bulk-import'], ['templates', 'Weight templates', '#/steward/templates'], ['impasse', 'Impasse register', '#/steward/impasse'], ['litigation', 'Litigation tracker', '#/steward/litigation'], ['studies', 'Mandated studies', '#/steward/studies']];
+  const [inboxCount, setInboxCount] = React.useState(_inboxCountCache.n);
+  React.useEffect(function() {
+    if (Date.now() - _inboxCountCache.ts < 60000) { setInboxCount(_inboxCountCache.n); return; }
+    fetch('/api/steward/inbox')
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(d) {
+        var n = d ? ((d.overdue || []).length + (d.new_inquiries || []).length) : null;
+        _inboxCountCache = { n: n, ts: Date.now() };
+        setInboxCount(n);
+      })
+      .catch(function() {});
+  }, []);
   return (
     <div className="tabs" style={{ marginBottom: 18 }}>
       {tabs.map(([k, label, href]) => (
-        <button key={k} className={active === k ? 'on' : ''} onClick={() => { location.hash = href; }}>{label}</button>
+        <button key={k} className={active === k ? 'on' : ''} onClick={() => { location.hash = href; }}>
+          {label}
+          {k === 'inbox' && inboxCount > 0 && (
+            <span style={{ marginLeft: 6, padding: '1px 7px', borderRadius: 9, background: 'var(--basalt)', color: '#fff', fontSize: 11, fontWeight: 700 }}>{inboxCount}</span>
+          )}
+        </button>
       ))}
     </div>
   );
@@ -254,6 +274,7 @@ function CaseFilePage({ id }) {
   const [draft, setDraft] = React.useState({ text: '', type: 'Water' });
   const [toast, setToast] = React.useState(null);
   const [showInvite, setShowInvite] = React.useState(false);
+  const [inviteEmail, setInviteEmail] = React.useState('');
   const [dirSearch, setDirSearch] = React.useState('');
   const [dirType, setDirType] = React.useState('all');
   const [dirState, setDirState] = React.useState('all');
@@ -461,7 +482,7 @@ function CaseFilePage({ id }) {
     ];
     const a = document.createElement('a');
     a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(rows.join('\n'));
-    a.download = 'conditions_' + C.id + '.csv';
+    a.download = 'conditions_' + id + '.csv';
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
   };
 
@@ -486,7 +507,9 @@ function CaseFilePage({ id }) {
 
   const TYPE_TONE = { state: 'lo', county: 'slate', tribe: 'med', utility: 'mist', federal: 'hi' };
   const TYPE_LABEL = { state: 'State', county: 'County', tribe: 'Tribe', utility: 'Utility', federal: 'Federal' };
-  const isInvited = key => (C.invitedParties || []).includes(key) || serverInvited.includes(key);
+  /* Dynamic cases must not inherit the fixture's invited parties */
+  const fixtureInvited = isDynamic ? [] : (C.invitedParties || []);
+  const isInvited = key => fixtureInvited.includes(key) || serverInvited.includes(key);
   const inviteFromDir = agency => {
     if (isInvited(agency.key)) return;
     fetch('/api/case/' + id + '/invite', {
@@ -497,6 +520,24 @@ function CaseFilePage({ id }) {
     setServerInvited(prev => [...prev, agency.key]);
     notify('Invite sent to ' + agency.name);
   };
+  const inviteByEmail = function() {
+    var email = inviteEmail.trim().toLowerCase();
+    if (!email || email.indexOf('@') === -1) { notify('Enter a valid email address'); return; }
+    if (serverInvited.includes(email)) { notify('Already invited'); return; }
+    fetch('/api/case/' + id + '/invite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email })
+    }).then(function(r) { return r.json(); }).then(function(res) {
+      if (res.ok) {
+        setServerInvited(function(prev) { return [...prev, email]; });
+        setInviteEmail('');
+        notify('Invite sent to ' + email);
+      } else {
+        notify(res.err || 'Invite failed');
+      }
+    }).catch(function() { notify('Network error — invite not sent'); });
+  };
   const dirQ = dirSearch.trim().toLowerCase();
   const filteredDir = (M.AGENCY_DIRECTORY || []).filter(function(a) {
     if (dirType !== 'all' && a.type !== dirType) return false;
@@ -506,7 +547,7 @@ function CaseFilePage({ id }) {
   });
   var ALL_STATES = ['AL','AR','AZ','CA','CO','CT','DE','FL','GA','IA','ID','IL','IN','KS','KY','LA','MA','MD','ME','MI','MN','MO','MS','MT','NC','ND','NE','NH','NJ','NM','NV','NY','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VA','VT','WA','WI','WV','WY'];
   const onCaseNames = [
-    ...(C.invitedParties || []).map(k => {
+    ...fixtureInvited.map(k => {
       const d = (M.AGENCY_DIRECTORY || []).find(a => a.key === k);
       return d ? d.name : (M.PARTY_NAMES[k] || k);
     }),
@@ -515,7 +556,7 @@ function CaseFilePage({ id }) {
       return d ? d.name : k;
     })
   ];
-  const allInvited = [...new Set([...(C.invitedParties || []), ...serverInvited])];
+  const allInvited = [...new Set([...fixtureInvited, ...serverInvited])];
   const coParties = allInvited.length > 0
     ? allInvited.map(key => {
         const agency = (M.AGENCY_DIRECTORY || []).find(a => a.key === key);
@@ -529,10 +570,254 @@ function CaseFilePage({ id }) {
         else { status = 'Invited'; tone = 'slate'; }
         return [name, status, tone];
       })
-    : (C.coParties || []);
+    : (isDynamic ? [] : (C.coParties || []));
   const backHref = isCoParty ? '#/co-party' : '#/steward';
   const backLabel = isCoParty ? 'Back to My Cases' : 'Back to the Docket';
   const isDemo = isDynamic && (id || '').startsWith('demo-');
+  const caseLinkPrefix = isCoParty ? '#/co-party/case/' : '#/steward/case/';
+  const fallbackRebuttalDays = isDynamic ? null : C.daysToRebuttal;
+
+  /* ── shared panels — rendered by BOTH the dynamic and fixture branches.
+     Hoisted as JSX variables (not components) so they close over the same
+     state/handlers with no props plumbing. ── */
+
+  const nearbyPanel = nearbyCases.length > 0 && (
+    <div className="card" style={{ padding: '14px 16px' }}>
+      <div style={{ fontSize: 11, color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 8 }}>
+        Nearby cases <span className="score-serif">{nearbyCases.length}</span>
+      </div>
+      <div style={{ display: 'grid', gap: 8 }}>
+        {nearbyCases.map(function(n) {
+          return (
+            <a key={n.case_id} href={caseLinkPrefix + n.case_id}
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, color: 'inherit', textDecoration: 'none', padding: '6px 8px', borderRadius: 6, background: 'var(--mist)' }}>
+              <span><b>{n.case_id}</b> — {n.site} <span style={{ color: 'var(--slate)' }}>({n.stage})</span></span>
+              <span className="microcopy">{n.distance_km} km</span>
+            </a>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const inviteModal = showInvite && isLead && (
+    <div onClick={() => setShowInvite(false)}
+      style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 800, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div onClick={e => e.stopPropagation()}
+        style={{ background: 'var(--mist)', borderRadius: 12, padding: '22px 24px', width: 560, maxWidth: '100%', maxHeight: '82vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 40px rgba(0,0,0,0.5)', border: '1px solid var(--line)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+          <div>
+            <b style={{ fontSize: 16 }}>Invite co-parties</b>
+            <div className="microcopy" style={{ marginTop: 2 }}>Case {id} - {onCaseNames.length} agenc{onCaseNames.length === 1 ? 'y' : 'ies'} currently on this case</div>
+          </div>
+          <button className="btn btn-quiet btn-xs" onClick={() => setShowInvite(false)}>Close</button>
+        </div>
+        {onCaseNames.length > 0 && (
+          <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: '1px solid var(--line)' }}>
+            <div className="eyebrow" style={{ marginBottom: 7 }}>Currently on this case</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {onCaseNames.map((name, i) => <Chip key={i} tone="lo">{name}</Chip>)}
+            </div>
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+          <input type="text" placeholder="Search registered agencies..." value={dirSearch}
+            onChange={e => setDirSearch(e.target.value)}
+            style={{ flex: 1, padding: '7px 11px', borderRadius: 7, border: '1px solid var(--line)', background: 'var(--sand)', fontSize: 13, fontFamily: 'inherit', color: 'inherit' }} />
+          <select value={dirState} onChange={e => setDirState(e.target.value)}
+            style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--line)', background: 'var(--sand)', fontSize: 13, fontFamily: 'inherit', color: 'inherit', cursor: 'pointer' }}>
+            <option value="all">All states</option>
+            {ALL_STATES.map(function(s) { return <option key={s} value={s}>{s}</option>; })}
+          </select>
+        </div>
+        <div style={{ display: 'flex', gap: 4, marginBottom: 10, flexWrap: 'wrap' }}>
+          {['all', 'state', 'county', 'tribe', 'utility', 'federal'].map(t => (
+            <button key={t} className={'btn btn-xs ' + (dirType === t ? 'btn-primary' : 'btn-quiet')}
+              onClick={() => setDirType(t)}>
+              {t === 'all' ? 'All types' : TYPE_LABEL[t]}
+            </button>
+          ))}
+        </div>
+        <div className="microcopy" style={{ marginBottom: 6 }}>
+          {filteredDir.length} of {(M.AGENCY_DIRECTORY || []).length} agencies
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', display: 'grid', gap: 3 }}>
+          {filteredDir.map(agency => {
+            const already = isInvited(agency.key);
+            return (
+              <div key={agency.key}
+                style={{ display: 'flex', alignItems: 'center', padding: '7px 10px', borderRadius: 7, background: already ? 'var(--sand)' : undefined, gap: 10 }}>
+                <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600, color: already ? 'var(--slate)' : 'inherit', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{agency.name}</span>
+                <Chip tone={TYPE_TONE[agency.type] || 'slate'}>{TYPE_LABEL[agency.type] || agency.type}</Chip>
+                {already
+                  ? <span style={{ fontSize: 12, color: 'var(--evergreen)', fontWeight: 700, flexShrink: 0, minWidth: 52, textAlign: 'right' }}>On case</span>
+                  : <button className="btn btn-primary btn-xs" style={{ flexShrink: 0 }} onClick={() => inviteFromDir(agency)}>Invite</button>}
+              </div>
+            );
+          })}
+          {filteredDir.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--slate)' }}>
+              <div style={{ fontSize: 14 }}>No agencies match your search.</div>
+              <div className="microcopy">Try the email option below for unregistered entities.</div>
+            </div>
+          )}
+        </div>
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--line)', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input type="email" placeholder="Not listed? Invite by email..." value={inviteEmail}
+            onChange={e => setInviteEmail(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') inviteByEmail(); }}
+            style={{ flex: 1, padding: '7px 11px', borderRadius: 7, border: '1px solid var(--line)', background: 'var(--sand)', fontSize: 13, fontFamily: 'inherit', color: 'inherit' }} />
+          <button className="btn btn-ghost btn-xs" onClick={inviteByEmail}>Send</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const conditionsPanel = (
+    <div style={{ flex: '2.2 1 460px', minWidth: 380 }}>
+      <h3 style={{ fontSize: 15, marginBottom: 9 }}>Conditions negotiation</h3>
+      <div className="card" style={{ overflow: 'auto' }}>
+        <table className="mtable">
+          <thead>
+            <tr>
+              <th>Condition</th><th>Proposed by</th><th>Type</th><th>Status</th>
+              {isLead && <th></th>}
+            </tr>
+          </thead>
+          <tbody>
+            {conditions.map((c, i) => (
+              <tr key={c.id || i} style={{ background: c.pendingApproval ? 'rgba(180,95,29,0.05)' : undefined }}>
+                <td style={{ fontWeight: 600, fontSize: 13.5, maxWidth: 300 }}>{c.text}</td>
+                <td style={{ fontSize: 13 }}>{c.by}</td>
+                <td><Chip tone="mist">{c.type}</Chip></td>
+                <td>
+                  {c.pendingApproval
+                    ? <Chip tone="med">Pending lead approval</Chip>
+                    : isLead
+                      ? <select value={c.status} onChange={e => changeStatus(c.id, e.target.value)}
+                          style={{ fontSize: 12.5, padding: '3px 6px', borderRadius: 5, border: '1px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontFamily: 'inherit' }}>
+                          {['Proposed', 'Under review', 'Countered', 'Accepted', 'Impasse'].map(s => <option key={s}>{s}</option>)}
+                        </select>
+                      : <Chip tone={COND_TONE[c.status] || 'slate'}>{c.status}</Chip>}
+                </td>
+                {isLead && (
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    {c.pendingApproval && (
+                      <span style={{ display: 'inline-flex', gap: 5 }}>
+                        <button className="btn btn-primary btn-xs" onClick={() => approvePending(c.id)}>Approve</button>
+                        <button className="btn btn-quiet btn-xs" onClick={() => rejectPending(c.id)}>Reject</button>
+                      </span>
+                    )}
+                  </td>
+                )}
+              </tr>
+            ))}
+            {conditions.length === 0 && (
+              <tr><td colSpan={isLead ? 5 : 4} style={{ fontSize: 13, color: 'var(--slate)', padding: '14px 12px' }}>No conditions proposed yet.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {showForm && (
+        <div style={{ display: 'grid', gap: 8, marginTop: 10, padding: '12px 14px', background: 'var(--sand)', borderRadius: 8 }}>
+          <textarea placeholder="Describe the proposed condition..." value={draft.text} rows={3}
+            onChange={e => { const v = e.target.value; setDraft(d => Object.assign({}, d, { text: v })); }}
+            style={{ padding: '7px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 13, resize: 'vertical', fontFamily: 'inherit' }} />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <select value={draft.type} onChange={e => { const v = e.target.value; setDraft(d => Object.assign({}, d, { type: v })); }}
+              style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 13 }}>
+              {COND_TYPES.map(t => <option key={t}>{t}</option>)}
+            </select>
+            <span className="microcopy">Proposed by: <b>{isCoParty ? (partyName || 'Co-party') : _agencyLabel(authUser)}</b></span>
+          </div>
+          <button className="btn btn-primary btn-sm" onClick={submitCondition}>
+            {isCoParty ? 'Submit to lead for review' : 'Add condition'}
+          </button>
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+        {!readOnly && (
+          <button className="btn btn-primary btn-sm" onClick={() => setShowForm(s => !s)}>
+            {showForm ? 'Cancel' : 'Propose condition'}
+          </button>
+        )}
+        <button className="btn btn-quiet btn-sm" onClick={exportConditions}>Export conditions record</button>
+      </div>
+    </div>
+  );
+
+  const rebuttalClockPanel = (deadline != null || fallbackRebuttalDays != null || isLead) && (
+    <div className="callout" style={{ padding: '14px 16px' }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
+        <Icon name="clock" size={17} color="var(--basalt)" />
+        <b style={{ fontSize: 13, letterSpacing: '.06em', textTransform: 'uppercase' }}>Rebuttal clock</b>
+      </div>
+      {(deadline != null || fallbackRebuttalDays != null) ? (
+        <React.Fragment>
+          <div style={{ fontSize: 14 }}>Applicant response due in <span className="score-serif" style={{ fontSize: 22, color: 'var(--basalt)' }}>{deadline ? deadline.days : fallbackRebuttalDays}</span> days</div>
+          <div className="microcopy" style={{ marginTop: 3 }}>Cycle {deadline ? deadline.cycle : 2} of {deadline ? deadline.max_cycles : 3} · time-boxed by rule · applicant can see this</div>
+        </React.Fragment>
+      ) : (
+        <div className="microcopy">No deadline set.</div>
+      )}
+      {isLead && (
+        <div style={{ marginTop: 8 }}>
+          <input type="date" onChange={e => e.target.value && setRebuttalDeadline(e.target.value)}
+            style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--sand)', color: 'inherit', fontSize: 12, fontFamily: 'inherit' }} />
+          <div className="microcopy" style={{ marginTop: 3 }}>Set or update deadline</div>
+        </div>
+      )}
+    </div>
+  );
+
+  const coPartyTrackerPanel = coParties.length > 0 && (
+    <div className="panel" style={{ padding: '14px 16px' }}>
+      <b style={{ fontSize: 12, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--slate)' }}>Co-party tracker</b>
+      <div style={{ display: 'grid', gap: 7, marginTop: 9, fontSize: 13 }}>
+        {coParties.map(([p, s, tone]) => (
+          <div key={p} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+            <Chip tone={tone} style={{ flexShrink: 0 }}>{p}</Chip>
+            <span style={{ fontSize: 12.5, color: 'var(--slate)' }}>{s}</span>
+          </div>
+        ))}
+      </div>
+      {id === '26-0142' && <p className="microcopy" style={{ margin: '9px 0 0' }}>Tribal governments are sovereign consultation parties, not stakeholders.</p>}
+    </div>
+  );
+
+  const mandatedStudiesPanel = (isLead || (!isDynamic && C.is_example)) && !isDemo && (
+    <div className="panel" style={{ padding: '14px 16px' }}>
+      <b style={{ fontSize: 12, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--slate)' }}>Mandated studies</b>
+      {caseStudies.length > 0 && (
+        <div style={{ display: 'grid', gap: 8, marginTop: 9 }}>
+          {caseStudies.map(function(s) {
+            var days = Math.round((new Date(s.due) - Date.now()) / 86400000);
+            return (
+              <div key={s.id}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{s.name}</div>
+                <div className="microcopy" style={{ color: days < 30 ? '#C0392B' : 'var(--slate)' }}>{days} days to deadline</div>
+                {s.body && <div className="microcopy" style={{ marginTop: 2, fontStyle: 'italic' }}>{s.body}</div>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {isLead && (mandateForm ? (
+        <div style={{ marginTop: 10, display: 'grid', gap: 7 }}>
+          <select value={mandateTemplate} onChange={e => setMandateTemplate(e.target.value)}
+            style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--sand)', color: 'inherit', fontSize: 12, fontFamily: 'inherit' }}>
+            {MANDATE_TEMPLATES.map(t => <option key={t}>{t}</option>)}
+          </select>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className="btn btn-primary btn-xs" onClick={mandateStudy}>Mandate</button>
+            <button className="btn btn-quiet btn-xs" onClick={() => setMandateForm(false)}>Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <button className="btn btn-quiet btn-xs" style={{ marginTop: caseStudies.length > 0 ? 10 : 9, width: '100%' }} onClick={() => setMandateForm(true)}>+ Mandate a study</button>
+      ))}
+    </div>
+  );
 
   /* ── dynamic (builder-submitted) case intake view ── */
   if (isDynamic) {
@@ -553,10 +838,10 @@ function CaseFilePage({ id }) {
       );
     }
     const dc = dynCase;
-    const isDemo = (id || '').startsWith('demo-');
     return (
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '22px 24px 50px' }} data-screen-label="Steward -- Intake case">
         {toast && <NotifyToast message={toast} onDone={() => setToast(null)} />}
+        {inviteModal}
         <a href="#/steward" className="btn btn-quiet btn-sm" style={{ marginBottom: 16, display: 'inline-block' }}>Back to Docket</a>
 
         {isDemo ? (
@@ -586,9 +871,15 @@ function CaseFilePage({ id }) {
                 {' · Stage: '}<b>{dc.stage || 'Site Inquiry'}</b>
               </div>
             </div>
-            <div style={{ textAlign: 'right' }}>
-              <span className="score-badge" style={{ background: M.rampColor(dc.score || 0.5, ramp), color: M.rampText(dc.score || 0.5, ramp), fontSize: 22, padding: '4px 13px' }}>{(dc.score || 0.5).toFixed(3)}</span>
-              <div className="microcopy" style={{ marginTop: 3 }}>composite score</div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+              {isLead && !isDemo && dc.confirmed_at && (
+                <button className="btn btn-ghost btn-sm" onClick={() => setShowInvite(v => !v)}>Invite co-parties</button>
+              )}
+              <a className="btn btn-ghost btn-sm" href={'/report/' + dc.case_id} target="_blank" rel="noreferrer">Permit justification report →</a>
+              <div style={{ textAlign: 'right' }}>
+                <span className="score-badge" style={{ background: M.rampColor(dc.score || 0.5, ramp), color: M.rampText(dc.score || 0.5, ramp), fontSize: 22, padding: '4px 13px' }}>{(dc.score || 0.5).toFixed(3)}</span>
+                <div className="microcopy" style={{ marginTop: 3 }}>composite score</div>
+              </div>
             </div>
           </div>
         </div>
@@ -624,24 +915,7 @@ function CaseFilePage({ id }) {
           </div>
         )}
 
-        {nearbyCases.length > 0 && (
-          <div className="card" style={{ padding: '14px 16px', marginBottom: 16 }}>
-            <div style={{ fontSize: 11, color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 8 }}>
-              Nearby cases <span className="score-serif">{nearbyCases.length}</span>
-            </div>
-            <div style={{ display: 'grid', gap: 8 }}>
-              {nearbyCases.map(function(n) {
-                return (
-                  <a key={n.case_id} href={'#/steward/case/' + n.case_id}
-                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, color: 'inherit', textDecoration: 'none', padding: '6px 8px', borderRadius: 6, background: 'var(--mist)' }}>
-                    <span><b>{n.case_id}</b> — {n.site} <span style={{ color: 'var(--slate)' }}>({n.stage})</span></span>
-                    <span className="microcopy">{n.distance_km} km</span>
-                  </a>
-                );
-              })}
-            </div>
-          </div>
-        )}
+        {nearbyPanel && <div style={{ marginBottom: 16 }}>{nearbyPanel}</div>}
 
         <DocSection caseId={dc.case_id} />
 
@@ -698,6 +972,18 @@ function CaseFilePage({ id }) {
             </div>
           )}
         </div>
+
+        {/* negotiation surface — unlocked once the case is confirmed */}
+        {!isDemo && dc.confirmed_at && (
+          <div style={{ display: 'flex', gap: 16, marginTop: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            {conditionsPanel}
+            <div style={{ flex: '1 1 260px', minWidth: 250, display: 'grid', gap: 12 }}>
+              {rebuttalClockPanel}
+              {coPartyTrackerPanel}
+              {mandatedStudiesPanel}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -705,76 +991,7 @@ function CaseFilePage({ id }) {
   return (
     <div style={{ maxWidth: 1340, margin: '0 auto', padding: '22px 24px 50px' }} data-screen-label="Steward — Case file">
       {toast && <NotifyToast message={toast} onDone={() => setToast(null)} />}
-      {showInvite && isLead && (
-        <div onClick={() => setShowInvite(false)}
-          style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 800, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-          <div onClick={e => e.stopPropagation()}
-            style={{ background: 'var(--mist)', borderRadius: 12, padding: '22px 24px', width: 560, maxWidth: '100%', maxHeight: '82vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 40px rgba(0,0,0,0.5)', border: '1px solid var(--line)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-              <div>
-                <b style={{ fontSize: 16 }}>Invite co-parties</b>
-                <div className="microcopy" style={{ marginTop: 2 }}>Case {C.id} - {onCaseNames.length} agenc{onCaseNames.length === 1 ? 'y' : 'ies'} currently on this case</div>
-              </div>
-              <button className="btn btn-quiet btn-xs" onClick={() => setShowInvite(false)}>Close</button>
-            </div>
-            {onCaseNames.length > 0 && (
-              <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: '1px solid var(--line)' }}>
-                <div className="eyebrow" style={{ marginBottom: 7 }}>Currently on this case</div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {onCaseNames.map((name, i) => <Chip key={i} tone="lo">{name}</Chip>)}
-                </div>
-              </div>
-            )}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-              <input type="text" placeholder="Search registered agencies..." value={dirSearch}
-                onChange={e => setDirSearch(e.target.value)}
-                style={{ flex: 1, padding: '7px 11px', borderRadius: 7, border: '1px solid var(--line)', background: 'var(--sand)', fontSize: 13, fontFamily: 'inherit', color: 'inherit' }} />
-              <select value={dirState} onChange={e => setDirState(e.target.value)}
-                style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--line)', background: 'var(--sand)', fontSize: 13, fontFamily: 'inherit', color: 'inherit', cursor: 'pointer' }}>
-                <option value="all">All states</option>
-                {ALL_STATES.map(function(s) { return <option key={s} value={s}>{s}</option>; })}
-              </select>
-            </div>
-            <div style={{ display: 'flex', gap: 4, marginBottom: 10, flexWrap: 'wrap' }}>
-              {['all', 'state', 'county', 'tribe', 'utility', 'federal'].map(t => (
-                <button key={t} className={'btn btn-xs ' + (dirType === t ? 'btn-primary' : 'btn-quiet')}
-                  onClick={() => setDirType(t)}>
-                  {t === 'all' ? 'All types' : TYPE_LABEL[t]}
-                </button>
-              ))}
-            </div>
-            <div className="microcopy" style={{ marginBottom: 6 }}>
-              {filteredDir.length} of {(M.AGENCY_DIRECTORY || []).length} agencies
-            </div>
-            <div style={{ flex: 1, overflowY: 'auto', display: 'grid', gap: 3 }}>
-              {filteredDir.map(agency => {
-                const already = isInvited(agency.key);
-                return (
-                  <div key={agency.key}
-                    style={{ display: 'flex', alignItems: 'center', padding: '7px 10px', borderRadius: 7, background: already ? 'var(--sand)' : undefined, gap: 10 }}>
-                    <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600, color: already ? 'var(--slate)' : 'inherit', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{agency.name}</span>
-                    <Chip tone={TYPE_TONE[agency.type] || 'slate'}>{TYPE_LABEL[agency.type] || agency.type}</Chip>
-                    {already
-                      ? <span style={{ fontSize: 12, color: 'var(--evergreen)', fontWeight: 700, flexShrink: 0, minWidth: 52, textAlign: 'right' }}>On case</span>
-                      : <button className="btn btn-primary btn-xs" style={{ flexShrink: 0 }} onClick={() => inviteFromDir(agency)}>Invite</button>}
-                  </div>
-                );
-              })}
-              {filteredDir.length === 0 && (
-                <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--slate)' }}>
-                  <div style={{ fontSize: 14 }}>No agencies match your search.</div>
-                  <div className="microcopy">Try the email option below for unregistered entities.</div>
-                </div>
-              )}
-            </div>
-            <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--line)', display: 'flex', gap: 8, alignItems: 'center' }}>
-              <input type="email" placeholder="Not listed? Invite by email..."
-                style={{ flex: 1, padding: '7px 11px', borderRadius: 7, border: '1px solid var(--line)', background: 'var(--sand)', fontSize: 13, fontFamily: 'inherit', color: 'inherit' }} />
-              <button className="btn btn-ghost btn-xs" onClick={() => notify('Invite email queued')}>Send</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {inviteModal}
       <a href={backHref} style={{ fontSize: 13, fontWeight: 650, textDecoration: 'none' }}>{backLabel}</a>
       {C.is_example && (
         <div style={{ marginTop: 14, marginBottom: 0, padding: '10px 16px', background: 'rgba(255,200,0,0.07)', border: '1.5px solid #F0C040', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -828,114 +1045,13 @@ function CaseFilePage({ id }) {
           </div>
         </div>
 
-        {/* conditions */}
-        <div style={{ flex: '2.2 1 460px', minWidth: 380 }}>
-          <h3 style={{ fontSize: 15, marginBottom: 9 }}>Conditions negotiation</h3>
-          <div className="card" style={{ overflow: 'auto' }}>
-            <table className="mtable">
-              <thead>
-                <tr>
-                  <th>Condition</th><th>Proposed by</th><th>Type</th><th>Status</th>
-                  {isLead && <th></th>}
-                </tr>
-              </thead>
-              <tbody>
-                {conditions.map((c, i) => (
-                  <tr key={c.id || i} style={{ background: c.pendingApproval ? 'rgba(180,95,29,0.05)' : undefined }}>
-                    <td style={{ fontWeight: 600, fontSize: 13.5, maxWidth: 300 }}>{c.text}</td>
-                    <td style={{ fontSize: 13 }}>{c.by}</td>
-                    <td><Chip tone="mist">{c.type}</Chip></td>
-                    <td>
-                      {c.pendingApproval
-                        ? <Chip tone="med">Pending lead approval</Chip>
-                        : isLead
-                          ? <select value={c.status} onChange={e => changeStatus(c.id, e.target.value)}
-                              style={{ fontSize: 12.5, padding: '3px 6px', borderRadius: 5, border: '1px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontFamily: 'inherit' }}>
-                              {['Proposed', 'Under review', 'Countered', 'Accepted', 'Impasse'].map(s => <option key={s}>{s}</option>)}
-                            </select>
-                          : <Chip tone={COND_TONE[c.status] || 'slate'}>{c.status}</Chip>}
-                    </td>
-                    {isLead && (
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        {c.pendingApproval && (
-                          <span style={{ display: 'inline-flex', gap: 5 }}>
-                            <button className="btn btn-primary btn-xs" onClick={() => approvePending(c.id)}>Approve</button>
-                            <button className="btn btn-quiet btn-xs" onClick={() => rejectPending(c.id)}>Reject</button>
-                          </span>
-                        )}
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {showForm && (
-            <div style={{ display: 'grid', gap: 8, marginTop: 10, padding: '12px 14px', background: 'var(--sand)', borderRadius: 8 }}>
-              <textarea placeholder="Describe the proposed condition..." value={draft.text} rows={3}
-                onChange={e => { const v = e.target.value; setDraft(d => Object.assign({}, d, { text: v })); }}
-                style={{ padding: '7px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 13, resize: 'vertical', fontFamily: 'inherit' }} />
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <select value={draft.type} onChange={e => { const v = e.target.value; setDraft(d => Object.assign({}, d, { type: v })); }}
-                  style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--paper)', color: 'inherit', fontSize: 13 }}>
-                  {COND_TYPES.map(t => <option key={t}>{t}</option>)}
-                </select>
-                <span className="microcopy">Proposed by: <b>{isCoParty ? (partyName || 'Co-party') : 'Dept. of Ecology'}</b></span>
-              </div>
-              <button className="btn btn-primary btn-sm" onClick={submitCondition}>
-                {isCoParty ? 'Submit to lead for review' : 'Add condition'}
-              </button>
-            </div>
-          )}
-          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-            {!readOnly && (
-              <button className="btn btn-primary btn-sm" onClick={() => setShowForm(s => !s)}>
-                {showForm ? 'Cancel' : 'Propose condition'}
-              </button>
-            )}
-            <button className="btn btn-quiet btn-sm" onClick={exportConditions}>Export conditions record</button>
-          </div>
-        </div>
+        {conditionsPanel}
 
         {/* right rail */}
         <div style={{ flex: '1 1 260px', minWidth: 250, display: 'grid', gap: 12 }}>
-          {(deadline != null || C.daysToRebuttal != null || isLead) && (
-            <div className="callout" style={{ padding: '14px 16px' }}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
-                <Icon name="clock" size={17} color="var(--basalt)" />
-                <b style={{ fontSize: 13, letterSpacing: '.06em', textTransform: 'uppercase' }}>Rebuttal clock</b>
-              </div>
-              {(deadline != null || C.daysToRebuttal != null) ? (
-                <React.Fragment>
-                  <div style={{ fontSize: 14 }}>Applicant response due in <span className="score-serif" style={{ fontSize: 22, color: 'var(--basalt)' }}>{deadline ? deadline.days : C.daysToRebuttal}</span> days</div>
-                  <div className="microcopy" style={{ marginTop: 3 }}>Cycle {deadline ? deadline.cycle : 2} of {deadline ? deadline.max_cycles : 3} · time-boxed by rule · applicant can see this</div>
-                </React.Fragment>
-              ) : (
-                <div className="microcopy">No deadline set.</div>
-              )}
-              {isLead && (
-                <div style={{ marginTop: 8 }}>
-                  <input type="date" onChange={e => e.target.value && setRebuttalDeadline(e.target.value)}
-                    style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--sand)', color: 'inherit', fontSize: 12, fontFamily: 'inherit' }} />
-                  <div className="microcopy" style={{ marginTop: 3 }}>Set or update deadline</div>
-                </div>
-              )}
-            </div>
-          )}
-          {coParties.length > 0 && (
-            <div className="panel" style={{ padding: '14px 16px' }}>
-              <b style={{ fontSize: 12, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--slate)' }}>Co-party tracker</b>
-              <div style={{ display: 'grid', gap: 7, marginTop: 9, fontSize: 13 }}>
-                {coParties.map(([p, s, tone]) => (
-                  <div key={p} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                    <Chip tone={tone} style={{ flexShrink: 0 }}>{p}</Chip>
-                    <span style={{ fontSize: 12.5, color: 'var(--slate)' }}>{s}</span>
-                  </div>
-                ))}
-              </div>
-              {C.id === '26-0142' && <p className="microcopy" style={{ margin: '9px 0 0' }}>Tribal governments are sovereign consultation parties, not stakeholders.</p>}
-            </div>
-          )}
+          {rebuttalClockPanel}
+          {coPartyTrackerPanel}
+          {nearbyPanel}
           <div className="card" style={{ padding: '14px 16px' }}>
             <b style={{ fontSize: 12, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--slate)' }}>Document chain</b>
             <div style={{ display: 'grid', gap: 6, marginTop: 9 }}>
@@ -968,39 +1084,7 @@ function CaseFilePage({ id }) {
             <button className="btn btn-quiet btn-xs" style={{ marginTop: 6, width: '100%' }} onClick={exportEvidentiary}>Export evidentiary record</button>
           </div>
 
-          {(isLead || C.is_example) && !isDemo && (
-            <div className="panel" style={{ padding: '14px 16px' }}>
-              <b style={{ fontSize: 12, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--slate)' }}>Mandated studies</b>
-              {caseStudies.length > 0 && (
-                <div style={{ display: 'grid', gap: 8, marginTop: 9 }}>
-                  {caseStudies.map(function(s) {
-                    var days = Math.round((new Date(s.due) - Date.now()) / 86400000);
-                    return (
-                      <div key={s.id}>
-                        <div style={{ fontSize: 13, fontWeight: 600 }}>{s.name}</div>
-                        <div className="microcopy" style={{ color: days < 30 ? '#C0392B' : 'var(--slate)' }}>{days} days to deadline</div>
-                        {s.body && <div className="microcopy" style={{ marginTop: 2, fontStyle: 'italic' }}>{s.body}</div>}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              {isLead && (mandateForm ? (
-                <div style={{ marginTop: 10, display: 'grid', gap: 7 }}>
-                  <select value={mandateTemplate} onChange={e => setMandateTemplate(e.target.value)}
-                    style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--sand)', color: 'inherit', fontSize: 12, fontFamily: 'inherit' }}>
-                    {MANDATE_TEMPLATES.map(t => <option key={t}>{t}</option>)}
-                  </select>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button className="btn btn-primary btn-xs" onClick={mandateStudy}>Mandate</button>
-                    <button className="btn btn-quiet btn-xs" onClick={() => setMandateForm(false)}>Cancel</button>
-                  </div>
-                </div>
-              ) : (
-                <button className="btn btn-quiet btn-xs" style={{ marginTop: caseStudies.length > 0 ? 10 : 9, width: '100%' }} onClick={() => setMandateForm(true)}>+ Mandate a study</button>
-              ))}
-            </div>
-          )}
+          {mandatedStudiesPanel}
         </div>
       </div>
     </div>

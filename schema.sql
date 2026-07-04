@@ -13,24 +13,30 @@ CREATE INDEX IF NOT EXISTS idx_session ON event_log(session_id);
 CREATE INDEX IF NOT EXISTS idx_fid     ON event_log(fid);
 CREATE INDEX IF NOT EXISTS idx_type    ON event_log(event_type);
 
+-- agency_key XOR invited_email: directory invites set agency_key,
+-- email invites (agencies not in the directory) set invited_email.
 CREATE TABLE IF NOT EXISTS case_invites (
-    id          SERIAL PRIMARY KEY,
-    case_id     TEXT NOT NULL,
-    agency_key  TEXT NOT NULL,
-    ts          TIMESTAMP DEFAULT NOW(),
+    id            SERIAL PRIMARY KEY,
+    case_id       TEXT NOT NULL,
+    agency_key    TEXT,
+    invited_email TEXT,
+    ts            TIMESTAMP DEFAULT NOW(),
     UNIQUE(case_id, agency_key)
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_case_invites_email
+    ON case_invites(case_id, invited_email) WHERE invited_email IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS case_conditions (
-    id                SERIAL PRIMARY KEY,
-    case_id           TEXT NOT NULL,
-    text              TEXT NOT NULL,
-    by                TEXT,
-    type              TEXT DEFAULT 'Water',
-    status            TEXT DEFAULT 'Proposed',
-    pending_approval  INTEGER DEFAULT 0,
-    submitted_by_role TEXT DEFAULT 'lead',
-    ts                TIMESTAMP DEFAULT NOW()
+    id                 SERIAL PRIMARY KEY,
+    case_id            TEXT NOT NULL,
+    text               TEXT NOT NULL,
+    by                 TEXT,
+    type               TEXT DEFAULT 'Water',
+    status             TEXT DEFAULT 'Proposed',
+    pending_approval   INTEGER DEFAULT 0,
+    submitted_by_role  TEXT DEFAULT 'lead',
+    submitted_by_email TEXT,
+    ts                 TIMESTAMP DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS case_docs (

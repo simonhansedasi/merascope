@@ -418,6 +418,15 @@ def init_db():
         # Must run AFTER the CREATE above so a fresh database doesn't fail here.
         db.execute("ALTER TABLE demo_cases ADD COLUMN IF NOT EXISTS weights_json TEXT")
 
+        # Email invites: co-parties without a directory agency_key are invited
+        # by email. agency_key becomes nullable; exactly one of the two is set.
+        db.execute("ALTER TABLE case_invites ADD COLUMN IF NOT EXISTS invited_email TEXT")
+        db.execute("ALTER TABLE case_invites ALTER COLUMN agency_key DROP NOT NULL")
+        db.execute('''CREATE UNIQUE INDEX IF NOT EXISTS idx_case_invites_email
+            ON case_invites(case_id, invited_email) WHERE invited_email IS NOT NULL''')
+        # Who proposed a condition — needed to notify them on approve/reject.
+        db.execute("ALTER TABLE case_conditions ADD COLUMN IF NOT EXISTS submitted_by_email TEXT")
+
 
 # ── event log ─────────────────────────────────────────────────────────────────
 
@@ -547,23 +556,46 @@ def get_invites(case_id):
         return err
     with get_db() as db:
         rows = db.execute(
-            'SELECT agency_key FROM case_invites WHERE case_id=? ORDER BY ts', (case_id,)
+            'SELECT agency_key, invited_email FROM case_invites WHERE case_id=? ORDER BY ts',
+            (case_id,)
         ).fetchall()
-    return jsonify([r['agency_key'] for r in rows])
+    return jsonify([r['agency_key'] or r['invited_email'] for r in rows])
 
 @app.route('/api/case/<case_id>/invite', methods=['POST'])
 def add_invite(case_id):
     err = _case_write_guard(case_id)
     if err:
         return err
-    data = request.get_json(silent=True) or {}
-    key  = (data.get('agency_key') or '').strip()
-    if not key:
-        return jsonify({'ok': False, 'err': 'agency_key required'}), 400
+    data  = request.get_json(silent=True) or {}
+    key   = (data.get('agency_key') or '').strip()
+    email = (data.get('email') or '').strip().lower()
+    if not key and not email:
+        return jsonify({'ok': False, 'err': 'agency_key or email required'}), 400
+    if not key and '@' not in email:
+        return jsonify({'ok': False, 'err': 'valid email required'}), 400
     with get_db() as db:
-        db.execute(
-            'INSERT INTO case_invites (case_id, agency_key) VALUES (?,?) ON CONFLICT DO NOTHING',
-            (case_id, key)
+        if key:
+            db.execute(
+                'INSERT INTO case_invites (case_id, agency_key) VALUES (?,?) ON CONFLICT DO NOTHING',
+                (case_id, key)
+            )
+        else:
+            dup = db.execute(
+                'SELECT 1 FROM case_invites WHERE case_id=? AND invited_email=?',
+                (case_id, email)
+            ).fetchone()
+            if not dup:
+                db.execute(
+                    'INSERT INTO case_invites (case_id, invited_email) VALUES (?,?)',
+                    (case_id, email)
+                )
+    if email and not key:
+        _send_notification(
+            email,
+            'You have been invited to a Merascope case',
+            'Your agency has been invited as a co-party on case {} in Merascope.\n\n'
+            'Sign in with this email address to participate:\n{}/#/login\n\n'
+            '-- Merascope'.format(case_id, APP_URL)
         )
     return jsonify({'ok': True})
 
@@ -627,17 +659,32 @@ def add_condition(case_id):
     if err:
         return err
     data = request.get_json(silent=True) or {}
+    user = _session_user()
     with get_db() as db:
         cur = db.execute(
             '''INSERT INTO case_conditions
-               (case_id, text, by, type, status, pending_approval, submitted_by_role)
-               VALUES (?,?,?,?,?,?,?) RETURNING id''',
+               (case_id, text, by, type, status, pending_approval, submitted_by_role,
+                submitted_by_email)
+               VALUES (?,?,?,?,?,?,?,?) RETURNING id''',
             (case_id, data.get('text', ''), data.get('by', ''), data.get('type', 'Water'),
              data.get('status', 'Proposed'), 1 if data.get('pending_approval') else 0,
-             data.get('submitted_by_role', 'lead'))
+             data.get('submitted_by_role', 'lead'),
+             user['email'] if user else None)
         )
         new_id = cur.lastrowid
     return jsonify({'ok': True, 'id': new_id})
+
+
+def _condition_submitter(db, case_id, cond_id):
+    # Only pending co-party proposals warrant an approve/decline notification;
+    # a lead editing or removing its own conditions should not email anyone.
+    row = db.execute(
+        '''SELECT submitted_by_email, text FROM case_conditions
+           WHERE id=? AND case_id=? AND pending_approval=1''',
+        (cond_id, case_id)
+    ).fetchone()
+    return (row['submitted_by_email'], row['text']) if row else (None, None)
+
 
 @app.route('/api/case/<case_id>/conditions/<int:cond_id>', methods=['PATCH'])
 def update_condition(case_id, cond_id):
@@ -645,8 +692,11 @@ def update_condition(case_id, cond_id):
     if err:
         return err
     data = request.get_json(silent=True) or {}
+    submitter = None
+    cond_text = None
     with get_db() as db:
         if data.get('approve'):
+            submitter, cond_text = _condition_submitter(db, case_id, cond_id)
             db.execute(
                 'UPDATE case_conditions SET pending_approval=0, status=? WHERE id=? AND case_id=?',
                 ('Proposed', cond_id, case_id)
@@ -656,6 +706,14 @@ def update_condition(case_id, cond_id):
                 'UPDATE case_conditions SET status=? WHERE id=? AND case_id=?',
                 (data['status'], cond_id, case_id)
             )
+    if submitter:
+        _send_notification(
+            submitter,
+            'Your proposed condition was approved — case {}'.format(case_id),
+            'The lead agency approved your proposed condition on case {}:\n\n'
+            '"{}"\n\nView the case: {}/#/co-party/case/{}\n\n'
+            '-- Merascope'.format(case_id, cond_text, APP_URL, case_id)
+        )
     return jsonify({'ok': True})
 
 @app.route('/api/case/<case_id>/conditions/<int:cond_id>', methods=['DELETE'])
@@ -664,7 +722,16 @@ def delete_condition(case_id, cond_id):
     if err:
         return err
     with get_db() as db:
+        submitter, cond_text = _condition_submitter(db, case_id, cond_id)
         db.execute('DELETE FROM case_conditions WHERE id=? AND case_id=?', (cond_id, case_id))
+    if submitter:
+        _send_notification(
+            submitter,
+            'Your proposed condition was declined — case {}'.format(case_id),
+            'The lead agency declined your proposed condition on case {}:\n\n'
+            '"{}"\n\nView the case: {}/#/co-party/case/{}\n\n'
+            '-- Merascope'.format(case_id, cond_text, APP_URL, case_id)
+        )
     return jsonify({'ok': True})
 
 
@@ -1103,6 +1170,18 @@ def confirm_case(case_id):
                ON CONFLICT (case_id) DO UPDATE SET stage=EXCLUDED.stage, ts=NOW()''',
             (case_id, 'Intake')
         )
+        row = db.execute(
+            'SELECT site, owner_email, contact_email FROM cases WHERE case_id=?', (case_id,)
+        ).fetchone()
+    if row:
+        _send_notification(
+            row['owner_email'] or row['contact_email'],
+            'Your site inquiry was received — case {}'.format(case_id),
+            'The lead agency confirmed your site inquiry for {} and opened a case file.\n\n'
+            'Agency tracking number: {}\n\n'
+            'Track your case: {}/#/builder/case/{}\n\n'
+            '-- Merascope'.format(row['site'] or case_id, tracking or 'pending', APP_URL, case_id)
+        )
     return jsonify({'ok': True, 'agency_tracking_id': tracking, 'confirmed_at': now})
 
 @app.route('/api/builder/case/<case_id>')
@@ -1186,7 +1265,8 @@ def _compute_anchor(db, case_id):
         (case_id,)
     ).fetchall()
     invites = db.execute(
-        'SELECT agency_key FROM case_invites WHERE case_id=? ORDER BY agency_key',
+        '''SELECT COALESCE(agency_key, invited_email) AS party
+           FROM case_invites WHERE case_id=? ORDER BY 1''',
         (case_id,)
     ).fetchall()
     payload = {
@@ -1204,7 +1284,7 @@ def _compute_anchor(db, case_id):
         'stage':      'Resolution',
         'conditions': [dict(r) for r in conditions],
         'rebuttals':  [{'text': r['text'], 'ts': str(r['ts'])} for r in rebuttals],
-        'co_parties': [r['agency_key'] for r in invites],
+        'co_parties': [r['party'] for r in invites],
     }
     canonical = json.dumps(payload, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
     hash_val  = hashlib.sha256(canonical.encode('utf-8')).hexdigest()
@@ -1250,6 +1330,18 @@ def set_stage(case_id):
                              payload_json=EXCLUDED.payload_json''',
                     (case_id, hash_val, anchored_at, canonical)
                 )
+        row = db.execute(
+            'SELECT site, owner_email, contact_email FROM cases WHERE case_id=?', (case_id,)
+        ).fetchone()
+    # Fixture/demo ids have no cases row — skip silently.
+    if row:
+        _send_notification(
+            row['owner_email'] or row['contact_email'],
+            'Case {} moved to {}'.format(case_id, stage),
+            'Your case for {} advanced to the "{}" stage.\n\n'
+            'Track your case: {}/#/builder/case/{}\n\n'
+            '-- Merascope'.format(row['site'] or case_id, stage, APP_URL, case_id)
+        )
     return jsonify({'ok': True})
 
 
@@ -1512,6 +1604,38 @@ def _send_magic_email(to_email, token):
         s.login(user, pw)
         s.sendmail(sender, [to_email], msg.as_string())
 
+
+# Event notifications (stage change, confirmation, invite, condition decision).
+# Explicit opt-in: prod sets NOTIFY_ENABLED=1 in /etc/merascope.env; dev and
+# tests never touch SMTP. Fire-and-forget — a mail failure must never fail or
+# slow the request that triggered it.
+NOTIFY_ENABLED = os.environ.get('NOTIFY_ENABLED') == '1'
+
+
+def _send_notification(to_email, subject, body):
+    if not NOTIFY_ENABLED or not to_email:
+        return
+
+    def _worker():
+        try:
+            host   = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
+            port   = int(os.environ.get('SMTP_PORT', '587'))
+            user   = os.environ.get('SMTP_USER', '')
+            pw     = os.environ.get('SMTP_PASS', '')
+            sender = os.environ.get('FROM_EMAIL', user)
+            msg = MIMEText(body, 'plain')
+            msg['Subject'] = subject
+            msg['From']    = 'Merascope <{}>'.format(sender)
+            msg['To']      = to_email
+            with smtplib.SMTP(host, port) as s:
+                s.ehlo()
+                s.starttls()
+                s.login(user, pw)
+                s.sendmail(sender, [to_email], msg.as_string())
+        except Exception as e:
+            print('notify error:', e)
+
+    threading.Thread(target=_worker, daemon=True).start()
 
 
 @app.route('/api/auth/request', methods=['POST'])

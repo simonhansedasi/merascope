@@ -49,7 +49,7 @@ function SheetH({ children }) {
   return <div style={{ fontSize: 11, letterSpacing: '.1em', textTransform: 'uppercase', fontWeight: 750, color: 'var(--slate)', borderBottom: '1px solid var(--line)', paddingBottom: 4, marginBottom: 9 }}>{children}</div>;
 }
 
-function FactSheetDynamic({ stateCode, onRawFeats }) {
+function FactSheetDynamic({ stateCode, onRawFeats, onGradeData }) {
   const [gradeData, setGradeData] = React.useState(null);
   const [rawFeats, setRawFeats] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
@@ -66,6 +66,7 @@ function FactSheetDynamic({ stateCode, onRawFeats }) {
           setGradeData(result);
           setRawFeats(feats);
           if (onRawFeats) onRawFeats(feats);
+          if (onGradeData) onGradeData(result);
           setLoading(false);
           return;
         }
@@ -189,6 +190,11 @@ function FactSheetDynamic({ stateCode, onRawFeats }) {
                 <div style={{ fontSize: 9.5, color: 'var(--slate)', marginTop: 5, lineHeight: 1.5 }}>
                   Precip: PRISM Climate Group 30-yr normals (1991-2020). Water table: USGS NWIS param 72019. K-sat: SSURGO chorizon thickness-weighted mean. Seismic: USGS ASCE 7-22 PGAm (Risk Cat II, Site Class C). Tx: OSM + EIA Form 860 distance to nearest HV line or substation.
                 </div>
+                {stateCode !== 'WA' && (medAquifer == null || !maxSeismic || medKsat == null) && (
+                  <div style={{ fontSize: 9.5, color: 'var(--slate)', marginTop: 4, fontStyle: 'italic' }}>
+                    Seismic PGA, water-table depth, and hydraulic-conductivity raw medians are currently published for Washington only; scored indicators cover all 48 states.
+                  </div>
+                )}
               </React.Fragment>
             );
           })()}
@@ -360,17 +366,193 @@ function DataSourcesPanel() {
   );
 }
 
+function _downloadCsv(filename, rows) {
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(rows.join('\n'));
+  a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+function _csvCell(v) {
+  return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+}
+
+/* ── All-state rankings — the journalist's leaderboard ── */
+
+function RankingsPage() {
+  const [data, setData] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [sort, setSort] = React.useState({ k: 'overall', dir: 1 });
+
+  React.useEffect(() => {
+    let attempts = 0;
+    function tryCompute() {
+      if (window.computeAllStateGrades) {
+        const result = window.computeAllStateGrades();
+        if (result) { setData(result); setLoading(false); return; }
+      }
+      if (attempts >= 20) { setLoading(false); return; }
+      attempts++;
+      setTimeout(tryCompute, 500);
+    }
+    (window.loadGridCache ? window.loadGridCache() : Promise.reject(new Error('no grid cache')))
+      .then(() => tryCompute())
+      .catch(() => { setLoading(false); });
+  }, []);
+
+  const gradeColor = window._gradeColor || function() { return 'var(--basalt)'; };
+
+  if (loading) return (
+    <div style={{ maxWidth: 980, margin: '0 auto', padding: '30px 24px 60px' }} data-screen-label="State rankings">
+      <PageHead eyebrow="State rankings" title="How the 48 states stack up" sub="Computing national rankings across all 48 states — takes a few seconds on first open." />
+      <div style={{ textAlign: 'center', padding: '60px 24px', color: 'var(--slate)' }}>Loading all-state grid data...</div>
+    </div>
+  );
+  if (!data) return (
+    <div style={{ maxWidth: 980, margin: '0 auto', padding: '30px 24px 60px' }} data-screen-label="State rankings">
+      <PageHead eyebrow="State rankings" title="How the 48 states stack up" sub="" />
+      <div style={{ textAlign: 'center', padding: '60px 24px', color: 'var(--slate)' }}>
+        Could not load grid data. <a href="#/explorer">Open the Explorer</a> first.
+      </div>
+    </div>
+  );
+
+  const catIdx = data.cats.indexOf(sort.k);
+  const rows = [...data.states].sort((a, b) => {
+    let va, vb;
+    if (sort.k === 'name') { va = a.name; vb = b.name; return sort.dir * (va < vb ? -1 : va > vb ? 1 : 0); }
+    if (sort.k === 'overall') { va = a.overall.rank; vb = b.overall.rank; }
+    else { va = a.cats[catIdx] ? a.cats[catIdx].rank : 0; vb = b.cats[catIdx] ? b.cats[catIdx].rank : 0; }
+    return sort.dir * (va - vb);
+  });
+  const top5 = data.states.slice(0, 5);
+  const bottom5 = data.states.slice(-5).reverse();
+
+  const exportCsv = () => {
+    const header = ['state', 'code', 'overall_grade', 'overall_rank'].concat(
+      data.cats.map(c => c.toLowerCase().replace(/[^a-z0-9]+/g, '_') + '_grade'),
+      data.cats.map(c => c.toLowerCase().replace(/[^a-z0-9]+/g, '_') + '_rank'));
+    const lines = [header.join(',')].concat(data.states.map(s =>
+      [s.name, s.code, s.overall.g, s.overall.rank + 1]
+        .concat(s.cats.map(c => c.g), s.cats.map(c => c.rank + 1))
+        .map(_csvCell).join(',')));
+    _downloadCsv('merascope_state_rankings.csv', lines);
+  };
+
+  const th = (k, label) => (
+    <th key={k} style={{ cursor: 'pointer', whiteSpace: 'nowrap' }}
+      onClick={() => setSort(s => ({ k, dir: s.k === k ? -s.dir : 1 }))}>
+      {label}{sort.k === k ? (sort.dir === 1 ? ' ↑' : ' ↓') : ''}
+    </th>
+  );
+
+  return (
+    <div style={{ maxWidth: 1080, margin: '0 auto', padding: '30px 24px 60px' }} data-screen-label="State rankings">
+      <PageHead eyebrow="State rankings — same methodology as every fact sheet"
+        title="How the 48 states stack up"
+        sub={'Overall and per-category national rankings across all ' + data.n + ' contiguous states. Equal category weighting; click any column to sort, any state for its fact sheet.'}
+        right={<button className="btn btn-ghost btn-sm" onClick={exportCsv}>Download CSV</button>} />
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14, marginBottom: 20 }}>
+        <div className="card" style={{ padding: '14px 18px', background: 'var(--mist)' }}>
+          <div className="eyebrow" style={{ marginBottom: 8 }}>Strongest siting posture</div>
+          {top5.map(s => (
+            <div key={s.code} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', fontSize: 13.5 }}>
+              <a href={'#/factsheets/' + s.code} style={{ fontWeight: 650, color: 'inherit' }}>{'#' + (s.overall.rank + 1) + ' ' + s.name}</a>
+              <span className="score-serif" style={{ color: gradeColor(s.overall.g) }}>{s.overall.g}</span>
+            </div>
+          ))}
+        </div>
+        <div className="card" style={{ padding: '14px 18px', background: 'var(--sand)' }}>
+          <div className="eyebrow" style={{ marginBottom: 8 }}>Most constrained</div>
+          {bottom5.map(s => (
+            <div key={s.code} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', fontSize: 13.5 }}>
+              <a href={'#/factsheets/' + s.code} style={{ fontWeight: 650, color: 'inherit' }}>{'#' + (s.overall.rank + 1) + ' ' + s.name}</a>
+              <span className="score-serif" style={{ color: gradeColor(s.overall.g) }}>{s.overall.g}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="card" style={{ overflow: 'auto' }}>
+        <table className="mtable" style={{ minWidth: 720 }}>
+          <thead>
+            <tr>
+              {th('name', 'State')}
+              {th('overall', 'Overall')}
+              {data.cats.map(c => th(c, c))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(s => (
+              <tr key={s.code}>
+                <td style={{ fontWeight: 650, whiteSpace: 'nowrap' }}>
+                  <a href={'#/factsheets/' + s.code} style={{ color: 'inherit' }}>{s.name}</a>
+                </td>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  <span className="score-serif" style={{ fontSize: 15, color: gradeColor(s.overall.g) }}>{s.overall.g}</span>
+                  <span className="microcopy" style={{ marginLeft: 6 }}>{'#' + (s.overall.rank + 1)}</span>
+                </td>
+                {s.cats.map(c => (
+                  <td key={c.k} style={{ whiteSpace: 'nowrap' }}>
+                    <span className="score-serif" style={{ color: gradeColor(c.g) }}>{c.g}</span>
+                    <span className="microcopy" style={{ marginLeft: 6 }}>{'#' + (c.rank + 1)}</span>
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="microcopy" style={{ marginTop: 10 }}>
+        Grades use equal category weighting over the same 22 normalized indicators shown on every fact sheet. Methodology is public; scores are identical for every party. Quote freely with attribution.
+      </p>
+    </div>
+  );
+}
+
 function FactSheetsPage({ which }) {
   const STATE_NAMES = window.STATE_NAMES || {};
   const initCode = which && which.length === 2 && STATE_NAMES[which.toUpperCase()] ? which.toUpperCase() : null;
   const [selectedState, setSelectedState] = React.useState(initCode);
   const [sheetFeats, setSheetFeats] = React.useState([]);
+  const [sheetGrades, setSheetGrades] = React.useState(null);
+  const [copied, setCopied] = React.useState(false);
+
+  if (which === 'rankings') return <RankingsPage />;
 
   function handleSelect(st) {
     setSelectedState(st || null);
     setSheetFeats([]);
+    setSheetGrades(null);
+    setCopied(false);
     location.hash = st ? '#/factsheets/' + st : '#/factsheets';
   }
+
+  const stateCodes = Object.keys(STATE_NAMES).sort();
+  const stateIdx = selectedState ? stateCodes.indexOf(selectedState) : -1;
+  const prevState = stateIdx > 0 ? stateCodes[stateIdx - 1] : null;
+  const nextState = stateIdx >= 0 && stateIdx < stateCodes.length - 1 ? stateCodes[stateIdx + 1] : null;
+
+  const copyPermalink = () => {
+    const url = location.origin + location.pathname + '#/factsheets/' + selectedState;
+    try {
+      navigator.clipboard.writeText(url).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      });
+    } catch (e) {}
+  };
+
+  const exportStateCsv = () => {
+    if (!sheetGrades) return;
+    const lines = [
+      ['category', 'grade', 'rank', 'of_n_states'].join(','),
+      ['Overall', sheetGrades.stateGrade, sheetGrades.overallRank + 1, sheetGrades.grades[0] ? sheetGrades.grades[0].n : 48].map(_csvCell).join(','),
+      ...sheetGrades.grades.map(g => [g.k, g.g, g.rank + 1, g.n].map(_csvCell).join(','))
+    ];
+    _downloadCsv('merascope_' + selectedState + '_grades.csv', lines);
+  };
 
   const stateName = selectedState ? (STATE_NAMES[selectedState] || selectedState) : null;
 
@@ -381,10 +563,27 @@ function FactSheetsPage({ which }) {
           title={stateName ? stateName + ' — data center siting posture' : 'State fact sheets'}
           sub="15-indicator profile, national rankings, physical measurements. Select a state to load its fact sheet."
           right={selectedState
-            ? <button className="btn btn-ghost btn-sm" onClick={() => window.print()}>Print / Save as PDF</button>
-            : null} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+            ? (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                <button className="btn btn-ghost btn-sm" onClick={copyPermalink}>{copied ? 'Copied!' : 'Copy link'}</button>
+                {sheetGrades && <button className="btn btn-ghost btn-sm" onClick={exportStateCsv}>Download CSV</button>}
+                <button className="btn btn-ghost btn-sm" onClick={() => window.print()}>Print / Save as PDF</button>
+              </div>
+            )
+            : <a className="btn btn-ghost btn-sm" href="#/factsheets/rankings">All-state rankings</a>} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+          {selectedState && (
+            <button className="btn btn-quiet btn-sm" disabled={!prevState}
+              onClick={() => prevState && handleSelect(prevState)}
+              title={prevState ? STATE_NAMES[prevState] : ''}>← {prevState || ''}</button>
+          )}
           <StateSelector selectedState={selectedState} onChange={handleSelect} />
+          {selectedState && (
+            <button className="btn btn-quiet btn-sm" disabled={!nextState}
+              onClick={() => nextState && handleSelect(nextState)}
+              title={nextState ? STATE_NAMES[nextState] : ''}>{nextState || ''} →</button>
+          )}
+          <a href="#/factsheets/rankings" style={{ fontSize: 13, fontWeight: 650 }}>All-state rankings →</a>
           {selectedState && (
             <span className="microcopy">Loading ranks all 48 states — takes a few seconds on first open.</span>
           )}
@@ -394,7 +593,7 @@ function FactSheetsPage({ which }) {
       </div>
       {selectedState ? (
         <div className="sheet-wrap" style={{ marginTop: 0 }}>
-          <FactSheetDynamic stateCode={selectedState} onRawFeats={setSheetFeats} />
+          <FactSheetDynamic stateCode={selectedState} onRawFeats={setSheetFeats} onGradeData={setSheetGrades} />
         </div>
       ) : (
         <div style={{ textAlign: 'center', padding: '80px 24px', color: 'var(--slate)', fontSize: 15 }}>
@@ -407,4 +606,4 @@ function FactSheetsPage({ which }) {
   );
 }
 
-Object.assign(window, { FactSheetsPage, QRPlaceholder });
+Object.assign(window, { FactSheetsPage, RankingsPage, QRPlaceholder });

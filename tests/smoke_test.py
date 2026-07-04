@@ -160,6 +160,19 @@ def run(page, base):
     check('Submit button appears after cell selected',
           page.locator('button:has-text("Submit site inquiry")').last.is_visible())
 
+    # ── 4b. Submit deep-link prefills the saved cell ──────────────────────
+    # Leave the case view entirely, then arrive via the deep link — a fresh
+    # mount must land on the submit tab with cell 42 already selected.
+    print('\n[4b. Submit deep-link]')
+    nav(page, '#/builder')
+    page.wait_for_timeout(400)
+    nav(page, '#/builder/case/?submit=42')
+    page.wait_for_timeout(900)
+    check('Deep-linked cell is pre-selected',
+          page.locator('text=Selected').count() > 0)
+    check('Step 2 visible without manual cell click',
+          page.locator('text=2. Confirm project details').count() > 0)
+
     # ── 5. Submit the inquiry ─────────────────────────────────────────────
     print('\n[5. Inquiry submission]')
     page.fill('input[placeholder="e.g. Cascade Summit Data LLC"]', 'Smoke Test Corp')
@@ -246,6 +259,8 @@ def run(page, base):
               page.locator('text=Advance stage').count() > 0)
         check('Stage buttons exist',
               page.locator('button:has-text("Move to")').count() > 0)
+        check('Permit justification report link present',
+              page.locator('a[href^="/report/"]').count() > 0)
 
     # ── 9. Builder lookup ─────────────────────────────────────────────────
     if case_id:

@@ -311,6 +311,17 @@ class TestListCases:
         ids2 = {c['case_id'] for c in d2['cases']}
         assert ids1.isdisjoint(ids2)
 
+    def test_coparty_sees_invited_cases_only(self, client):
+        # Contract for the co-party docket UI: /api/cases returns exactly the
+        # cases whose case_invites row matches the caller's agency_key.
+        case_a = post_json(client, '/api/builder/submit', FULL_INQUIRY).get_json()['case_id']
+        post_json(client, '/api/builder/submit', {**FULL_INQUIRY, 'site': 'Ridge 2'})
+        post_json(client, '/api/case/{}/invite'.format(case_a), {'agency_key': 'TESTCO2'})
+        client.delete_cookie('mera_sess')
+        login(client, email='cp@agency.gov', role='co-party', agency_key='TESTCO2')
+        d = client.get('/api/cases').get_json()
+        assert [c['case_id'] for c in d['cases']] == [case_a]
+
 
 # ---------------------------------------------------------------------------
 # Stage transitions  PATCH /api/case/<id>/stage
@@ -421,6 +432,172 @@ class TestInvites:
     def test_missing_key_returns_400(self, client):
         r = post_json(client, '/api/case/26-0001/invite', {})
         assert r.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Email invites  /api/case/<id>/invite with {email}
+# ---------------------------------------------------------------------------
+
+class TestEmailInvites:
+
+    def test_email_invite_ok_and_listed(self, client):
+        r = post_json(client, '/api/case/26-0001/invite', {'email': 'cp@example.gov'})
+        assert r.status_code == 200
+        assert client.get('/api/case/26-0001/invites').get_json() == ['cp@example.gov']
+
+    def test_email_is_normalized(self, client):
+        post_json(client, '/api/case/26-0001/invite', {'email': '  CP@Example.GOV '})
+        assert client.get('/api/case/26-0001/invites').get_json() == ['cp@example.gov']
+
+    def test_duplicate_email_invite_is_idempotent(self, client):
+        post_json(client, '/api/case/26-0001/invite', {'email': 'cp@example.gov'})
+        post_json(client, '/api/case/26-0001/invite', {'email': 'cp@example.gov'})
+        assert client.get('/api/case/26-0001/invites').get_json() == ['cp@example.gov']
+
+    def test_invalid_email_returns_400(self, client):
+        r = post_json(client, '/api/case/26-0001/invite', {'email': 'not-an-email'})
+        assert r.status_code == 400
+
+    def test_agency_and_email_invites_coexist(self, client):
+        post_json(client, '/api/case/26-0001/invite', {'agency_key': 'WW'})
+        post_json(client, '/api/case/26-0001/invite', {'email': 'cp@example.gov'})
+        assert sorted(client.get('/api/case/26-0001/invites').get_json()) == \
+            ['WW', 'cp@example.gov']
+
+    def test_email_invite_attempts_notification(self, client, monkeypatch):
+        sent = []
+        monkeypatch.setattr(srv, '_send_notification',
+                            lambda to, subj, body: sent.append((to, subj)))
+        post_json(client, '/api/case/26-0001/invite', {'email': 'cp@example.gov'})
+        assert len(sent) == 1
+        assert sent[0][0] == 'cp@example.gov'
+
+    def test_agency_invite_does_not_notify(self, client, monkeypatch):
+        sent = []
+        monkeypatch.setattr(srv, '_send_notification',
+                            lambda to, subj, body: sent.append(to))
+        post_json(client, '/api/case/26-0001/invite', {'agency_key': 'WW'})
+        assert sent == []
+
+    def test_email_invite_does_not_grant_other_coparty_access(self, client):
+        # A real case owned by a builder; an email invite for someone else
+        # must not open it to an unrelated co-party agency.
+        login(client, email='owner@example.com', role='builder')
+        case_id = post_json(client, '/api/builder/submit', FULL_INQUIRY).get_json()['case_id']
+        post_json(client, '/api/case/{}/invite'.format(case_id), {'email': 'cp@example.gov'})
+        client.delete_cookie('mera_sess')
+        login(client, email='other@agency.gov', role='co-party', agency_key='UNRELATED')
+        r = client.get('/api/case/{}/conditions'.format(case_id))
+        assert r.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Email notifications (all via monkeypatched recorder — no real SMTP)
+# ---------------------------------------------------------------------------
+
+class TestNotifications:
+
+    @pytest.fixture
+    def sent(self, monkeypatch):
+        rec = []
+        monkeypatch.setattr(srv, '_send_notification',
+                            lambda to, subj, body: rec.append({'to': to, 'subj': subj, 'body': body}))
+        return rec
+
+    def _submit_owned_case(self, client):
+        login(client, email='owner@example.com', role='builder')
+        case_id = post_json(client, '/api/builder/submit', FULL_INQUIRY).get_json()['case_id']
+        client.delete_cookie('mera_sess')
+        login(client, email='steward@agency.gov', role='steward', agency_key='KCDP')
+        return case_id
+
+    def test_stage_change_notifies_owner(self, client, sent):
+        case_id = self._submit_owned_case(client)
+        client.patch('/api/case/{}/stage'.format(case_id),
+                     data=json.dumps({'stage': 'Findings Exchange'}),
+                     content_type='application/json')
+        assert len(sent) == 1
+        assert sent[0]['to'] == 'owner@example.com'
+        assert 'Findings Exchange' in sent[0]['subj']
+
+    def test_stage_change_on_fixture_id_does_not_notify(self, client, sent):
+        login(client, email='steward@agency.gov', role='steward', agency_key='KCDP')
+        client.patch('/api/case/26-0142/stage',
+                     data=json.dumps({'stage': 'Findings Exchange'}),
+                     content_type='application/json')
+        assert sent == []
+
+    def test_confirm_notifies_owner_with_tracking(self, client, sent):
+        case_id = self._submit_owned_case(client)
+        client.patch('/api/builder/case/{}/confirm'.format(case_id),
+                     data=json.dumps({'agency_tracking_id': 'KC-2026-99'}),
+                     content_type='application/json')
+        assert len(sent) == 1
+        assert sent[0]['to'] == 'owner@example.com'
+        assert 'KC-2026-99' in sent[0]['body']
+
+    def test_condition_approve_notifies_submitter(self, client, sent):
+        case_id = self._submit_owned_case(client)
+        # co-party proposes a condition while authenticated
+        post_json(client, '/api/case/{}/invite'.format(case_id), {'agency_key': 'TESTCP'})
+        client.delete_cookie('mera_sess')
+        login(client, email='cp@agency.gov', role='co-party', agency_key='TESTCP')
+        r = post_json(client, '/api/case/{}/conditions'.format(case_id),
+                      {'text': 'Trucked water only', 'pending_approval': True,
+                       'submitted_by_role': 'co-party'})
+        cond_id = r.get_json()['id']
+        client.delete_cookie('mera_sess')
+        login(client, email='steward@agency.gov', role='steward', agency_key='KCDP')
+        client.patch('/api/case/{}/conditions/{}'.format(case_id, cond_id),
+                     data=json.dumps({'approve': True}),
+                     content_type='application/json')
+        assert len(sent) == 1
+        assert sent[0]['to'] == 'cp@agency.gov'
+        assert 'approved' in sent[0]['subj']
+
+    def test_condition_reject_notifies_submitter(self, client, sent):
+        case_id = self._submit_owned_case(client)
+        post_json(client, '/api/case/{}/invite'.format(case_id), {'agency_key': 'TESTCP'})
+        client.delete_cookie('mera_sess')
+        login(client, email='cp@agency.gov', role='co-party', agency_key='TESTCP')
+        r = post_json(client, '/api/case/{}/conditions'.format(case_id),
+                      {'text': 'Trucked water only', 'pending_approval': True,
+                       'submitted_by_role': 'co-party'})
+        cond_id = r.get_json()['id']
+        client.delete_cookie('mera_sess')
+        login(client, email='steward@agency.gov', role='steward', agency_key='KCDP')
+        client.delete('/api/case/{}/conditions/{}'.format(case_id, cond_id))
+        assert len(sent) == 1
+        assert sent[0]['to'] == 'cp@agency.gov'
+        assert 'declined' in sent[0]['subj']
+
+    def test_deleting_non_pending_condition_does_not_notify(self, client, sent):
+        case_id = self._submit_owned_case(client)
+        r = post_json(client, '/api/case/{}/conditions'.format(case_id),
+                      {'text': 'Lead condition', 'submitted_by_role': 'lead'})
+        cond_id = r.get_json()['id']
+        client.delete('/api/case/{}/conditions/{}'.format(case_id, cond_id))
+        assert sent == []
+
+    def test_submitted_by_email_persisted_when_authed(self, client):
+        case_id = self._submit_owned_case(client)
+        post_json(client, '/api/case/{}/conditions'.format(case_id),
+                  {'text': 'Steward condition'})
+        rows = client.get('/api/case/{}/conditions'.format(case_id)).get_json()
+        assert rows[0]['submitted_by_email'] == 'steward@agency.gov'
+
+    def test_submitted_by_email_null_when_anon(self, client):
+        post_json(client, '/api/case/26-0001/conditions', {'text': 'Anon condition'})
+        rows = client.get('/api/case/26-0001/conditions').get_json()
+        assert rows[0]['submitted_by_email'] is None
+
+    def test_send_notification_disabled_never_raises(self, monkeypatch):
+        # NOTIFY_ENABLED is False in tests; even with SMTP broken this must
+        # be a silent no-op.
+        def boom(*a, **k):
+            raise AssertionError('SMTP must not be touched')
+        monkeypatch.setattr(srv.smtplib, 'SMTP', boom)
+        srv._send_notification('a@b.c', 'subj', 'body')
 
 
 # ---------------------------------------------------------------------------
