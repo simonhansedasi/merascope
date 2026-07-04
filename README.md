@@ -230,7 +230,7 @@ APP_ENV=production
 MERA_ADMIN_KEY=<strong-random-value>
 ```
 
-`MERA_ADMIN_KEY` gates `/api/admin/log`. It falls back to `devonly` in code, so it **must** be set to a strong random value in production (`openssl rand -hex 32`) — do not leave it as a placeholder. Set it in exactly one place (the env file, not also inline in the unit) to avoid the two diverging.
+`MERA_ADMIN_KEY` gates `/api/admin/log`. As of 2026-07-04 the route **fails closed**: if the var is unset the endpoint is disabled entirely (no `devonly` fallback), and the key is compared with `secrets.compare_digest`. Set it to a strong random value in production (`openssl rand -hex 32`) to actually use the endpoint, in exactly one place (the env file, not also inline in the unit) to avoid the two diverging.
 
 Pre-seed the lead steward before the pilot:
 

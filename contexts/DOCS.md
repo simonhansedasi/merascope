@@ -527,11 +527,15 @@ Flask application backed by PostgreSQL. Serves the SPA (`index.html`, `merascope
 
 **`require_steward`** decorator — requires a valid steward session: returns 401 if no session cookie, 403 if authenticated but not a steward. (The former "no cookie → demo steward" backdoor was removed 2026-06-24.)
 
-**`_can_access_case(user, case_row)`** — row-level access logic:
-- `None` user (unauthenticated) → allow (demo access)
-- `steward` → allow
-- `co-party` → allow (co-party filtering happens at the SQL query level via `case_invites` JOIN)
-- `builder` → allow only if `case_row.owner_email == user.email` or `owner_email IS NULL`
+**`_can_access_case(user, case_row)`** — row-level read access for REAL case rows (demo/fixture ids are handled by the callers, e.g. the `is_demo` branch in `report_case`). Governs the three single-case read routes: `GET /api/builder/case/<id>`, `GET /api/case/<id>/anchor`, `GET /report/<id>`. **Hardened 2026-07-04** — previously granted `None` users and all co-parties unconditionally, which let anyone read any real case by its enumerable `YY-NNNN` id (full applicant PII) and let any co-party read non-invited cases. Now:
+- `None` user (unauthenticated) → **deny** (was allow — the bug)
+- `steward` / `admin` → allow
+- `co-party` → allow **only if their `agency_key` has a `case_invites` row for this `case_id`** (was a blanket allow; now a DB check, matching `_case_write_guard`)
+- `builder` → allow only if `case_row.owner_email == user.email` (the old `owner_email IS NULL` escape hatch was removed — `create_case` now always stamps an owner)
+
+Regression tests: `TestGetBuilderCase::test_anonymous_cannot_read_real_case`, `test_other_builder_cannot_read_case`, `test_uninvited_coparty_cannot_read_case`, `test_invited_coparty_can_read_case`.
+
+**`_can_access_case` vs `_case_write_guard`** — read and write authorization now agree; keep them in sync when changing either.
 
 **`_case_write_guard(case_id)`** (replaced `_check_case_access`, 2026-07-02) — the access guard used by every case read, write, and document route. Demo (`demo-*`) and unknown case ids stay open (the public demo needs it); a real case row requires the owner, a steward/admin, or an invited co-party. Returns an error `(response, status)` tuple to abort, or `None` to allow.
 
@@ -554,7 +558,7 @@ Flask application backed by PostgreSQL. Serves the SPA (`index.html`, `merascope
 | POST | `/api/log` | Write an event to `event_log`. Requires `event_type`; `session_id` and `fid` optional. |
 | GET | `/api/export/workspace` | CSV of all `save_cell` events (one row per unique `fid`). Includes composite scores, state rank, and all 22 national indicator columns. |
 | GET | `/api/export/status` | CSV of status changes, activity logs, contact events, notes. |
-| GET | `/api/admin/log` | Returns up to 500 raw event rows. Requires `?key=MERA_ADMIN_KEY`. |
+| GET | `/api/admin/log` | Returns up to 500 raw event rows. Requires `?key=MERA_ADMIN_KEY`. **Fails closed (2026-07-04):** if `MERA_ADMIN_KEY` is unset the route is disabled entirely (no `devonly` default); key compared with `secrets.compare_digest`. |
 
 #### Cases
 
