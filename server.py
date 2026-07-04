@@ -122,6 +122,15 @@ def _coerce(v):
     return v
 
 
+def _int_arg(v, default):
+    """Parse a query-string/JSON int, falling back to default instead of 500ing
+    on garbage input (e.g. ?limit=abc)."""
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
+
+
 def _row(row):
     return {k: _coerce(v) for k, v in row.items()} if row else None
 
@@ -166,17 +175,34 @@ def _session_user():
 
 
 def _can_access_case(user, case_row):
-    """Return True if user may read the given case row (dict with owner_email)."""
+    """Return True if user may read the given REAL case row (dict with case_id
+    and owner_email).
+
+    Demo/fixture cases are authorized by their callers (separate endpoints and
+    the is_demo branch), so this function governs real cases only: an
+    unauthenticated caller is never granted access here. Authorization mirrors
+    the write path in _case_write_guard so read and write agree."""
     if user is None:
-        return True  # unauthenticated demo access
+        return False
     role = user.get('role') or 'builder'
     if role in ('steward', 'admin'):
         return True
     if role == 'co-party':
-        return True  # filtered at query level
-    # builder
+        # Co-parties see only cases their agency was invited to — same check
+        # _case_write_guard enforces, not a blanket role pass.
+        agency_key = user.get('agency_key')
+        case_id    = (case_row or {}).get('case_id')
+        if not agency_key or not case_id:
+            return False
+        with get_db() as db:
+            inv = db.execute(
+                'SELECT 1 FROM case_invites WHERE case_id=? AND agency_key=?',
+                (case_id, agency_key)
+            ).fetchone()
+        return bool(inv)
+    # builder — only the owner of record
     owner = (case_row or {}).get('owner_email')
-    return owner is None or owner == user['email']
+    return owner is not None and owner == user['email']
 
 
 def _next_case_id(db):
@@ -532,8 +558,11 @@ def export_status():
 
 @app.route('/api/admin/log')
 def admin_log():
+    # Fail closed: with no MERA_ADMIN_KEY configured the endpoint is disabled
+    # entirely, rather than falling back to a guessable shared default.
+    admin_key = os.environ.get('MERA_ADMIN_KEY')
     key = request.args.get('key', '')
-    if key != os.environ.get('MERA_ADMIN_KEY', 'devonly'):
+    if not admin_key or not secrets.compare_digest(key, admin_key):
         return jsonify({'err': 'forbidden'}), 403
     sid   = request.args.get('session_id')
     etype = request.args.get('event_type')
@@ -629,13 +658,22 @@ def nearby_cases(case_id):
                  AND stage != 'Resolution' AND lead_agency = ?''',
             (case_id, origin['lead_agency'])
         ).fetchall()
+    # Only the fields the proximity map needs. The caller is authorized on the
+    # ORIGIN case, not on these neighbors, so never return applicant PII
+    # (contact_email, owner_email, notes) for cases they aren't party to.
     out = []
     for c in candidates:
         dist = _haversine_km(origin['lat'], origin['lon'], c['lat'], c['lon'])
         if dist <= radius_km:
-            entry = dict(c)
-            entry['distance_km'] = round(dist, 2)
-            out.append(entry)
+            out.append({
+                'case_id':     c['case_id'],
+                'site':        c['site'],
+                'lat':         c['lat'],
+                'lon':         c['lon'],
+                'stage':       c['stage'],
+                'lead_agency': c['lead_agency'],
+                'distance_km': round(dist, 2),
+            })
     out.sort(key=lambda r: r['distance_km'])
     return jsonify(out)
 
@@ -875,8 +913,8 @@ def set_deadline(case_id):
         return err
     data  = request.get_json(silent=True) or {}
     due   = data.get('due_date', '')
-    cycle = int(data.get('cycle', 1))
-    max_c = int(data.get('max_cycles', 3))
+    cycle = _int_arg(data.get('cycle'), 1)
+    max_c = _int_arg(data.get('max_cycles'), 3)
     with get_db() as db:
         db.execute(
             '''INSERT INTO case_meta (case_id, rebuttal_due_date, rebuttal_cycle, rebuttal_max)
@@ -896,8 +934,8 @@ def set_deadline(case_id):
 def list_cases():
     user   = _session_user()
     role   = (user or {}).get('role') or ('builder' if user else None)
-    limit  = min(int(request.args.get('limit', 50)), 200)
-    offset = max(int(request.args.get('offset', 0)), 0)
+    limit  = min(_int_arg(request.args.get('limit'), 50), 200)
+    offset = max(_int_arg(request.args.get('offset'), 0), 0)
     # Never expose the full case list to an unauthenticated caller.
     if not user:
         return jsonify({'cases': [], 'total': 0, 'limit': limit, 'offset': offset})
@@ -1045,11 +1083,18 @@ def create_case():
     score     = float(data.get('score', 0.5))
     if not site or not applicant:
         return jsonify({'ok': False, 'err': 'site and applicant required'}), 400
+    # Stamp the creating agency/owner so the case shows up in the steward's own
+    # list_cases and inbox (both scope by lead_agency); without this the row is
+    # invisible to everyone but admin.
+    user = _session_user() or {}
     with get_db() as db:
         case_id = _next_case_id(db)
         db.execute(
-            'INSERT INTO cases (case_id, site, applicant, score, stage) VALUES (?,?,?,?,?)',
-            (case_id, site, applicant, score, 'Site Inquiry')
+            '''INSERT INTO cases (case_id, site, applicant, score, stage,
+                                  lead_agency, owner_email)
+               VALUES (?,?,?,?,?,?,?)''',
+            (case_id, site, applicant, score, 'Site Inquiry',
+             user.get('agency_key'), user.get('email'))
         )
     return jsonify({'ok': True, 'case_id': case_id})
 

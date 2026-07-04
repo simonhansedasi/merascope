@@ -237,6 +237,40 @@ class TestGetBuilderCase:
         assert r.status_code == 404
         assert r.get_json()['ok'] is False
 
+    def test_anonymous_cannot_read_real_case(self, client):
+        # Regression: an unauthenticated visitor must not be able to pull a real
+        # case file by (enumerable) id. _can_access_case used to grant None.
+        case_id = post_json(client, '/api/builder/submit', FULL_INQUIRY).get_json()['case_id']
+        client.delete_cookie('mera_sess')
+        r = client.get('/api/builder/case/' + case_id)
+        assert r.status_code == 404
+        # And the anchor + report routes must refuse the same anonymous read.
+        assert client.get('/api/case/{}/anchor'.format(case_id)).status_code == 404
+        assert client.get('/report/' + case_id).status_code == 403
+
+    def test_other_builder_cannot_read_case(self, client):
+        case_id = post_json(client, '/api/builder/submit', FULL_INQUIRY).get_json()['case_id']
+        client.delete_cookie('mera_sess')
+        login(client, email='intruder@example.com', role='builder')
+        assert client.get('/api/builder/case/' + case_id).status_code == 404
+
+    def test_uninvited_coparty_cannot_read_case(self, client):
+        # Regression: co-party role used to be a blanket read pass. It must be
+        # scoped to invited cases, matching the write path.
+        case_id = post_json(client, '/api/builder/submit', FULL_INQUIRY).get_json()['case_id']
+        client.delete_cookie('mera_sess')
+        login(client, email='cp@agency.gov', role='co-party', agency_key='UNRELATED')
+        assert client.get('/api/builder/case/' + case_id).status_code == 404
+
+    def test_invited_coparty_can_read_case(self, client):
+        case_id = post_json(client, '/api/builder/submit', FULL_INQUIRY).get_json()['case_id']
+        post_json(client, '/api/case/{}/invite'.format(case_id), {'agency_key': 'INVITED'})
+        client.delete_cookie('mera_sess')
+        login(client, email='cp@agency.gov', role='co-party', agency_key='INVITED')
+        r = client.get('/api/builder/case/' + case_id)
+        assert r.status_code == 200
+        assert r.get_json()['case_id'] == case_id
+
 
 # ---------------------------------------------------------------------------
 # POST /api/cases  (steward manual create)
@@ -274,6 +308,17 @@ class TestCreateCase:
         login(client)
         r = post_json(client, '/api/cases', {'site': 'Alpha'})
         assert r.status_code == 400
+
+    def test_steward_sees_own_created_case(self, client):
+        # Regression: create_case used to leave lead_agency NULL, so the case
+        # was invisible in the creating steward's own list_cases (scoped by
+        # lead_agency) — only admin could see it.
+        login(client, email='steward@dper.gov', role='steward', agency_key='DPER')
+        case_id = post_json(
+            client, '/api/cases', {'site': 'Alpha', 'applicant': 'Corp'}
+        ).get_json()['case_id']
+        d = client.get('/api/cases').get_json()
+        assert case_id in {c['case_id'] for c in d['cases']}
 
 
 # ---------------------------------------------------------------------------
@@ -1715,3 +1760,14 @@ class TestNearbyCases:
         case_id = r.get_json()['case_id']
         d = _steward_get(client, '/api/case/' + case_id + '/nearby').get_json()
         assert d == []
+
+    def test_does_not_leak_neighbor_pii(self, client):
+        # Caller is authorized on the origin case, not on neighbors — the
+        # response must not expose applicant contact details of other cases.
+        origin = self._create_case(client, 'Origin', 47.5, -120.3)
+        self._create_case(client, 'Near', 47.51, -120.31)
+        d = _steward_get(client, '/api/case/' + origin + '/nearby').get_json()
+        assert d, 'expected a neighbor'
+        leaked = {'contact_email', 'owner_email', 'notes', 'contact_name'}
+        assert not (leaked & set(d[0].keys())), \
+            'nearby leaked PII fields: {}'.format(leaked & set(d[0].keys()))

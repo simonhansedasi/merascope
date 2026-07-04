@@ -181,13 +181,26 @@ Two normalization windows live:
   `.env`, `server.py`, `*.db`, `*.pdf`, `schema.sql`, and docs from being
   downloadable. Anything sensitive must never carry an allowlisted extension.
 - **Case endpoints are ownership-guarded.** `_case_write_guard()` protects every
-  case read, write, and document endpoint: `demo-*` ids and ids with no row in
-  `cases` stay open (the public demo depends on this), but a real case requires
-  the owner, a steward/admin, or an invited co-party. `create_case` is
-  steward/admin-only, and `/api/cases` never returns the full list to an
-  anonymous caller.
+  case write and document endpoint; the single-case *read* endpoints
+  (`/api/builder/case/<id>`, `/api/case/<id>/anchor`, `/report/<id>`) enforce
+  the matching check via `_can_access_case()`. `demo-*` ids and ids with no row
+  in `cases` stay open (the public demo depends on this), but a real case
+  requires an authenticated owner, a steward/admin, or a co-party **invited to
+  that specific case** — an anonymous caller and an uninvited co-party are both
+  refused (fixed 2026-07-04; read and write authorization now agree). Case ids
+  are sequential and enumerable, so this per-id check is what protects applicant
+  PII. `create_case` is steward/admin-only and stamps `lead_agency`/`owner_email`
+  so the case is visible in the creating steward's own docket; `/api/cases`
+  never returns the full list to an anonymous caller.
+- **`/api/case/<id>/nearby`** authorizes on the origin case, so it returns only
+  map fields (`case_id`, `site`, `lat/lon`, `stage`, `lead_agency`) for
+  neighbors — never their applicant contact PII.
+- **`/api/admin/log` fails closed** — disabled entirely unless `MERA_ADMIN_KEY`
+  is set (no guessable default), compared with `secrets.compare_digest`.
 - **Rate limiting** keys on the real client IP (`CF-Connecting-IP` /
-  `X-Forwarded-For`), not the proxy address.
+  `X-Forwarded-For`), not the proxy address. Note: the limiter is in-process, so
+  it is per-gunicorn-worker (effective limit ≈ `3 × workers`) and resets on
+  redeploy — a speed bump, not a hard control.
 - **`init_db()` is fresh-DB safe** — tables are created before they are altered,
   so a clean database (e.g. a migration target) initializes without error.
 
