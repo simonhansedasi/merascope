@@ -560,6 +560,12 @@ Regression tests: `TestGetBuilderCase::test_anonymous_cannot_read_real_case`, `t
 | GET | `/api/export/status` | CSV of status changes, activity logs, contact events, notes. |
 | GET | `/api/admin/log` | Returns up to 500 raw event rows. Requires `?key=MERA_ADMIN_KEY`. **Fails closed (2026-07-04):** if `MERA_ADMIN_KEY` is unset the route is disabled entirely (no `devonly` default); key compared with `secrets.compare_digest`. |
 
+#### Lead Capture
+
+| Method | Route | Description |
+|---|---|---|
+| POST | `/api/lead` | Pricing-page inquiry (added 2026-07-06). Body: `{email (required), name, org, note, workspace, tier, session_id}` — all optional fields length-capped server-side. Stores into the `leads` table and notifies `LEAD_NOTIFY_EMAIL` (fallback `FROM_EMAIL`/`SMTP_USER`) via `_send_notification()` when `NOTIFY_ENABLED=1`. Rate-limited 5 / 15 min per IP with its own limiter store. Frontend: `LeadModal` in `misc.jsx` — all six sales-touch pricing CTAs open it; the Builder Individual tier links to `#/login` instead. |
+
 #### Cases
 
 | Method | Route | Description |

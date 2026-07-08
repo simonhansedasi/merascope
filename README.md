@@ -131,7 +131,9 @@ Kanban docket across all stages. Case file: versioned findings, conditions negot
 
 **Inbox badge (added 2026-07-03):** the steward sub-nav shows an urgent-count pill (overdue + new inquiries) on the Inbox tab, fetched once per steward page mount with a 60-second module-level cache.
 
-**Email notifications (added 2026-07-03):** `_send_notification()` in `server.py` — plain-text, fire-and-forget daemon thread reusing the magic-link SMTP env vars. Sent on: stage change and case confirmation (→ case owner/contact), email invite (→ invitee), and co-party condition approve/reject (→ the proposer, via the new `case_conditions.submitted_by_email` column). **Opt-in: emails only send when `NOTIFY_ENABLED=1` is set** (add to `/etc/merascope.env` on Hetzner); dev and CI never touch SMTP. A mail failure never fails or blocks the triggering request.
+**Email notifications (added 2026-07-03):** `_send_notification()` in `server.py` — plain-text, fire-and-forget daemon thread reusing the magic-link SMTP env vars. Sent on: stage change and case confirmation (→ case owner/contact), email invite (→ invitee), co-party condition approve/reject (→ the proposer, via the new `case_conditions.submitted_by_email` column), and pricing-page lead submission (→ `LEAD_NOTIFY_EMAIL`, falling back to `FROM_EMAIL`/`SMTP_USER`). **Opt-in: emails only send when `NOTIFY_ENABLED=1` is set** (add to `/etc/merascope.env` on Hetzner); dev and CI never touch SMTP. A mail failure never fails or blocks the triggering request.
+
+**Pricing-page lead capture (added 2026-07-06):** every CTA on `#/pricing` is now live. The self-serve Builder Individual tier links to `#/login` (magic-link signup); the six sales-touch CTAs (Group trial, Enterprise, all Steward tiers, performance participation) open a contact modal that POSTs `{email, name, org, note, workspace, tier, session_id}` to `POST /api/lead`. Leads land in the `leads` table (created in `init_db()`), fields are length-capped server-side, the route is rate-limited at 5 / 15 min per IP (own limiter store, separate from magic links), and a notification email fires via `_send_notification()`. Regression tests in `TestLeads` (`tests/test_server.py`).
 
 **Evidence record** (`#/evidence?case=:id`): per-finding cards with score, citation, source, formula. Each card shows whether an independent study has been mandated (green badge + days-to-deadline). Stewards can commission a study directly from the evidence record — study is linked to the specific indicator via the `finding` DB column and appears immediately. Non-stewards see a read-only card. Builders rebut findings; stewards commission independent review.
 
@@ -208,7 +210,8 @@ Two normalization windows live:
   is set (no guessable default), compared with `secrets.compare_digest`.
 - **Rate limiting** keys on the real client IP (`CF-Connecting-IP` /
   `X-Forwarded-For`), not the proxy address. Magic-link requests are capped at
-  3 / 15 min; `/api/log` telemetry at 600 / min per IP. Note: the limiter is
+  3 / 15 min; `/api/log` telemetry at 600 / min per IP; `/api/lead` at
+  5 / 15 min. Note: the limiter is
   in-process, so it is per-gunicorn-worker and resets on redeploy — a speed bump,
   not a hard control.
 - **`init_db()` is fresh-DB safe** — tables are created before they are altered,
@@ -239,6 +242,7 @@ FROM_EMAIL=noreply@merascope.com
 APP_URL=https://merascope.com
 APP_ENV=production
 MERA_ADMIN_KEY=<strong-random-value>
+LEAD_NOTIFY_EMAIL=<inbox-for-pricing-inquiries>   # optional; falls back to FROM_EMAIL
 ```
 
 `MERA_ADMIN_KEY` gates `/api/admin/log`. As of 2026-07-04 the route **fails closed**: if the var is unset the endpoint is disabled entirely (no `devonly` fallback), and the key is compared with `secrets.compare_digest`. Set it to a strong random value in production (`openssl rand -hex 32`) to actually use the endpoint, in exactly one place (the env file, not also inline in the unit) to avoid the two diverging.

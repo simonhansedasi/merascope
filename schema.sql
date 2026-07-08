@@ -136,3 +136,16 @@ CREATE TABLE IF NOT EXISTS user_roles (
     agency_key TEXT,
     PRIMARY KEY (email, role)
 );
+
+-- Pricing-page lead capture (POST /api/lead, added 2026-07-06)
+CREATE TABLE IF NOT EXISTS leads (
+    id         SERIAL PRIMARY KEY,
+    email      TEXT NOT NULL,
+    name       TEXT,
+    org        TEXT,
+    workspace  TEXT,
+    tier       TEXT,
+    note       TEXT,
+    session_id TEXT,
+    ts         TIMESTAMP DEFAULT NOW()
+);

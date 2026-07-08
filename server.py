@@ -71,6 +71,26 @@ def _check_log_rate(ip):
     return True
 
 
+# Lead capture (/api/lead) limiter: a real prospect submits once or twice; a
+# flood would fill the leads table and spam the notification inbox. Separate
+# store so lead submits never consume the magic-link budget.
+_lead_rl_lock   = threading.Lock()
+_lead_rl_store  = {}
+_LEAD_RL_WINDOW = 900
+_LEAD_RL_LIMIT  = 5
+
+
+def _check_lead_rate(ip):
+    now = time.time()
+    with _lead_rl_lock:
+        hits = [t for t in _lead_rl_store.get(ip, []) if now - t < _LEAD_RL_WINDOW]
+        if len(hits) >= _LEAD_RL_LIMIT:
+            return False
+        hits.append(now)
+        _lead_rl_store[ip] = hits
+    return True
+
+
 ROOT     = os.path.dirname(os.path.abspath(__file__))
 DOCS_DIR = os.path.join(ROOT, 'data', 'docs')
 
@@ -372,6 +392,18 @@ def init_db():
             ts      TIMESTAMP DEFAULT NOW()
         )''')
 
+        db.execute('''CREATE TABLE IF NOT EXISTS leads (
+            id         SERIAL PRIMARY KEY,
+            email      TEXT NOT NULL,
+            name       TEXT,
+            org        TEXT,
+            workspace  TEXT,
+            tier       TEXT,
+            note       TEXT,
+            session_id TEXT,
+            ts         TIMESTAMP DEFAULT NOW()
+        )''')
+
         db.execute('''CREATE TABLE IF NOT EXISTS crm_state (
             session_id TEXT NOT NULL DEFAULT '',
             fid        TEXT NOT NULL,
@@ -508,6 +540,52 @@ def log_event():
             'INSERT INTO event_log (session_id, fid, event_type, payload) VALUES (?,?,?,?)',
             (sid, fid, etype, json.dumps(data.get('payload', {})))
         )
+    return jsonify({'ok': True})
+
+
+# ── lead capture ──────────────────────────────────────────────────────────────
+# Pricing-page CTAs post here. Stored in the leads table; a notification email
+# goes to LEAD_NOTIFY_EMAIL (falls back to FROM_EMAIL / SMTP_USER) when
+# NOTIFY_ENABLED=1, via the same fire-and-forget worker as case notifications.
+
+@app.route('/api/lead', methods=['POST'])
+def lead_submit():
+    if not _check_lead_rate(_client_ip()):
+        return jsonify({'ok': False, 'err': 'Too many requests. Try again later.'}), 429
+    data  = request.get_json(silent=True) or {}
+    email = (data.get('email') or '').strip().lower()
+    if not email or '@' not in email or len(email) > 254:
+        return jsonify({'ok': False, 'err': 'valid email required'}), 400
+
+    def _field(key, cap):
+        return str(data.get(key) or '').strip()[:cap]
+
+    name      = _field('name', 120)
+    org       = _field('org', 200)
+    workspace = _field('workspace', 40)
+    tier      = _field('tier', 80)
+    note      = _field('note', 2000)
+    sid       = _field('session_id', 64)
+    with get_db() as db:
+        db.execute(
+            'INSERT INTO leads (email, name, org, workspace, tier, note, session_id) '
+            'VALUES (?,?,?,?,?,?,?)',
+            (email, name, org, workspace, tier, note, sid)
+        )
+    to = os.environ.get('LEAD_NOTIFY_EMAIL',
+                        os.environ.get('FROM_EMAIL', os.environ.get('SMTP_USER', '')))
+    label = ' / '.join([p for p in (workspace, tier) if p]) or 'general'
+    _send_notification(
+        to,
+        'Merascope lead — {} ({})'.format(label, email),
+        'New pricing-page inquiry\n\n'
+        'Email:     {}\n'
+        'Name:      {}\n'
+        'Org:       {}\n'
+        'Workspace: {}\n'
+        'Tier:      {}\n\n'
+        '{}'.format(email, name or '-', org or '-', workspace or '-', tier or '-', note)
+    )
     return jsonify({'ok': True})
 
 

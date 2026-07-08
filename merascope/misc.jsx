@@ -1,7 +1,7 @@
 /* ── Pricing, Login, Methodology ── */
 
 /* ── pricing: two workspaces, each with its own schematic ── */
-function TierRow({ name, price, per, blurb, cta, kind }) {
+function TierRow({ name, price, per, blurb, cta, kind, href, onCta }) {
   return (
     <div style={{ display: 'flex', gap: 14, alignItems: 'center', padding: '13px 0', borderBottom: '1px solid var(--line-soft)' }}>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -12,12 +12,79 @@ function TierRow({ name, price, per, blurb, cta, kind }) {
         <span className="score-serif" style={{ fontSize: 21 }}>{price}</span>
         <span style={{ color: 'var(--slate)', fontSize: 12.5 }}>{per}</span>
       </div>
-      <button className={'btn btn-sm ' + kind}>{cta}</button>
+      {href
+        ? <a className={'btn btn-sm ' + kind} href={href}>{cta}</a>
+        : <button className={'btn btn-sm ' + kind} onClick={onCta}>{cta}</button>}
+    </div>
+  );
+}
+
+/* Sales-touch CTAs post to /api/lead; the modal carries which tier was clicked. */
+function LeadModal({ lead, onClose }) {
+  const [form, setForm] = React.useState({ name: '', email: '', org: '', note: '' });
+  const [sent, setSent] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [err, setErr] = React.useState(null);
+  const set = function(k) { return function(e) { var v = e.target.value; setForm(function(f) { return Object.assign({}, f, { [k]: v }); }); }; };
+  const submit = function(e) {
+    e.preventDefault();
+    setErr(null);
+    setLoading(true);
+    fetch('/api/lead', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: form.email, name: form.name, org: form.org, note: form.note,
+        workspace: lead.workspace, tier: lead.tier,
+        session_id: window.MERA_SESSION || ''
+      })
+    })
+      .then(function(r) { return r.json(); })
+      .then(function(d) { if (d.ok) { setSent(true); } else { setErr(d.err || 'Something went wrong.'); } })
+      .catch(function() { setErr('Network error — please try again.'); })
+      .finally(function() { setLoading(false); });
+  };
+  const inputStyle = { padding: '9px 12px', borderRadius: 7, border: '1px solid var(--line)', background: 'var(--sand)', color: 'var(--ink)', fontSize: 13.5, fontFamily: 'inherit', width: '100%' };
+  return (
+    <div onClick={onClose}
+      style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 800, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div onClick={function(e) { e.stopPropagation(); }}
+        style={{ background: 'var(--mist)', borderRadius: 12, padding: '22px 24px', width: 440, maxWidth: '100%', boxShadow: '0 8px 40px rgba(0,0,0,0.5)', border: '1px solid var(--line)' }}>
+        {sent ? (
+          <div>
+            <b style={{ fontSize: 16 }}>Thanks — we got it.</b>
+            <p style={{ fontSize: 13.5, color: 'var(--slate)', margin: '8px 0 0', lineHeight: 1.6 }}>
+              We'll reply to <b>{form.email}</b> within one business day about <b>{lead.tier}</b>.
+              Meanwhile, the <a href="#/explorer" onClick={onClose}>Public Explorer</a> is open — same scores as every tier.
+            </p>
+            <button className="btn btn-quiet btn-sm" style={{ marginTop: 14 }} onClick={onClose}>Close</button>
+          </div>
+        ) : (
+          <form onSubmit={submit}>
+            <b style={{ fontSize: 16 }}>{lead.cta} — {lead.tier}</b>
+            <p className="microcopy" style={{ margin: '4px 0 0' }}>{lead.workspace === 'steward' ? 'Steward console' : 'Builder workspace'} · we reply within one business day.</p>
+            <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
+              <input placeholder="Name" value={form.name} onChange={set('name')} style={inputStyle} />
+              <input placeholder="Work email" type="email" required value={form.email} onChange={set('email')} style={inputStyle} />
+              <input placeholder="Organization / agency" value={form.org} onChange={set('org')} style={inputStyle} />
+              <textarea placeholder="What are you evaluating? Timeline, geography, seats — whatever helps us scope."
+                rows={3} value={form.note} onChange={set('note')} style={Object.assign({}, inputStyle, { resize: 'vertical' })} />
+              {err && <div style={{ background: 'var(--hi-bg)', color: 'var(--hi-tx)', fontSize: 13, borderRadius: 7, padding: '8px 12px' }}>{err}</div>}
+              <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+                <button className="btn btn-primary btn-sm" type="submit" disabled={loading}>{loading ? 'Sending...' : 'Send'}</button>
+                <button className="btn btn-quiet btn-sm" type="button" onClick={onClose}>Cancel</button>
+              </div>
+            </div>
+          </form>
+        )}
+      </div>
     </div>
   );
 }
 
 function PricingPage() {
+  const [lead, setLead] = React.useState(null);
+  const ask = function(workspace, tier, cta) { return function() { setLead({ workspace: workspace, tier: tier, cta: cta }); }; };
   return (
     <div style={{ maxWidth: 1080, margin: '0 auto', padding: '36px 24px 60px' }} data-screen-label="Pricing">
       <PageHead eyebrow="Pricing" title="Two workspaces. One engine."
@@ -33,11 +100,11 @@ function PricingPage() {
             </div>
           </div>
           <div style={{ padding: '6px 22px 18px', flex: 1 }}>
-            <TierRow name="Individual" price="$149" per="/mo" cta="Start now" kind="btn-quiet"
+            <TierRow name="Individual" price="$149" per="/mo" cta="Start now" kind="btn-quiet" href="#/login"
               blurb="Full indicator set · grid resolution · exports · shareable weights" />
-            <TierRow name="Group" price="from $24k" per="/yr" cta="Start trial" kind="btn-primary"
+            <TierRow name="Group" price="from $24k" per="/yr" cta="Start trial" kind="btn-primary" onCta={ask('builder', 'Group', 'Start trial')}
               blurb="Seats & workspaces · ZCTA + parcel layers · API · watchlists · Site Lab · portfolio screening" />
-            <TierRow name="Enterprise" price="Custom" per="" cta="Talk to us" kind="btn-quiet"
+            <TierRow name="Enterprise" price="Custom" per="" cta="Talk to us" kind="btn-quiet" onCta={ask('builder', 'Enterprise', 'Talk to us')}
               blurb="SSO · dossier credits · field-survey marketplace · named account manager" />
             <p className="microcopy" style={{ margin: '12px 0 0' }}>Site dossiers $25–75k · field surveys proctored & tracked with chain-of-custody.</p>
           </div>
@@ -52,11 +119,11 @@ function PricingPage() {
             </div>
           </div>
           <div style={{ padding: '6px 22px 18px', flex: 1 }}>
-            <TierRow name="County / single office" price="from $12k" per="/yr" cta="Talk to us" kind="btn-quiet"
+            <TierRow name="County / single office" price="from $12k" per="/yr" cta="Talk to us" kind="btn-quiet" onCta={ask('steward', 'County / single office', 'Talk to us')}
               blurb="Docket lite · report cards · fact sheets · hearing exhibits" />
-            <TierRow name="State agency" price="from $60k" per="/yr" cta="Talk to us" kind="btn-primary"
+            <TierRow name="State agency" price="from $60k" per="/yr" cta="Talk to us" kind="btn-primary" onCta={ask('steward', 'State agency', 'Talk to us')}
               blurb="Full Docket · impasse register · litigation exports · Entra ID SSO · all geographies" />
-            <TierRow name="Mandated studies" price="$75–400k" per="" cta="Scope it" kind="btn-quiet"
+            <TierRow name="Mandated studies" price="$75–400k" per="" cta="Scope it" kind="btn-quiet" onCta={ask('steward', 'Mandated studies', 'Scope it')}
               blurb="Study workbench · statutory deadline tracking · expert bench testimony" />
             <p className="microcopy" style={{ margin: '12px 0 0' }}>Procurement-friendly contracting · sovereign consultation support built in.</p>
           </div>
@@ -78,11 +145,12 @@ function PricingPage() {
           <b style={{ fontSize: 14 }}>Performance participation</b>
           <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--slate)', maxWidth: 640 }}>Success-linked structures for placed sites — compensation indexed to long-run site truth, which enforces the firewall from the inside.</p>
         </div>
-        <button className="btn btn-quiet btn-sm">Talk to us</button>
+        <button className="btn btn-quiet btn-sm" onClick={ask('builder', 'Performance participation', 'Talk to us')}>Talk to us</button>
       </div>
       <p className="microcopy" style={{ textAlign: 'center', marginTop: 22 }}>
         ◈ Every tier sees the same scores. Paid tiers buy resolution and workflow, never outcomes.
       </p>
+      {lead && <LeadModal lead={lead} onClose={function() { setLead(null); }} />}
     </div>
   );
 }

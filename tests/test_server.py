@@ -30,7 +30,7 @@ _TABLES = [
     'case_meta', 'cases', 'case_stage_overrides', 'case_impasse_routes',
     'study_checks', 'case_rebuttals', 'crm_state',
     'steward_zones', 'steward_templates',
-    'case_anchors', 'demo_cases',
+    'case_anchors', 'demo_cases', 'leads',
 ]
 
 def _pg_available():
@@ -682,6 +682,65 @@ class TestEventLog:
     def test_missing_event_type_returns_400(self, client):
         r = post_json(client, '/api/log', {'fid': 42})
         assert r.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# POST /api/lead — pricing-page lead capture
+# ---------------------------------------------------------------------------
+
+class TestLeads:
+
+    @pytest.fixture(autouse=True)
+    def _reset_lead_rl(self):
+        """The lead limiter store is process-global; clear it so tests don't
+        trip each other's per-IP budget."""
+        with srv._lead_rl_lock:
+            srv._lead_rl_store.clear()
+        yield
+
+    def test_lead_stored(self, client):
+        r = post_json(client, '/api/lead', {
+            'email': 'Buyer@Agency.GOV', 'name': 'Pat Doe', 'org': 'OPCD',
+            'workspace': 'steward', 'tier': 'County / single office',
+            'note': 'Evaluating for a moratorium study.', 'session_id': 'sess-1',
+        })
+        assert r.status_code == 200
+        assert r.get_json()['ok'] is True
+        with srv.get_db() as db:
+            row = db.execute('SELECT * FROM leads').fetchone()
+        assert row['email'] == 'buyer@agency.gov'
+        assert row['org'] == 'OPCD'
+        assert row['tier'] == 'County / single office'
+        assert row['session_id'] == 'sess-1'
+
+    def test_missing_email_returns_400(self, client):
+        assert post_json(client, '/api/lead', {'name': 'No Email'}).status_code == 400
+
+    def test_invalid_email_returns_400(self, client):
+        assert post_json(client, '/api/lead', {'email': 'not-an-email'}).status_code == 400
+
+    def test_long_fields_are_capped(self, client):
+        r = post_json(client, '/api/lead', {'email': 'a@b.co', 'note': 'x' * 5000, 'org': 'y' * 999})
+        assert r.status_code == 200
+        with srv.get_db() as db:
+            row = db.execute('SELECT * FROM leads').fetchone()
+        assert len(row['note']) == 2000
+        assert len(row['org']) == 200
+
+    def test_rate_limited_after_five(self, client):
+        for _ in range(5):
+            assert post_json(client, '/api/lead', {'email': 'a@b.co'}).status_code == 200
+        assert post_json(client, '/api/lead', {'email': 'a@b.co'}).status_code == 429
+
+    def test_notification_recipient_and_subject(self, client, monkeypatch):
+        sent = {}
+        monkeypatch.setattr(srv, '_send_notification',
+                            lambda to, subject, body: sent.update(to=to, subject=subject, body=body))
+        monkeypatch.setenv('LEAD_NOTIFY_EMAIL', 'simon@merascope.com')
+        post_json(client, '/api/lead', {'email': 'buyer@agency.gov', 'workspace': 'steward', 'tier': 'State agency'})
+        assert sent['to'] == 'simon@merascope.com'
+        assert 'buyer@agency.gov' in sent['subject']
+        assert 'State agency' in sent['subject']
 
 
 # ---------------------------------------------------------------------------
