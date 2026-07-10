@@ -1,7 +1,16 @@
 #!/usr/bin/env python3
 """
-Build data/shared/transmission_national.geojson from per-state raw files.
-Filters to >= 115kV, rounds coords to 3 decimal places (~100m precision).
+build_transmission_national.py — Merge each state's raw transmission.geojson
+(from 01_basemap.py's OSM fetch) into one small national file for
+map.jsx/data.js to render without per-state downloads.
+
+NOTE: despite this docstring historically saying ">= 115kV" / "3 decimal
+places", the code below actually filters to >= 345000 V (line/bulk
+transmission tier, not the 115kV sub-transmission tier) and rounds to 2
+decimal places (~1km precision, not ~100m) — see parse_v()'s 345000 cutoff
+and round_coords()'s `, 2)` below. If this needs to match the docstring's
+original intent, change the threshold/precision here, not the comment.
+
 Run on VPS: /usr/bin/python3 -u scripts/build_transmission_national.py
 """
 import json
@@ -16,6 +25,10 @@ STATES = [
 DATA_DIR = Path(__file__).parent.parent / "data"
 
 def parse_v(raw):
+    # OSM voltage tags can be multi-valued for shared-corridor lines (e.g.
+    # "115000;230000"); this takes only the first value, which is not
+    # guaranteed to be the highest — a line tagged "115000;345000" would be
+    # excluded below even though it carries a qualifying 345kV circuit.
     try:
         return int(str(raw).split(";")[0].replace(",", "").strip())
     except Exception:

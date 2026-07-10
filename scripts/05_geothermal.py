@@ -71,6 +71,11 @@ def load_heatflow(abbr, bbox, raw):
     return pd.DataFrame(columns=["q", "lat", "lon"])
 
 
+# Same IDW pattern as 03_risk.py's idw_k (see comment there) — duplicated, not
+# imported. This copy adds a k==1 branch: when a sparse state has fewer than 8
+# boreholes, cKDTree.query with k=1 returns 1-D dists/idxs instead of the usual
+# (n, k) shape, so the (weights * src_vals[idxs]).sum(axis=1) below would break
+# without reshaping to (n, 1) first.
 def idw_k(src_pts, src_vals, tgt_pts, k=8, power=2):
     k = min(k, len(src_pts))
     tree = cKDTree(src_pts)

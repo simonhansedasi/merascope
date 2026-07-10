@@ -9,6 +9,11 @@ full polygons) as the geometry base, re-joining scores from the current
 (clipped) grid_scores.geojson. ZCTAs that were dropped by the clip get
 scores filled from their nearest surviving neighbor.
 
+Run after patch_clip_zcta.py, before patch_simplify_zcta.py (that script's
+docstring enforces this ordering). Net effect of the clip->restore pair: state
+boundary clipping only ever affected scoring/geometry validity transiently: end
+state keeps original full ZCTA polygons with clipped-run scores merged back in.
+
 Usage:
   python3 scripts/patch_restore_zcta_geom.py
   python3 scripts/patch_restore_zcta_geom.py --states WA OR TX

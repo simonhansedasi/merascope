@@ -186,7 +186,10 @@ def main():
 
     grid["water_stress_raw"] = np.round(raw_arr, 4)
 
-    # Normalize: invert so lower stress = higher score
+    # Normalize: invert so lower stress = higher score. Unlike most other
+    # indicators (which cap at a p95 percentile), this is a per-state min-max
+    # stretch — water_stress_score is NOT comparable across states until
+    # normalize_national.py recomputes it from water_stress_raw nationally.
     min_s = raw_arr.min()
     max_s = raw_arr.max()
     if max_s > min_s:

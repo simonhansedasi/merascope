@@ -1,5 +1,15 @@
 /* ── Merascope landing page ── */
+// Public marketing/homepage, rendered at route '/' by app.jsx. No auth required.
+// Framed around "reproducible evidence for infrastructure siting" (permitting,
+// not just GIS mapping) — see CONTEXT.md "Homepage framing overhaul". Composed of
+// a hero section, a schematic of the scoring pipeline (EngineVisual), the
+// dual-path "Builder vs Steward" doors, a stat band, a 3-step explainer, and a
+// couple of teaser sections that link into the Explorer and pricing pages.
 
+// Static schematic showing "public sources -> 23 indicators -> composite score"
+// as three connected panels. All numbers here (SOURCES, INDS, composite) are
+// illustrative/hardcoded for the visual, not live data — this is marketing copy,
+// not a real computation.
 function EngineVisual() {
   const M = window.MERA;
 
@@ -85,6 +95,9 @@ function EngineVisual() {
   );
 }
 
+// Reusable "door" card for the dual-path section below — one instance for the
+// Steward pitch, one for the Builder pitch. Purely presentational: icon, heading,
+// body copy, a bullet list, and a CTA button linking into the gated surface.
 function Door({ icon, h3, body, bullets, cta, ctaHref, micro }) {
   return (
     <div className="card" style={{ padding: '26px 28px', display: 'flex', flexDirection: 'column', gap: 13 }}>
@@ -108,11 +121,14 @@ function Door({ icon, h3, body, bullets, cta, ctaHref, micro }) {
   );
 }
 
+// Top-level page component for '/'. Purely presentational — no data fetching,
+// no auth-aware branching. Section comments below mark each scroll section.
 function LandingPage() {
   const M = window.MERA;
   return (
     <div data-screen-label="Landing">
-      {/* HERO */}
+      {/* HERO — headline, subhead, primary CTAs into the free Explorer and the
+          methodology page, plus the EngineVisual schematic. */}
       <section style={{ padding: '72px 24px 52px' }}>
         <div style={{ maxWidth: 1060, margin: '0 auto' }}>
           <div style={{ textAlign: 'center', maxWidth: 660, margin: '0 auto 44px' }}>
@@ -135,7 +151,9 @@ function LandingPage() {
         </div>
       </section>
 
-      {/* DUAL-PATH — two equal doors */}
+      {/* DUAL-PATH — two equal doors (Steward "review/approve" vs Builder "site/build"),
+          each linking to its gated console, joined visually by a connector SVG and
+          the "Same Score Promise" callout emphasizing both doors share one engine. */}
       <section style={{ padding: '30px 24px 0', maxWidth: 980, margin: '0 auto' }}>
         <div className="dual-doors" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 22 }}>
           <Door icon="gavel" h3="I review and approve projects"
@@ -246,4 +264,6 @@ function LandingPage() {
   );
 }
 
+// Expose LandingPage on window so app.jsx's router (which has no module/import
+// system — this is a no-build-step, plain-<script>-tag Babel setup) can reference it.
 Object.assign(window, { LandingPage });

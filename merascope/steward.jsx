@@ -1,12 +1,46 @@
 /* ── Surface C: Steward console — "The Docket" ── */
 
+/*
+ * steward.jsx — the core Steward-facing module: the case docket, the full
+ * case-file record, and the conditions-negotiation workflow that runs inside
+ * a case file. This is the largest and most central of the four steward.*
+ * files, and the other three build on top of what's defined here:
+ *   - steward-inbox.jsx reuses CaseCard and _shapeDynamic from this file to
+ *     render a triage view over the same case data.
+ *   - steward2.jsx (impasse register, litigation tracker, mandated studies)
+ *     and steward-templates.jsx (weight templates/zone gating) are separate
+ *     concerns that a steward navigates to via StewardSubNav, defined here.
+ * A case moves through the stages listed in M.STAGES (Site Inquiry -> Intake
+ * -> Analysis -> Findings Exchange -> Negotiation -> Rebuttal Cycle ->
+ * Mediation -> Resolution); DocketPage shows the whole caseload as a kanban
+ * board across those stages, and CaseFilePage is the drill-down record for
+ * one case, including the conditions each party proposes/approves/appeals
+ * during Negotiation. Cases here come in two flavors depending on whether
+ * they're server-persisted rows (real cases, "_dynamic: true") or hardcoded
+ * fixture/demo cases (M.CASES / M.CASE_DETAIL_MAP in data.js, including the
+ * showcase EXAMPLE case demo-EX-0001) — most components below branch on that
+ * distinction to decide whether to hit the API or read from static data.
+ */
+
 /* Inbox urgent-count cache — one fetch per steward page mount, 60s TTL */
+// Module-level (not React state) so it survives across every steward page's
+// mount/unmount as the user navigates the tabs in StewardSubNav — without this,
+// switching from Docket to Templates and back would re-fetch the inbox count
+// every time just to show a badge number. ts is a Date.now() timestamp; a
+// fetch is only issued if more than 60s have elapsed since the last one.
 var _inboxCountCache = { n: null, ts: 0 };
 
+// Tab bar shown at the top of every steward page (Docket, Inbox, Impasse
+// register, etc.) — renders the active tab highlighted and, for the Inbox
+// tab specifically, a small red badge showing how many cases need urgent
+// attention (overdue + brand-new inquiries), sourced from the same
+// /api/steward/inbox endpoint InboxPage itself uses.
 function StewardSubNav({ active }) {
   const tabs = [['inbox', 'Inbox', '#/steward/inbox'], ['docket', 'Docket', '#/steward'], ['bulk-import', 'Bulk import', '#/steward/bulk-import'], ['templates', 'Weight templates', '#/steward/templates'], ['impasse', 'Impasse register', '#/steward/impasse'], ['litigation', 'Litigation tracker', '#/steward/litigation'], ['studies', 'Mandated studies', '#/steward/studies']];
   const [inboxCount, setInboxCount] = React.useState(_inboxCountCache.n);
   React.useEffect(function() {
+    // Cache hit: reuse the value from the last fetch (by any steward page)
+    // instead of hitting the network again.
     if (Date.now() - _inboxCountCache.ts < 60000) { setInboxCount(_inboxCountCache.n); return; }
     fetch('/api/steward/inbox')
       .then(function(r) { return r.ok ? r.json() : null; })
@@ -31,6 +65,9 @@ function StewardSubNav({ active }) {
   );
 }
 
+// Small overlapping circular "avatar" chips, one per party abbreviation (e.g.
+// lead agency, co-parties, builder) shown on a CaseCard so a steward can see
+// at a glance who's involved without opening the case.
 function PartyAvatars({ parties }) {
   const M = window.MERA;
   return (
@@ -42,9 +79,20 @@ function PartyAvatars({ parties }) {
   );
 }
 
+// A single case's kanban card — used by DocketPage (the full board) and
+// steward-inbox.jsx's InboxBucket (the triage view). Takes a pre-shaped `k`
+// object (see _shapeDynamic below for the dynamic-case version; fixture cases
+// in data.js are already in this shape) rather than a raw case row, so this
+// component doesn't need to know whether the underlying case is a real
+// server row or a hardcoded demo/fixture.
 function CaseCard({ k }) {
   const M = window.MERA;
   const { ramp } = React.useContext(MeraCtx);
+  // Only cases with a full record available are clickable: either a fixture
+  // case with an entry in CASE_DETAIL_MAP, or any dynamic (server-backed)
+  // case, which always has a full record by definition. Non-openable cards
+  // are demo placeholders — e.g. background "extra" cases shown for visual
+  // density on the docket that don't correspond to a real record.
   const hasDetail = !!(M.CASE_DETAIL_MAP && M.CASE_DETAIL_MAP[k.id]);
   const openable = hasDetail || !!k._dynamic;
   return (
@@ -71,12 +119,25 @@ function CaseCard({ k }) {
   );
 }
 
+// Page size for the paginated /api/cases fetch — DocketPage's "Load more"
+// button requests another DOCKET_LIMIT rows starting at the current offset.
 var DOCKET_LIMIT = 50;
 
+// Converts one raw case row from the server (/api/cases, /api/demo/cases) into
+// the flat shape CaseCard expects. Real case field names (case_id) get
+// remapped to the fixture-case field names (id) so CaseCard can treat dynamic
+// and fixture cases identically; parties/resolution aren't returned by the
+// list endpoint so they're stubbed empty/null here (only the full case-file
+// fetch in CaseFilePage has that detail). steward-inbox.jsx wraps this
+// function directly for its own row shaping.
 function _shapeDynamic(c) {
   return { id: c.case_id, site: c.site, applicant: c.applicant, score: c.score, stage: c.stage || 'Site Inquiry', dot: '#888', days: c.days || 0, parties: [], resolution: null, _dynamic: true };
 }
 
+// Resolves the signed-in steward's agency_key (e.g. "wa_ecy") to its
+// human-readable name via M.AGENCY_DIRECTORY, for display in headers/labels.
+// Falls back to the raw key if the agency isn't found in the directory, and
+// to a generic "Lead Agency" if there's no authenticated user at all (demo mode).
 function _agencyLabel(authUser) {
   const M = window.MERA;
   if (!authUser || !authUser.agency_key) return 'Lead Agency';
@@ -84,6 +145,13 @@ function _agencyLabel(authUser) {
   return entry ? entry.name : authUser.agency_key;
 }
 
+// The Docket — a kanban board of every case the signed-in steward's agency is
+// the lead on, grouped by stage. Handles three overlapping data sources: (1)
+// hardcoded EXAMPLE fixture cases from data.js (always shown unless the user
+// dismisses them via hideExample), (2) hardcoded demo cases (shown only when
+// there's no authenticated user), and (3) real server-persisted cases fetched
+// from /api/cases with pagination. This is the landing page for the Steward
+// persona, routed at #/steward.
 function DocketPage() {
   const M = window.MERA;
   const { authUser, demoActive, readOnly } = React.useContext(AuthCtx);
@@ -96,6 +164,10 @@ function DocketPage() {
   const [stageOverrides, setStageOverrides] = React.useState({});
   const [hideExample, setHideExample] = React.useState(function() { try { return !!localStorage.getItem('mera_hide_example'); } catch(e) { return false; } });
 
+  // Fetches one page of real (server-persisted) cases. `append` distinguishes
+  // the initial load (replace dynamicCases entirely) from "Load more" clicks
+  // (append onto the existing list) — both share this one function so the
+  // shaping/total-tracking logic isn't duplicated.
   var fetchCases = function(offset, append) {
     return fetch('/api/cases?limit=' + DOCKET_LIMIT + '&offset=' + offset)
       .then(function(r) { return r.json(); })
@@ -108,6 +180,10 @@ function DocketPage() {
   };
 
   React.useEffect(function() {
+    // Demo mode (unauthenticated visitor clicking through a live demo, scoped
+    // by a random browser session id) has its own endpoint and its own case
+    // set entirely — skip the normal paginated fetch and stage-override fetch
+    // below, since demo cases aren't part of any real agency's docket.
     if (demoActive) {
       fetch('/api/demo/cases?session=' + (window.MERA_SESSION || ''))
         .then(function(r) { return r.ok ? r.json() : null; })
@@ -119,6 +195,12 @@ function DocketPage() {
       return;
     }
     fetchCases(0, false);
+    // The hardcoded fixture cases in M.CASES ship with a fixed `stage` value,
+    // but some of them (e.g. the EXAMPLE case) can actually be advanced by a
+    // user clicking through the demo, with the real current stage tracked
+    // server-side. This fetches the live stage for every fixture case with a
+    // full detail record and stores overrides so the docket reflects reality
+    // instead of the static default.
     var detailIds = Object.keys(M.CASE_DETAIL_MAP || {});
     Promise.all(detailIds.map(function(cid) {
       return fetch('/api/case/' + cid + '/stage').then(function(r) { return r.json(); }).then(function(s) { return [cid, s]; });
@@ -134,6 +216,9 @@ function DocketPage() {
     fetchCases(dynamicCases.length, true).finally(function() { setLoadingMore(false); });
   };
 
+  // Creates a brand-new case via POST, then optimistically appends the new
+  // card to dynamicCases locally (rather than re-fetching the whole page)
+  // so it shows up in the board immediately.
   var createCase = function() {
     if (!newDraft.site.trim() || !newDraft.applicant.trim()) return;
     fetch('/api/cases', {
@@ -151,6 +236,14 @@ function DocketPage() {
     });
   };
 
+  // The board's full case list is a merge of three sources: the EXAMPLE
+  // showcase case(s) (hideable via the "hide example" toggle, persisted to
+  // localStorage), other hardcoded demo cases (only shown to anonymous
+  // visitors — once a real steward is signed in, `authUser` is set and these
+  // are dropped since they'd be confusing clutter on a real agency's board),
+  // and the real dynamicCases fetched from the server. Both fixture arrays
+  // apply any live stageOverrides fetched above so an advanced EXAMPLE case
+  // shows its true current stage rather than its static default.
   const exampleCases = hideExample ? [] : (M.CASES || []).filter(function(c) { return c.is_example; }).map(function(c) { return stageOverrides[c.id] ? Object.assign({}, c, { stage: stageOverrides[c.id] }) : c; });
   const demoCases = authUser ? [] : (M.CASES || []).filter(function(c) { return !c.is_example; }).map(function(c) { return stageOverrides[c.id] ? Object.assign({}, c, { stage: stageOverrides[c.id] }) : c; });
   const allCases = [...exampleCases, ...demoCases, ...dynamicCases];
@@ -232,6 +325,11 @@ function DocketPage() {
 }
 
 /* ── full case file ── */
+// Horizontal progress dots across the top of a case file showing every stage
+// in M.STAGES, with the current stage highlighted, completed stages in
+// evergreen, and future stages muted. If onStageClick is passed (lead
+// steward only — see advanceStage below), clicking a dot jumps the case
+// directly to that stage rather than only advancing one step at a time.
 function StageStepper({ current, onStageClick }) {
   const M = window.MERA;
   const idx = M.STAGES.indexOf(current);
@@ -251,24 +349,56 @@ function StageStepper({ current, onStageClick }) {
   );
 }
 
+// Chip color ("tone") per condition status, used wherever a condition's
+// status badge is rendered. 'hi' (high/alert) for Impasse deliberately stands
+// out — those are the conditions that need routing to steward2.jsx's
+// ImpassePage.
 const COND_TONE = { 'Accepted': 'lo', 'Under review': 'med', 'Countered': 'med', 'Proposed': 'slate', 'Impasse': 'hi' };
+// Fixed taxonomy of condition categories a party can attach to a proposed
+// condition (water rights, grid capacity, community benefit, etc.) — purely a
+// UI classification, not tied to the scoring indicators.
 const COND_TYPES = ['Water', 'Grid', 'Community', 'Environmental', 'Heat reuse', 'Economic'];
 
+// The full case-file record for one case — by far the largest component in
+// the app. Renders differently depending on `isDynamic` (see below): a real,
+// server-persisted case fetches its data live and supports the full
+// negotiation workflow (propose/approve/counter conditions, invite co-parties,
+// upload docs, advance stages, mandate studies, export evidentiary record); a
+// static fixture/demo case (including the EXAMPLE case) reads from the
+// hardcoded M.CASE_DETAIL_MAP and simulates most of the same interactions
+// client-side without hitting real endpoints. Routed at #/steward/case/:id
+// (and reused, read-only, for builder/co-party views of the same case).
 function CaseFilePage({ id }) {
   const M = window.MERA;
+  // isDynamic is true whenever `id` does NOT have a hardcoded fixture entry —
+  // i.e. it's a real case created through the app rather than one of the
+  // static demo/EXAMPLE records baked into data.js. This is the master
+  // switch nearly every branch below keys off. Note this is distinct from
+  // `isDemo` (declared further down): isDemo specifically flags the
+  // EXAMPLE showcase case among the *static* ones, whereas isDynamic
+  // separates static fixtures from real server data altogether.
   const isDynamic = !(M.CASE_DETAIL_MAP && M.CASE_DETAIL_MAP[id]);
   const C = isDynamic ? M.CASE_DETAIL : M.CASE_DETAIL_MAP[id];
   const { ramp } = React.useContext(MeraCtx);
   const { role, partyKey, authUser, readOnly } = React.useContext(AuthCtx);
+  // Permission flags used throughout the render to gate which controls show:
+  // only a signed-in lead steward (not a read-only admin view) gets full
+  // write access; a co-party can propose but not unilaterally decide.
   const isLead = role === 'steward' && !readOnly;
   const isCoParty = role === 'co-party';
 
+  // Resolves a co-party's display name from their partyKey (e.g. "wa_doe")
+  // via the demo co-party directory, for display in headers/attributions.
   const partyName = (() => {
     if (!isCoParty || !partyKey) return null;
     const found = (window.DEMO_CO_PARTIES || []).find(p => p.key === partyKey);
     return found ? found.name : partyKey;
   })();
 
+  // Seed conditions state from the static fixture ONLY for demo-prefixed
+  // static cases (e.g. the EXAMPLE case) that ship with pre-populated
+  // conditions — other static/dynamic cases start empty and get their real
+  // conditions from the server fetch in the useEffect below.
   const [conditions, setConditions] = React.useState(function() { return (C && !isDynamic && (id || '').startsWith('demo-') && C.conditions) ? C.conditions : []; });
   const [showForm, setShowForm] = React.useState(false);
   const [draft, setDraft] = React.useState({ text: '', type: 'Water' });
@@ -294,6 +424,10 @@ function CaseFilePage({ id }) {
   const [mandateTemplate, setMandateTemplate] = React.useState('Water-availability assessment');
   const MANDATE_TEMPLATES = ['Moratorium impact study — NY-style', 'Application review scorecard', 'Water-availability assessment', 'Rate-impact memorandum'];
 
+  // Builder-side action (despite living in this steward file — this component
+  // is shared/reused for the builder's read view of their own case) that
+  // confirms a Site Inquiry with an agency tracking id, which is what moves
+  // the case from Site Inquiry into Intake.
   var handleConfirm = function() {
     setConfirming(true);
     fetch('/api/builder/case/' + id + '/confirm', {
@@ -317,11 +451,17 @@ function CaseFilePage({ id }) {
       .finally(function() { setConfirming(false); });
   };
 
+  // Shared toast-message setter used by nearly every handler below to give
+  // the user feedback after an async action completes (e.g. "Stage updated",
+  // "Document uploaded").
   const notify = msg => { setToast(msg); };
 
   const refreshDocs = () =>
     fetch('/api/case/' + id + '/docs').then(r => r.json()).then(setServerDocs);
 
+  // Uploads a single file (from the hidden file input, see fileInputRef) as
+  // multipart form data, then re-fetches the doc list so the new upload shows
+  // up immediately.
   const uploadDoc = e => {
     const file = e.target.files[0];
     if (!file) return;
@@ -333,6 +473,12 @@ function CaseFilePage({ id }) {
     e.target.value = '';
   };
 
+  // Sets (or updates) the deadline for the current rebuttal cycle. Caps at 3
+  // cycles max (hardcoded here, mirrored server-side) — cycle number is
+  // preserved from the existing deadline record if one is already set, since
+  // this can be called again just to change the due date without starting a
+  // new cycle. Re-fetches the deadline afterward rather than trusting the
+  // POST's own response, to pick up any server-side normalization.
   const setRebuttalDeadline = due => {
     fetch('/api/case/' + id + '/deadline', {
       method: 'POST',
@@ -343,6 +489,17 @@ function CaseFilePage({ id }) {
     );
   };
 
+  // Lead-steward-only control (see isLead) that moves the case to a new
+  // stage — either the next stage in sequence, or any stage directly via
+  // StageStepper's clickable dots. `isDemo` here (declared later in this
+  // function body via `const`, before any handler can actually be invoked by
+  // a real click — see the note on isDynamic above; this is the same
+  // pattern CLAUDE.md flags as a past bug source, so treat this ordering as
+  // load-bearing, not incidental) picks a demo-scoped endpoint that doesn't
+  // require auth, versus the real per-case endpoint. On reaching Resolution
+  // for a dynamic case, re-fetches the full case record — that's when the
+  // server computes and stores the record's cryptographic anchor hash, so the
+  // UI needs the fresh data to show it.
   const advanceStage = stage => {
     var stageUrl = isDemo ? '/api/demo/case/' + id + '/stage' : '/api/case/' + id + '/stage';
     fetch(stageUrl, {
@@ -361,6 +518,13 @@ function CaseFilePage({ id }) {
     notify('Stage updated to ' + stage);
   };
 
+  // First of two data-loading effects, keyed on `id` so it re-runs whenever
+  // the user navigates to a different case. Resets all per-case local state
+  // first (important when navigating case A -> case B without a full page
+  // reload, so B doesn't briefly show A's stale data), then — unless this is
+  // a static demo-prefixed case, which has nothing to fetch — pulls nearby
+  // cases, conditions, invites, docs, deadline, stage, rebuttals, and studies
+  // from the server in parallel.
   React.useEffect(() => {
     setShowForm(false);
     setDraft({ text: '', type: 'Water' });
@@ -378,6 +542,12 @@ function CaseFilePage({ id }) {
     fetch('/api/case/' + id + '/conditions')
       .then(r => r.json())
       .then(list => {
+        // One-time seeding: if this is a static fixture case whose server-side
+        // conditions table is still empty (first time anyone's opened this
+        // case file since the DB was reset/created) but the hardcoded fixture
+        // has starter conditions defined, POST each one to the server so it
+        // becomes a real, persisted, editable record from here on — rather
+        // than the fixture data staying purely client-side and un-actionable.
         if (!isDynamic && list.length === 0 && C.conditions.length > 0) {
           return Promise.all(C.conditions.map(c =>
             fetch('/api/case/' + id + '/conditions', {
@@ -405,6 +575,11 @@ function CaseFilePage({ id }) {
     fetch('/api/studies?case_id=' + id).then(r => r.json()).then(setCaseStudies);
   }, [id]);
 
+  // Second effect, only relevant for dynamic (real) cases: fetches the full
+  // builder-facing case record (agency tracking id, confirmation status,
+  // site metadata) separately from the conditions/docs/etc fetched above,
+  // since this data comes from a different endpoint shape (demo vs builder
+  // case endpoint depending on id prefix, same pattern as advanceStage).
   React.useEffect(() => {
     if (!isDynamic) return;
     setDynLoading(true);
@@ -415,6 +590,11 @@ function CaseFilePage({ id }) {
       .finally(() => setDynLoading(false));
   }, [id]);
 
+  // Adds a new proposed condition. Who it's attributed to and whether it
+  // needs approval both depend on the submitter's role: a co-party's
+  // conditions are marked pending_approval and routed to the lead steward for
+  // review before taking effect, while the lead steward's own conditions go
+  // live immediately (no approval step needed — they ARE the approver).
   const submitCondition = () => {
     if (!draft.text.trim()) return;
     const by = isCoParty ? (partyName || 'Co-party') : _agencyLabel(authUser);
@@ -435,6 +615,11 @@ function CaseFilePage({ id }) {
     });
   };
 
+  // Commissions a new mandated study attached to this case, using one of the
+  // canned MANDATE_TEMPLATES as the study's name/starting checklist (see
+  // STUDY_SECTIONS in steward2.jsx for what those checklists actually
+  // contain). Always sets a fixed 180-day due date from today — there's no
+  // custom deadline picker for mandated studies.
   const mandateStudy = function() {
     const due = new Date(Date.now() + 180 * 86400000).toISOString().slice(0, 10);
     fetch('/api/studies', {
@@ -450,6 +635,10 @@ function CaseFilePage({ id }) {
     });
   };
 
+  // Lead-steward-only: approves a co-party's pending condition, flipping it
+  // from pendingApproval to a normal 'Proposed' condition now visible/binding
+  // like any lead-submitted one. Updates local state optimistically rather
+  // than waiting on the PATCH response.
   const approvePending = (condId) => {
     fetch('/api/case/' + id + '/conditions/' + condId, {
       method: 'PATCH',
@@ -460,12 +649,19 @@ function CaseFilePage({ id }) {
     notify('Condition approved — co-parties notified');
   };
 
+  // Rejects (deletes) a co-party's pending condition outright — it never
+  // becomes visible to other parties, and disappears from the co-party's own
+  // view too (there's no "rejected" status kept around, it's just removed).
   const rejectPending = (condId) => {
     fetch('/api/case/' + id + '/conditions/' + condId, { method: 'DELETE' });
     setConditions(prev => prev.filter(c => c.id !== condId));
     notify('Condition returned to co-party');
   };
 
+  // Generic status transition (e.g. Proposed -> Accepted, Countered ->
+  // Impasse) available to whoever has permission to change it in the render
+  // below. An Impasse status is what makes a condition show up in
+  // steward2.jsx's ImpassePage.
   const changeStatus = (condId, status) => {
     fetch('/api/case/' + id + '/conditions/' + condId, {
       method: 'PATCH',
@@ -475,6 +671,9 @@ function CaseFilePage({ id }) {
     setConditions(prev => prev.map(c => c.id === condId ? Object.assign({}, c, { status }) : c));
   };
 
+  // Builds a CSV of just this case's conditions and triggers a client-side
+  // download via a data: URI anchor click (no server round-trip — the CSV is
+  // assembled entirely from already-loaded state).
   const exportConditions = () => {
     const rows = [
       ['condition', 'proposed_by', 'type', 'status', 'pending_approval'].join(','),
@@ -486,6 +685,12 @@ function CaseFilePage({ id }) {
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
   };
 
+  // Builds the fuller "evidentiary record" export — findings (with their
+  // evidence/version/contested flags), conditions, and the document chain
+  // combined into one CSV-ish plaintext file. This is a client-side
+  // convenience export distinct from the server-computed cryptographic
+  // anchor (case_anchors table) — this file's contents are NOT what gets
+  // hashed for anchoring, it's just a human-readable snapshot.
   const exportEvidentiary = () => {
     const lines = [
       '=== MERASCOPE EVIDENTIARY RECORD ===',
@@ -505,11 +710,16 @@ function CaseFilePage({ id }) {
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
   };
 
+  // Display tone/label lookups for the agency-type badge shown next to each
+  // party in the invite directory (state/county/tribe/utility/federal).
   const TYPE_TONE = { state: 'lo', county: 'slate', tribe: 'med', utility: 'mist', federal: 'hi' };
   const TYPE_LABEL = { state: 'State', county: 'County', tribe: 'Tribe', utility: 'Utility', federal: 'Federal' };
   /* Dynamic cases must not inherit the fixture's invited parties */
   const fixtureInvited = isDynamic ? [] : (C.invitedParties || []);
   const isInvited = key => fixtureInvited.includes(key) || serverInvited.includes(key);
+  // Invites an agency picked from the directory list (as opposed to
+  // inviteByEmail below, for ad-hoc invites outside the known directory).
+  // Guards against re-inviting an already-invited party.
   const inviteFromDir = agency => {
     if (isInvited(agency.key)) return;
     fetch('/api/case/' + id + '/invite', {
@@ -520,6 +730,9 @@ function CaseFilePage({ id }) {
     setServerInvited(prev => [...prev, agency.key]);
     notify('Invite sent to ' + agency.name);
   };
+  // Ad-hoc invite by raw email address — for co-parties not in the known
+  // AGENCY_DIRECTORY. Minimal client-side validation (just checks for an "@");
+  // real validation happens server-side.
   const inviteByEmail = function() {
     var email = inviteEmail.trim().toLowerCase();
     if (!email || email.indexOf('@') === -1) { notify('Enter a valid email address'); return; }
@@ -538,6 +751,9 @@ function CaseFilePage({ id }) {
       }
     }).catch(function() { notify('Network error — invite not sent'); });
   };
+  // Filters the full agency directory (used in the invite modal) by
+  // free-text search, agency type, and state — federal agencies are exempt
+  // from the state filter since they aren't state-scoped.
   const dirQ = dirSearch.trim().toLowerCase();
   const filteredDir = (M.AGENCY_DIRECTORY || []).filter(function(a) {
     if (dirType !== 'all' && a.type !== dirType) return false;
@@ -546,6 +762,8 @@ function CaseFilePage({ id }) {
     return true;
   });
   var ALL_STATES = ['AL','AR','AZ','CA','CO','CT','DE','FL','GA','IA','ID','IL','IN','KS','KY','LA','MA','MD','ME','MI','MN','MO','MS','MT','NC','ND','NE','NH','NJ','NM','NV','NY','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VA','VT','WA','WI','WV','WY'];
+  // Human-readable names for everyone currently on the case (fixture +
+  // server-invited), resolved through the directory where possible.
   const onCaseNames = [
     ...fixtureInvited.map(k => {
       const d = (M.AGENCY_DIRECTORY || []).find(a => a.key === k);
@@ -556,6 +774,11 @@ function CaseFilePage({ id }) {
       return d ? d.name : k;
     })
   ];
+  // De-duplicated combined invite list (a Set guards against the same key
+  // appearing in both fixtureInvited and serverInvited), then each invited
+  // party is enriched with a live status derived from their conditions: how
+  // many are still pending lead approval vs. already proposed, or just
+  // "Invited" if they haven't proposed anything yet.
   const allInvited = [...new Set([...fixtureInvited, ...serverInvited])];
   const coParties = allInvited.length > 0
     ? allInvited.map(key => {
@@ -573,6 +796,13 @@ function CaseFilePage({ id }) {
     : (isDynamic ? [] : (C.coParties || []));
   const backHref = isCoParty ? '#/co-party' : '#/steward';
   const backLabel = isCoParty ? 'Back to My Cases' : 'Back to the Docket';
+  // The demo-case flag referenced earlier by advanceStage (and used again
+  // below) — true only for dynamic cases whose id is demo-prefixed, i.e.
+  // cases created through the public, no-login demo flow rather than a real
+  // authenticated agency's docket. Declared here, after its first use in
+  // advanceStage above: safe only because `const` bindings in a function body
+  // are all set before any user-triggered handler actually runs — see the
+  // note on advanceStage. Do not rely on this ordering pattern elsewhere.
   const isDemo = isDynamic && (id || '').startsWith('demo-');
   const caseLinkPrefix = isCoParty ? '#/co-party/case/' : '#/steward/case/';
   const fallbackRebuttalDays = isDynamic ? null : C.daysToRebuttal;
@@ -673,6 +903,10 @@ function CaseFilePage({ id }) {
     </div>
   );
 
+  // The conditions table itself — the core of the Negotiation stage. Only
+  // the lead steward sees the status <select> and Approve/Reject controls;
+  // everyone else sees a read-only status Chip. Rows for pending co-party
+  // conditions get a subtle highlight background to flag them as awaiting review.
   const conditionsPanel = (
     <div style={{ flex: '2.2 1 460px', minWidth: 380 }}>
       <h3 style={{ fontSize: 15, marginBottom: 9 }}>Conditions negotiation</h3>
@@ -746,6 +980,11 @@ function CaseFilePage({ id }) {
     </div>
   );
 
+  // Shows a countdown for the current rebuttal cycle. Prefers the live
+  // server-tracked `deadline` state, falling back to the fixture's static
+  // `daysToRebuttal` for demo/fixture cases with no real deadline record.
+  // Visible if there's a deadline to show OR the viewer is the lead steward
+  // (who needs to see the "set deadline" control even with none set yet).
   const rebuttalClockPanel = (deadline != null || fallbackRebuttalDays != null || isLead) && (
     <div className="callout" style={{ padding: '14px 16px' }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
@@ -770,6 +1009,10 @@ function CaseFilePage({ id }) {
     </div>
   );
 
+  // Sidebar summary of every co-party on the case with their live condition
+  // status (see the coParties derivation above). The id === '26-0142' check
+  // is a one-off hardcoded footnote specific to that particular fixture case
+  // (which involves tribal consultation) — not a general rule applied to all cases.
   const coPartyTrackerPanel = coParties.length > 0 && (
     <div className="panel" style={{ padding: '14px 16px' }}>
       <b style={{ fontSize: 12, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--slate)' }}>Co-party tracker</b>
@@ -785,6 +1028,10 @@ function CaseFilePage({ id }) {
     </div>
   );
 
+  // Visible to the lead steward on any case, or to anyone viewing the
+  // EXAMPLE fixture case (so the showcase demonstrates the full workflow even
+  // to non-lead visitors) — but never in demo mode, since mandating a study
+  // isn't part of the public demo flow.
   const mandatedStudiesPanel = (isLead || (!isDynamic && C.is_example)) && !isDemo && (
     <div className="panel" style={{ padding: '14px 16px' }}>
       <b style={{ fontSize: 12, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--slate)' }}>Mandated studies</b>
@@ -820,6 +1067,13 @@ function CaseFilePage({ id }) {
   );
 
   /* ── dynamic (builder-submitted) case intake view ── */
+  // This branch (and the fixture-case branch further below) are two
+  // completely separate render paths for the same CaseFilePage component.
+  // A real, server-backed case has its own richer intake header (confirm
+  // button, agency tracking id, imported-permit banner) before falling
+  // through to the same shared panels (conditionsPanel, rebuttalClockPanel,
+  // etc.) hoisted above. dynLoading/!dynCase handle the async fetch-in-flight
+  // and not-found states before any of this renders.
   if (isDynamic) {
     if (dynLoading) {
       return (
@@ -988,6 +1242,12 @@ function CaseFilePage({ id }) {
     );
   }
 
+  /* ── static / fixture case view (falls through when !isDynamic) ──
+     Renders a case that has already progressed past intake — findings,
+     conditions negotiation, stage stepper — sourced from the hardcoded
+     M.CASE_DETAIL_MAP entry (`C`) rather than a live fetch. This is also the
+     branch that renders the EXAMPLE showcase case, hence the extra EXAMPLE
+     banner and localStorage hide/show controls below. */
   return (
     <div style={{ maxWidth: 1340, margin: '0 auto', padding: '22px 24px 50px' }} data-screen-label="Steward — Case file">
       {toast && <NotifyToast message={toast} onDone={() => setToast(null)} />}
@@ -1054,6 +1314,11 @@ function CaseFilePage({ id }) {
           {nearbyPanel}
           <div className="card" style={{ padding: '14px 16px' }}>
             <b style={{ fontSize: 12, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--slate)' }}>Document chain</b>
+            {/* Merges the fixture's hardcoded doc list with any real uploads
+                (serverDocs, from refreshDocs/uploadDoc) so demo cases can show
+                illustrative documents alongside ones actually uploaded during
+                the session. Fixture docs have no `filename` so they render as
+                plain text instead of a download link. */}
             <div style={{ display: 'grid', gap: 6, marginTop: 9 }}>
               {[...C.docs, ...serverDocs].map((d, i) => (
                 <div key={d.id || d.name || i} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
@@ -1091,4 +1356,12 @@ function CaseFilePage({ id }) {
   );
 }
 
+// No bundler/module system in this app — every .jsx file is Babel-compiled
+// and concatenated into dist/bundle.js, so components are shared across files
+// by hanging them off `window`. steward-inbox.jsx, steward2.jsx, and app.jsx's
+// router all reference these exports directly (e.g. CaseCard/_shapeDynamic
+// are used by steward-inbox.jsx even though they aren't in this list, since
+// plain top-level function declarations are already global — see the export
+// note at the end of steward-templates.jsx for why only some files need this
+// explicit block).
 Object.assign(window, { DocketPage, CaseFilePage, StewardSubNav, StageStepper });

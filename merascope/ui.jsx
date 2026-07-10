@@ -1,7 +1,19 @@
 /* ── Merascope shared UI kit ── */
+// Reusable React components used across every page/persona (Explorer, Builder, Steward,
+// public marketing pages): brand elements, icons, score displays, nav/footer chrome,
+// the Same Score Promise trust badge, persona-switching UI, and the two onboarding
+// tour overlays (public + steward). Loaded as a plain <script> (JSX transpiled by the
+// Babel CLI build, not a bundler) — everything here is exported onto `window` at the
+// bottom of the file so page-specific files (explorer.jsx, builder.jsx, etc.) can use
+// it without imports.
+
+// Shared React context carrying the active color-ramp choice ('field' vs colorblind-
+// safe 'cb', set via the dev TweaksPanel) — read by any component that renders a score
+// color (ScoreBadge, BarRow) so ramp changes propagate without prop drilling.
 const MeraCtx = React.createContext({ ramp: 'field' });
 
 /* ── brand glyph: offset contour rings (a surveyed peak) ── */
+// The static logomark (two offset rings + a dot) — used standalone or inside Wordmark.
 function Glyph({ size = 26, tone = 'var(--evergreen)', accent = 'var(--basalt)' }) {
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
@@ -11,6 +23,8 @@ function Glyph({ size = 26, tone = 'var(--evergreen)', accent = 'var(--basalt)' 
     </svg>
   );
 }
+// Glyph + "MERASCOPE" text lockup, used in TopNav and FooterMain. `light` swaps to
+// white for dark backgrounds.
 function Wordmark({ size = 17, light = false }) {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}>
@@ -21,6 +35,8 @@ function Wordmark({ size = 17, light = false }) {
 }
 
 /* ── animated glyph: rings orbit the surveyed peak ── */
+// CSS-animated variant of Glyph (rotating rings via the .aglyph/.ag-r1/.ag-r2/.ag-dot
+// classes defined in the stylesheet) — used for loading/splash moments, not nav.
 function AnimatedGlyph({ size = 64 }) {
   return (
     <svg className="aglyph" width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
@@ -32,9 +48,15 @@ function AnimatedGlyph({ size = 64 }) {
 }
 
 /* ── auth context (mock SSO) ── */
+// Carries the current persona/role ('public'/'builder'/'steward'/'reporter'/'admin')
+// and (for a logged-in session) authUser/logout. Read by TopNav, DemoSwitch, and the
+// page components that gate content by role.
 const AuthCtx = React.createContext({ role: 'public', setRole: () => {} });
 
 /* ── thin-line icon set (geological / cartographic) ── */
+// Single component rendering any of ~20 named inline SVG icons (by `name`) — keeps a
+// consistent thin-line visual style across indicator icons, nav, and status markers
+// without pulling in an icon font/library.
 function Icon({ name, size = 15, color = 'currentColor' }) {
   const s = { fill: 'none', stroke: color, strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' };
   const paths = {
@@ -62,6 +84,9 @@ function Icon({ name, size = 15, color = 'currentColor' }) {
 }
 
 /* ── count-up numeral ── */
+// Animates a numeric display value from its previous value to a new one whenever
+// `value` changes (eased with a quadratic ease-out), instead of an abrupt jump —
+// used anywhere a score updates live (e.g. weight sliders changing a composite score).
 function useCountUp(value, ms = 250) {
   const [disp, setDisp] = React.useState(value);
   const prev = React.useRef(value);
@@ -81,10 +106,13 @@ function useCountUp(value, ms = 250) {
   }, [value]);
   return disp;
 }
+// Plain animated numeral (no background pill) — used inline in tables/lists.
 function ScoreNum({ value, decimals = 3, style }) {
   const d = useCountUp(value);
   return <span className="score-serif" style={style}>{d.toFixed(decimals)}</span>;
 }
+// Colored pill wrapping ScoreNum — background/text color come from the active ramp
+// (window.MERA.rampColor/rampText) so a score's color always matches the map legend.
 function ScoreBadge({ value, size = 15, decimals = 3, style }) {
   const { ramp } = React.useContext(MeraCtx);
   const M = window.MERA;
@@ -96,9 +124,14 @@ function ScoreBadge({ value, size = 15, decimals = 3, style }) {
 }
 
 /* ── chips & bars ── */
+// Small colored label pill (tone controls the CSS color variant: slate/lo/med/hi/etc) —
+// used for flags, status tags, and condition-type labels throughout Builder/Steward.
 function Chip({ tone = 'slate', children, style }) {
   return <span className={'chip chip-' + tone} style={style}>{children}</span>;
 }
+// Labeled horizontal mini-bar (label + filled track + numeric value) — used for
+// per-indicator breakdowns in site cards and comparison panels. `mono` forces a flat
+// slate fill instead of ramp coloring, for non-score bars.
 function BarRow({ label, value, width = 64, color, mono = false }) {
   const { ramp } = React.useContext(MeraCtx);
   const M = window.MERA;
@@ -112,6 +145,9 @@ function BarRow({ label, value, width = 64, color, mono = false }) {
 }
 
 /* ── Same Score Promise badge (persistent trust mark) ── */
+// Click-to-open popover explaining Merascope's "same methodology/weights/sources for
+// everyone" claim (window.MERA.PROMISE). Shown compact in TopNav, full-size in
+// FooterMain — present on essentially every page as a persistent trust signal.
 function PromiseBadge({ compact = false, align = 'right' }) {
   const [open, setOpen] = React.useState(false);
   const M = window.MERA;
@@ -133,6 +169,8 @@ function PromiseBadge({ compact = false, align = 'right' }) {
 }
 
 /* ── persona context switcher ── */
+// Segmented-control style nav between the three top-level surfaces (Public Explorer,
+// Builder, Steward) — navigates via location.hash rather than any router state.
 function SurfaceSwitch({ surface }) {
   const opts = [['public', 'Public', '#/explorer'], ['builder', 'Builder', '#/builder'], ['steward', 'Steward', '#/steward']];
   return (
@@ -144,6 +182,10 @@ function SurfaceSwitch({ surface }) {
   );
 }
 
+// Fake "signed in as" identity chip shown in TopNav when no real authUser is present —
+// each surface (builder/steward/reporter) gets a distinct hardcoded demo persona
+// (name, org, avatar initials) so the UI reads as a real logged-in account during a
+// demo/tour rather than an anonymous session.
 function PersonaBadge({ surface }) {
   if (surface === 'builder') return (
     <span className="hide-mobile" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
@@ -186,6 +228,10 @@ function DemoSwitch() {
 }
 
 /* ── top navigation ── */
+// Site-wide nav bar. Link set is built per role: public gets the 3 marketing/tool
+// links; builder/steward insert their own workspace link between Explorer and the
+// rest; admin sees both. Falls back to PersonaBadge + DemoSwitch when there's no real
+// authUser (i.e. this is a preview/demo session, not a logged-in account).
 function TopNav({ route, role }) {
   const { authUser, logout } = React.useContext(AuthCtx);
   const pub = [['#/explorer', 'Explorer'], ['#/factsheets', 'Fact sheets'], ['#/methodology', 'Methodology']];
@@ -218,6 +264,8 @@ function TopNav({ route, role }) {
 }
 
 /* ── footer ── */
+// Site-wide footer: wordmark + promise badge, three link columns, and a bottom bar
+// with the live data-source list (window.MERA.DATA_SOURCES) and version stamp.
 function FooterMain() {
   const M = window.MERA;
   const col = (title, items) => (
@@ -250,6 +298,9 @@ function FooterMain() {
 }
 
 /* ── small helpers ── */
+// Standard page-title block (small eyebrow label + h2 + optional subtext + optional
+// right-aligned action slot) reused at the top of nearly every page for a consistent
+// header layout.
 function PageHead({ eyebrow, title, sub, right }) {
   return (
     <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 18, flexWrap: 'wrap', marginBottom: 18 }}>
@@ -263,12 +314,17 @@ function PageHead({ eyebrow, title, sub, right }) {
   );
 }
 
+// Returns `true` for `ms` then flips to `false` — used to show a brief skeleton/spinner
+// state on pages backed by static/local data, so navigation still feels like it's
+// fetching something even though there's no real network round-trip.
 function useFakeLoad(ms = 700) {
   const [loading, setLoading] = React.useState(true);
   React.useEffect(() => { const t = setTimeout(() => setLoading(false), ms); return () => clearTimeout(t); }, []);
   return loading;
 }
 
+// Bottom-right transient success toast (auto-dismisses after 3s via onDone) — used
+// after actions like saving a cell, submitting an inquiry, etc.
 function NotifyToast({ message, onDone }) {
   React.useEffect(() => {
     const t = setTimeout(onDone, 3000);
@@ -282,6 +338,12 @@ function NotifyToast({ message, onDone }) {
   );
 }
 
+// Content for the public onboarding tour: a 6-step scripted walkthrough of the full
+// builder→steward loop (Explorer map → save to Workspace → submit a site inquiry →
+// see it land on the agency docket → open the shared case file → wrap-up). Each step
+// can carry a `nav` hash to auto-navigate the app and a `role` to force the persona,
+// so the tour can walk a single visitor through both the builder and steward surfaces
+// without them manually switching roles. Consumed by TourOverlay below.
 var TOUR_STEPS = [
   {
     title: 'The siting map',
@@ -320,6 +382,10 @@ var TOUR_STEPS = [
   }
 ];
 
+// Renders the public tour: a centered welcome modal at step 0, then a floating
+// bottom-docked card (with a progress bar) for each TOUR_STEPS entry. `tourStep` state
+// and the nav-on-step-change logic live in the parent page; this component is purely
+// presentational plus the Next/Back/Skip button wiring.
 function TourOverlay({ tourStep, onStart, onNext, onBack, onSkip }) {
   if (tourStep === null) return null;
 
@@ -379,6 +445,10 @@ function TourOverlay({ tourStep, onStart, onNext, onBack, onSkip }) {
   );
 }
 
+// Content for the steward-only onboarding tour: a 6-step walkthrough of the regulator
+// workflow (docket → national data → set weight template → define zone + lock gate →
+// advance a case → co-parties/conditions). Mirrors the TOUR_STEPS shape/pattern but is
+// scoped to steward surfaces only. Consumed by StewardTourOverlay below.
 var STEWARD_TOUR_STEPS = [
   {
     title: 'Your jurisdiction dashboard',
@@ -417,6 +487,9 @@ var STEWARD_TOUR_STEPS = [
   }
 ];
 
+// Steward counterpart to TourOverlay — same welcome-modal-then-floating-card pattern,
+// but higher z-index (1200 vs 1100) so it can layer above the steward console's own
+// overlays, and driven by STEWARD_TOUR_STEPS instead of TOUR_STEPS.
 function StewardTourOverlay({ tourStep, onStart, onNext, onBack, onSkip }) {
   if (tourStep === null) return null;
 
@@ -476,4 +549,7 @@ function StewardTourOverlay({ tourStep, onStart, onNext, onBack, onSkip }) {
   );
 }
 
+// Export everything onto `window` so page-level files (which are separate, non-module
+// <script> tags) can use these components directly, e.g. <window.TopNav .../> or just
+// <TopNav .../> once destructured at the top of the consuming file.
 Object.assign(window, { MeraCtx, AuthCtx, Glyph, AnimatedGlyph, Wordmark, Icon, useCountUp, ScoreNum, ScoreBadge, Chip, BarRow, PromiseBadge, SurfaceSwitch, DemoSwitch, PersonaBadge, TopNav, FooterMain, PageHead, useFakeLoad, NotifyToast, TourOverlay, StewardTourOverlay });

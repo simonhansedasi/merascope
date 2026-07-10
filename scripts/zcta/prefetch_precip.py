@@ -6,6 +6,14 @@ Run this LOCALLY (residential IP avoids datacenter rate limits).
 Saves data/{STATE}/raw/precip_coarse.csv for each state.
 Hetzner pipeline will use these as cache and skip the API call entirely.
 
+Only matters when data/prism_ppt_30yr.tif is missing — 02_zcta_indicators.py
+(and 02_indicators.py) sample PRISM directly and only fall back to this
+lat/lon point cache otherwise. See prefetch_precip_noaa.py for the
+alternative source: that one has no rate limits and can run anywhere
+(including on Hetzner itself), at the cost of sparser station coverage than
+this script's dense per-state sample grid. Prefer NOAA for a fresh rerun
+unless Open-Meteo's finer sampling is specifically needed.
+
 Usage:
   python scripts/zcta/prefetch_precip.py
   python scripts/zcta/prefetch_precip.py WA OR CA   # specific states

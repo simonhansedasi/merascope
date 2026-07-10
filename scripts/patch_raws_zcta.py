@@ -9,6 +9,11 @@ pipeline run (02_zcta_indicators.py was dropping them before saving):
   seismic_pga_g    — interpolated PGA (g)                              [WA only — skipped steps 03+08]
   aquifer_depth_ft — interpolated depth to water table (ft)            [WA only — skipped steps 03+08]
 
+This is the ZCTA-geometry counterpart to patch_raws.py (same idw_k() pattern,
+duplicated again rather than shared) — needed separately because
+02_zcta_indicators.py was dropping these raw columns before saving, whereas
+the fishnet pipeline's gap was columns never having been computed at all.
+
 Usage:
   python3 scripts/patch_raws_zcta.py              # all 48 states
   python3 scripts/patch_raws_zcta.py WA TX CA     # specific states

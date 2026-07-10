@@ -52,7 +52,13 @@ PRISM_PIXEL = 1.0 / 24.0
 
 
 def create_fishnet(state_gdf, cell_size=CELL_SIZE):
-    """Create uniform grid clipped to state boundary."""
+    """Create uniform grid clipped to state boundary.
+
+    This grid IS grid_scores.geojson — every later script (03-16) reads this
+    file, adds its own score columns in place, and re-saves it. cell_id must
+    stay stable across runs since patch scripts and normalize_national.py
+    join back to it positionally.
+    """
     minx, miny, maxx, maxy = state_gdf.total_bounds
     cols = np.arange(minx, maxx, cell_size)
     rows = np.arange(miny, maxy, cell_size)
@@ -159,7 +165,12 @@ def fetch_prism_ppt(data_dir):
 
 
 def sample_prism(arr, lons, lats):
-    """Nearest-pixel sample of PRISM array at (lons, lats). Returns mm/yr float array."""
+    """Nearest-pixel sample of PRISM array at (lons, lats). Returns mm/yr float array.
+
+    No resampling/interpolation — this is a single 4km-resolution TIF shared
+    across all states (downloaded once, not per-state), so nearest-pixel is
+    precise enough at the 0.15deg (~14km) grid resolution we score at.
+    """
     cols = np.round((lons - PRISM_WEST) / PRISM_PIXEL).astype(int)
     rows = np.round((PRISM_NORTH - lats) / PRISM_PIXEL).astype(int)
     nrows, ncols = arr.shape

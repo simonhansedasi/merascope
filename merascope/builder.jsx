@@ -1,5 +1,24 @@
-/* -- Surface B: Builder workspace -- saved cells + comparison */
+/*
+ * builder.jsx — Builder surface, part 1: Workspace tab + My Inquiry (site submission) flow.
+ *
+ * Builders are developers evaluating candidate data-center sites. This file renders:
+ *   - BuilderSubNav: the tab bar shared by all Builder pages (Workspace / Status / Portfolio / My Inquiry)
+ *   - Workspace tab (#/builder): SavedCellCard grid of cells the user bookmarked from the Explorer,
+ *     plus a ComparisonPanel for side-by-side scoring of up to 4 saved sites
+ *   - My Inquiry tab (#/builder/case/): BuilderCaseView — look up an existing case by ID, submit a new
+ *     site inquiry (4-step progressive-reveal form), or register a permit that already exists elsewhere
+ *   - DocSection: document upload/download panel embedded in the case intake view
+ *
+ * builder2.jsx is the second half of the Builder surface (Status/CRM tracker + Portfolio CSV screening).
+ * Both files share helpers exposed on `window` by data.js (composite(), propsToInd(), cellLabel(),
+ * getSavedCells(), serverLog(), MERA_SESSION) and UI primitives from ui.jsx (Chip, Icon, MeraCtx, AuthCtx).
+ * No bundler/imports here — Babel-compiled directly, so every top-level function is a global; the
+ * Object.assign(window, {...}) at the bottom of each file is what makes components reachable from app.jsx.
+ */
 
+/* Looks up a human-readable agency name from its short directory key (e.g. 'OPCD' -> 'Seattle OPCD').
+   Falls back to returning the raw key if it's not in AGENCY_DIRECTORY (e.g. free-text agency names
+   typed into the lead-agency field) so the UI never shows a blank. */
 function _resolveAgency(key) {
   if (!key) return '';
   var M = window.MERA;
@@ -7,6 +26,9 @@ function _resolveAgency(key) {
   return entry ? entry.name : key;
 }
 
+/* Tab bar shared across every Builder page. `active` is one of the tab keys below and controls
+   which button gets the 'on' style; navigation is a plain hash change (no client router state),
+   so each tab's page component re-mounts fresh when clicked. */
 function BuilderSubNav({ active }) {
   const tabs = [['search', 'Workspace', '#/builder'], ['status', 'Status', '#/builder/status'], ['portfolio', 'Portfolio screening', '#/builder/portfolio'], ['mycase', 'My Inquiry', '#/builder/case/']];
   return (
@@ -18,7 +40,12 @@ function BuilderSubNav({ active }) {
   );
 }
 
-/* kept for SiteProfile comparables + legacy refs */
+/* kept for SiteProfile comparables + legacy refs.
+   Renders a single mock/demo site as a rich card: thumbnail, composite score badge, key stats
+   (acreage, transmission distance, population, parcel count), a 5-column mini indicator bar grid,
+   status flags, and action buttons (open profile / watchlist / paid dossier). Not used by the live
+   Workspace grid (see SavedCellCard for that) — this predates real saved-cell data and still backs
+   the SiteProfile detail page's "Comparables" tab. */
 function SiteCard({ site, onOpen, watched, onWatch, selected }) {
   return (
     <div className="card" style={{ padding: 14, borderColor: selected ? 'var(--basalt)' : undefined, boxShadow: selected ? '0 2px 10px rgba(180,95,29,.18)' : undefined }} data-comment-anchor={'site-' + site.id}>
@@ -63,13 +90,20 @@ function SiteCard({ site, onOpen, watched, onWatch, selected }) {
   );
 }
 
+/* Tiny horizontal progress bar (0-1 value -> % width) colored by the current color ramp
+   (MeraCtx.ramp — the user's chosen good/bad color scheme). Used for per-indicator scores in SiteCard. */
 function MiniRampBar({ v }) {
   const M = window.MERA;
   const { ramp } = React.useContext(MeraCtx);
   return <div className="mb-track"><div className="mb-fill" style={{ width: (v * 100) + '%', background: M.rampColor(v, ramp) }}></div></div>;
 }
 
-/* -- indicator spec for comparison table -- */
+/* -- indicator spec for comparison table --
+   Drives the row list in ComparisonPanel below: one entry per scored indicator, each pairing the
+   normalized score column (`base`, 0-1) with its underlying raw physical column (`raw`, e.g. meters
+   or mm/yr) so the panel can show both "0.82" and "1.2 km" for the same row. `rFmt` formats the raw
+   value for display; entries with `raw: null` (community burden, flood, soil permeability/chemistry)
+   have no single raw physical value to show. */
 var COMP_INDS = [
   { k: 'Transmission',       base: 'tx_score',            raw: 'tx_dist_m',        rUnit: 'km',    rFmt: function(v){ return (v/1000).toFixed(1); } },
   { k: 'Water availability', base: 'water_score',         raw: 'ann_precip_mm',    rUnit: 'mm',    rFmt: function(v){ return Math.round(v) + ''; } },
@@ -89,6 +123,12 @@ var COMP_INDS = [
   { k: 'Hydraulic K-sat',    base: 'ksat_score',          raw: 'ksat_mean_ums',    rUnit: 'um/s',  rFmt: function(v){ return v.toFixed(2); } },
 ];
 
+/* One card in the Workspace grid, representing a single ZCTA cell the builder saved from the Explorer.
+   Computes both the national (`*_nat`) and in-state composite scores at DEFAULT_WEIGHTS (the workspace
+   view does not use the user's tuned Explorer weights — those only apply on submission, see
+   BuilderCaseView.handleCellSelect), shows the state rank if one was attached when the cell was saved,
+   flags the two hard gates (protected land / flood zone), and lazily reverse-geocodes the cell's
+   centroid to a human-readable municipality name for display (falls back to raw lat/lon). */
 function SavedCellCard({ cell, inCompare, canAdd, onToggle, onRemove }) {
   const M = window.MERA;
   const { ramp } = React.useContext(MeraCtx);
@@ -97,12 +137,16 @@ function SavedCellCard({ cell, inCompare, canAdd, onToggle, onRemove }) {
   const pi = window.propsToInd;
   const natScore  = (pi && M) ? M.composite(pi(p, true),  M.DEFAULT_WEIGHTS) : null;
   const stateScore = (pi && M) ? M.composite(pi(p, false), M.DEFAULT_WEIGHTS) : null;
+  // Hard gates: protected_frac defaults to 1 (fully protected) and flood_score defaults to 0 (fails)
+  // when the property is missing, so an incomplete record reads as non-viable rather than silently passing.
   const viable = (p.protected_frac || 1) <= 0.25 && (p.flood_score || 0) > 0;
   const coords = cell.lat != null
     ? cell.lat.toFixed(3) + 'N, ' + Math.abs(cell.lon).toFixed(3) + 'W'
     : null;
   const rank = cell.stateRank;
 
+  // Seed from the client-side municipality cache (avoids a re-fetch flash on every render); if this
+  // cell's geocode isn't cached yet, fetch it once and cache the result via fetchMunicipality().
   var [geo, setGeo] = React.useState(function() {
     return cell.lat != null ? (window.getCachedMunicipality ? window.getCachedMunicipality(cell.fid) : null) : null;
   });
@@ -172,10 +216,16 @@ function SavedCellCard({ cell, inCompare, canAdd, onToggle, onRemove }) {
   );
 }
 
+/* Side-by-side comparison table for 2-4 saved cells (BuilderSearch enforces the 4-cell max via
+   compareSet). Renders one column per cell with composite scores + gate badges, and one row per
+   COMP_INDS entry with a mini bar + raw-value readout, highlighting the best score in the selection
+   per row. */
 function ComparisonPanel({ cells }) {
   const M = window.MERA;
   const { ramp } = React.useContext(MeraCtx);
   const pi = window.propsToInd;
+  // Detect whether national normalization has been run (*_nat columns present on the first cell) —
+  // if so, prefer nat-scale columns for every indicator row so scores are cross-state comparable.
   const hasNat = cells[0] && cells[0].properties.tx_score_nat != null;
   const sc = function(base) { return hasNat ? base + '_nat' : base; };
   const n = cells.length;
@@ -188,6 +238,9 @@ function ComparisonPanel({ cells }) {
   const stateComposites = cells.map(function(c) {
     return (pi && M) ? M.composite(pi(c.properties, false), M.DEFAULT_WEIGHTS) : null;
   });
+  // Per-cell gate status. Only `protected` and `flood` are true hard gates (they block a portfolio
+  // PASS elsewhere); `terrain` is computed here for completeness but is a scoring penalty, not a gate,
+  // and isn't rendered as a PASS/GATED badge below (see the ['protected','flood'] map further down).
   const gates = cells.map(function(c) {
     return {
       terrain:   (c.properties.flat_frac     || 0) >= 0.03,
@@ -327,18 +380,25 @@ function ComparisonPanel({ cells }) {
   );
 }
 
+/* Top-level component for the Workspace tab (#/builder). Reads saved cells out of localStorage
+   (via window.getSavedCells, written by the Explorer's "Save to workspace" action) and lets the
+   builder pick up to 4 of them to compare side by side in ComparisonPanel. */
 function BuilderSearch() {
   const [savedCells, setSavedCells] = React.useState(function() {
     return window.getSavedCells ? window.getSavedCells() : [];
   });
   const [compareSet, setCompareSet] = React.useState(new Set());
 
+  // Saved cells live in localStorage, which this tab doesn't own — if the user saves a new cell from
+  // the Explorer in another tab/window and comes back, re-read on window focus so the list is current.
   React.useEffect(function() {
     var refresh = function() { setSavedCells(window.getSavedCells ? window.getSavedCells() : []); };
     window.addEventListener('focus', refresh);
     return function() { window.removeEventListener('focus', refresh); };
   }, []);
 
+  // Compare selection is capped at 4 cells (ComparisonPanel's column layout is designed for up to 4);
+  // toggling an already-selected cell always removes it, but adding is a no-op once the cap is hit.
   var toggleCompare = function(fid) {
     setCompareSet(function(prev) {
       var next = new Set(prev);
@@ -410,6 +470,10 @@ function BuilderSearch() {
   );
 }
 
+/* Hardcoded lookup table used by deriveJurisdictions() below to turn a Nominatim reverse-geocode
+   result into a suggested lead agency during site-inquiry submission (BuilderCaseView step 3).
+   `partner: true` agencies are ones Merascope has an active relationship with — the UI badges these
+   as "Merascope Partner" vs "Forwarding via Merascope" for everyone else. WA-specific for now. */
 var AFFILIATED_AGENCIES = [
   { match: 'Seattle',     key: 'OPCD', label: 'Seattle OPCD',           partner: true  },
   { match: 'King County', key: 'KCDER', label: 'King County DPER',       partner: true  },
@@ -418,6 +482,11 @@ var AFFILIATED_AGENCIES = [
   { match: 'Washington',  key: 'ECO', label: 'WA Dept. of Ecology',     partner: true  },
 ];
 
+/* Given a Nominatim `address` object (city/town/village/county/state fields — not all present for
+   every point), returns a list of candidate lead-agency jurisdictions for the submission form's radio
+   picker. Checks each address component against AFFILIATED_AGENCIES by substring match; if nothing
+   matches (most of the country, since the directory is WA-only), falls back to a generic "<City>
+   Planning Dept." / "<County> Planning" candidate built from whatever address fields are available. */
 function deriveJurisdictions(addr) {
   var pool = [addr.city, addr.town, addr.village, addr.county, addr.state].filter(Boolean);
   var results = [];
@@ -437,6 +506,17 @@ function deriveJurisdictions(addr) {
   return results;
 }
 
+/* The "My Inquiry" tab (#/builder/case/:id). This is the largest and most stateful component in the
+   Builder surface — it covers three different jobs behind one URL:
+     1. Case lookup: type/paste a case ID (or land here via a deep link) and view it read-only.
+     2. Site inquiry submission: a 4-step progressive-reveal form (pick a saved cell -> confirm
+        details -> lead agency -> contact info) that POSTs to /api/builder/submit.
+     3. "Register an existing permit": a parallel import form for builders already mid-permitting
+        elsewhere who just want Merascope to track status (POSTs the same endpoint with `imported: true`).
+   A looked-up case can resolve three different ways, handled by the three-way branch in the render
+   below: (a) a hardcoded demo/example case from M.CASE_DETAIL_MAP (`C`) — e.g. the EXAMPLE case; (b) a
+   real or demo case fetched from the server (`dynCase`, via /api/builder/case/<id> or
+   /api/demo/case/<id>); or (c) neither found yet, which shows the lookup/submit/import tab set. */
 function BuilderCaseView({ id, query }) {
   const M = window.MERA;
   const { ramp } = React.useContext(MeraCtx);
@@ -468,9 +548,14 @@ function BuilderCaseView({ id, query }) {
   const [impForm, setImpForm] = React.useState({ siteName: '', externalPermitId: '', stage: '', lat: '', lon: '', leadAgency: '', applicant: '', contactName: '', contactEmail: '', notes: '' });
   const setImpField = function(k, v) { setImpForm(function(f) { return Object.assign({}, f, { [k]: v }); }); };
 
+  // Static/demo case (e.g. the hardcoded EXAMPLE case) — null for real builder-submitted cases, which
+  // are fetched into `dynCase` instead via the effect below.
   const C = (M.CASE_DETAIL_MAP && M.CASE_DETAIL_MAP[caseId]) || null;
 
-  /* fetch live conditions/stage when viewing a demo case */
+  /* fetch live conditions/stage when viewing a demo case.
+     C's conditions/stage are the static hardcoded fixture — this effect overlays live server state
+     (if any exists for this case id) so a demo case that's been interacted with via the API still
+     shows current data instead of always resetting to the fixture defaults. */
   React.useEffect(() => {
     if (!C) return;
     setLiveConditions(null);
@@ -487,7 +572,9 @@ function BuilderCaseView({ id, query }) {
     });
   }, [caseId]);
 
-  /* fetch dynamic case when id is pre-set and not in CASE_DETAIL_MAP */
+  /* fetch dynamic case when id is pre-set and not in CASE_DETAIL_MAP.
+     Runs on initial mount for a URL like #/builder/case/26-0142 or #/builder/case/demo-XXXX — demo
+     ids are served from the in-memory DEMO_CASES store (no DB row), real ids from Postgres. */
   React.useEffect(() => {
     if (!id || C) return;
     setDynLoading(true);
@@ -526,7 +613,9 @@ function BuilderCaseView({ id, query }) {
       .catch(function() {});
   }, [authUser ? authUser.email : null, mode]);
 
-  /* Nominatim reverse geocode when a saved cell is selected */
+  /* Nominatim reverse geocode when a saved cell is selected.
+     zoom=10 requests city/county-level address detail (not street-level) — just enough granularity
+     for deriveJurisdictions() to match against AFFILIATED_AGENCIES or fall back to a generic label. */
   React.useEffect(function() {
     if (!selCell || selCell.lat == null) { setJurisdictions([]); setSelJur(null); return; }
     setGeoLoading(true);
@@ -543,6 +632,11 @@ function BuilderCaseView({ id, query }) {
       .finally(function() { setGeoLoading(false); });
   }, [selCell ? selCell.fid : null]);
 
+  /* Submit handler for the "Register an existing permit" import form. Validates required fields,
+     builds a payload with `imported: true` and `score: 0.5` (a neutral placeholder — imported permits
+     may not have a known site cell/coordinates), then POSTs to the same /api/builder/submit endpoint
+     as a fresh site inquiry. Attaches the session id and the builder's live tuned weights so an
+     imported case's "Scoring weights at submission" card is accurate too. */
   const handleImport = function() {
     setSubError('');
     if (!impForm.siteName.trim())     { setSubError('Site name is required.'); return; }
@@ -579,11 +673,16 @@ function BuilderCaseView({ id, query }) {
           setSearched(true);
           setMode('lookup');
           setDynCase(null);
+          // Unauthenticated submissions come back as a demo-* id (no DB row — see DEMO_CASES on the
+          // server); authenticated ones get a real case row. Both are re-fetched immediately so the
+          // intake view below has full data instead of just the {ok, case_id} POST response.
           var caseUrl = data.is_demo ? '/api/demo/case/' + data.case_id : '/api/builder/case/' + data.case_id;
           fetch(caseUrl)
             .then(function(r) { return r.ok ? r.json() : null; })
             .then(function(d) { if (d && d.case_id) setDynCase(d); });
           if (data.is_demo) {
+            // Marks demo mode active (20-min TTL) so app.jsx's steward auth-gate lets an unauthenticated
+            // user peek at the demo steward docket right after submitting — see app.jsx's `demoActive`.
             try { localStorage.setItem('mera_demo_ts', String(Date.now())); } catch (e) {}
             if (typeof window._setDemoActive === 'function') window._setDemoActive(true);
           }
@@ -597,6 +696,9 @@ function BuilderCaseView({ id, query }) {
       .finally(function() { setSubmitting(false); });
   };
 
+  /* "Look up" button handler for the Find existing case tab. If the id matches a static demo case in
+     CASE_DETAIL_MAP, just navigate there (the C-branch render picks it up). Otherwise ask the server —
+     trying the demo endpoint first for demo-* ids, the real case endpoint otherwise. */
   const handleSearch = () => {
     setSearched(true);
     setDynCase(null);
@@ -610,6 +712,11 @@ function BuilderCaseView({ id, query }) {
       .finally(() => setDynLoading(false));
   };
 
+  /* Step 1 of the submission form: selecting a saved cell card. Unlike SavedCellCard's workspace-grid
+     display (always DEFAULT_WEIGHTS), the score shown/submitted here uses the builder's actual current
+     Explorer weight configuration (getCurrentWeights(), persisted in localStorage) so the submitted
+     score matches what the builder was looking at when they decided to file — this also drives the
+     "Custom weights" vs "Platform defaults" chip shown later on the case file. */
   const handleCellSelect = function(fid) {
     var cell = savedCells.find(function(c) { return c.fid === fid; }) || null;
     setSelCell(cell);
@@ -623,6 +730,10 @@ function BuilderCaseView({ id, query }) {
     }
   };
 
+  /* Submit handler for the "Submit site inquiry" form (steps 2-4). Requires a lead agency selection
+     only when candidates were actually found (jurisdictions.length > 0) — if reverse geocoding
+     returned nothing, the free-text fallback input in step 3 is used instead and no selection is
+     forced. */
   const handleSubmit = function() {
     setSubError('');
     if (!form.siteName.trim())       { setSubError('Site name is required.'); return; }
@@ -677,6 +788,8 @@ function BuilderCaseView({ id, query }) {
       .finally(function() { setSubmitting(false); });
   };
 
+  /* Files a rebuttal against a contested finding — only shown/usable while the demo/static case (C)
+     is in the "Rebuttal Cycle" stage (see the stage-gated callout in the render below). */
   const sendRebuttal = () => {
     if (!rebuttal.trim()) return;
     fetch('/api/case/' + caseId + '/rebuttal', {
@@ -690,7 +803,10 @@ function BuilderCaseView({ id, query }) {
     });
   };
 
-  /* ── render ── */
+  /* ── render ──
+     Three-way branch: C (static demo/example case) takes priority, then dynCase (a real or demo case
+     fetched from the server), then the lookup/submit/import tab set for when nothing has been found
+     yet. Only one of these three renders at a time. */
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '22px 24px 50px' }} data-screen-label="Builder -- My Inquiry">
       {toast && <NotifyToast message={toast} onDone={() => setToast(null)} />}
@@ -888,10 +1004,16 @@ function BuilderCaseView({ id, query }) {
             </div>
           )}
 
+          {/* "Scoring weights at submission" card — shows which indicator weights produced this case's
+              composite score, and flags (amber) any deviation from platform defaults so a steward can
+              see at a glance whether the builder tuned the sliders before filing. This is part of the
+              evidentiary record: the Same Score Promise only holds if everyone can see what weights
+              were used. */}
           {dynCase.weights && (() => {
             var dw = (M && M.DEFAULT_WEIGHTS) ? M.DEFAULT_WEIGHTS : {};
             var activeW = dynCase.weights;
             var nonZero = Object.entries(activeW).filter(function(e){ return e[1] > 0; });
+            // isDefault: true only if every DEFAULT_WEIGHTS key matches exactly (missing keys treated as 0).
             var isDefault = Object.keys(dw).every(function(k){ return (activeW[k] || 0) === (dw[k] || 0); });
             var totalW = nonZero.reduce(function(s, e){ return s + e[1]; }, 0);
             return (
@@ -1263,6 +1385,10 @@ function BuilderCaseView({ id, query }) {
   );
 }
 
+/* Document upload/list panel embedded in the case intake view (builder side) — lets the applicant
+   attach supporting files (e.g. SEPA determinations, geotech reports, permit applications) to their
+   case with a label and an Achieved/In Progress status, and lists what's already been uploaded with a
+   download link. Mirrors the document-chain panel on the steward side of the same case. */
 function DocSection({ caseId }) {
   const [docs, setDocs]         = React.useState(null);
   const [label, setLabel]       = React.useState('');
@@ -1368,4 +1494,6 @@ function DocSection({ caseId }) {
   );
 }
 
+// Expose these components on window — there's no bundler/module system here (Babel-compiled directly
+// into dist/bundle.js), so app.jsx's router reaches page components purely through globals.
 Object.assign(window, { BuilderSearch, BuilderSubNav, SiteCard, MiniRampBar, SavedCellCard, ComparisonPanel, BuilderCaseView, DocSection });

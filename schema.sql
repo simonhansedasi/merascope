@@ -1,5 +1,25 @@
 -- Merascope PostgreSQL schema
 -- Run once on a fresh database: psql $DATABASE_URL -f schema.sql
+--
+-- NOTE: this is NOT the complete schema. steward_templates and steward_zones
+-- (custom indicator-weighting templates + the geographic zones tied to them)
+-- are created directly by server.py's init_db() instead of here, so a fresh
+-- DB still needs server.py to run once before those two tables exist. Every
+-- other table below is backed by a case/permit-tracking feature:
+--   event_log             — raw analytics, every user action
+--   case_invites          — co-party access grants (agency_key XOR invited_email)
+--   case_conditions       — permit conditions (proposed/approved), one row per condition
+--   case_docs             — uploaded document metadata (file lives on disk or S3)
+--   case_meta             — rebuttal deadline/cycle tracking, one row per case
+--   cases                 — permit applications (the core CRM record)
+--   case_stage_overrides  — explicit stage transitions that bypass automatic stage inference
+--   case_impasse_routes   — impasse resolution tracking
+--   study_checks          — mandated study section checkboxes
+--   case_rebuttals        — written rebuttals to conditions
+--   crm_state             — builder CRM state blob (JSON) per grid cell (fid), not per case
+--   users / sessions      — magic-link auth (see server.py's Auth System docs)
+--   user_roles            — role assignment (builder/steward/co-party) + agency_key
+--   leads                 — pricing-page lead capture (POST /api/lead)
 
 CREATE TABLE IF NOT EXISTS event_log (
     id          SERIAL PRIMARY KEY,

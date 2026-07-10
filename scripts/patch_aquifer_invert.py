@@ -2,6 +2,13 @@
 patch_aquifer_invert.py — Recompute aquifer_score from existing aquifer_depth_ft
 using the corrected formula: 1 - clip(depth_ft / p95, 0, 1)
 
+Fixes states scored before 08_aquifer.py's scoring direction was settled: an
+earlier version of that script's formula favored a DEEP water table (lower
+contamination risk), but the product actually wants cooling-water
+accessibility, which favors SHALLOW (see the Rationale note in 08_aquifer.py).
+This patch re-derives aquifer_score from the already-fetched aquifer_depth_ft
+raw column with the shallow-favoring formula, without re-hitting USGS NWIS.
+
 Shallow aquifer = higher score (better cooling access).
 Does NOT re-fetch from USGS NWIS; uses raw column already in each GeoJSON.
 """

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-run_pipeline.py — Master script: runs all 10 siting analysis scripts in sequence.
+run_pipeline.py — Master script: runs the 10 CORE siting analysis scripts in sequence.
 
 Usage:
   python run_pipeline.py WA
@@ -11,7 +11,15 @@ IMPORTANT: call this script with the merascope conda Python directly.
 Do NOT use conda run (output buffering bug). Example:
   /home/simonhans/anaconda3/envs/merascope/bin/python3 -u scripts/run_pipeline.py WA
 
-Output: data/{STATE}/grid_scores.geojson (16 score columns + raw physical values)
+Output: data/{STATE}/grid_scores.geojson (10 core score columns + raw physical values)
+
+IMPORTANT — this only runs scripts 01-10. The 6 supplemental indicators
+(11_substations through 16_iso_queue, added after this orchestrator was
+written) are run separately for all 48 states via run_new_indicators.sh —
+they read national datasets cached once in data/shared/ rather than
+per-state raw/, so they didn't fit this script's per-state subprocess loop.
+After running new/changed states through either path, normalize_national.py
+must be re-run so *_nat columns reflect the full 48-state distribution.
 
 Note: delete SRTM tiles after step 06 to free disk:
   rm -rf data/{STATE}/raw/srtm_tiles/

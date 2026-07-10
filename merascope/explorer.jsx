@@ -1,6 +1,25 @@
-/* ── Surface A: Public Explorer ── */
+/* ── Surface A: Public Explorer ──
+ * This file is the Builder-facing "Explorer" map page: the free, no-login
+ * entry point where anyone can browse the 23-indicator suitability scores
+ * across all 48 states, drag weight sliders to re-rank sites live, click
+ * ZCTA cells to compare them, and save cells into the Builder workspace.
+ * It leans on globals set up elsewhere (no bundler/module system — every
+ * JSX file just assigns to `window` and reads `window.MERA` etc.):
+ *   - window.MERA (data.js)        — INDICATORS, DEFAULT_WEIGHTS, composite()
+ *   - window.getStateFeatures/etc  — grid cache accessors (map.jsx)
+ *   - WAMap, WeightPanel, MapLegend, StateSelector — map.jsx components
+ * Two "scales" of scoring exist: *_score columns are normalized within a
+ * single state (0-1), *_score_nat columns are normalized across all 48
+ * states (cross-state comparable). Explorer switches between them based on
+ * whether a state is selected (see `useNat` in TileCard, `nat` param below).
+ */
 
-/* ── national grade computation ── */
+/* ── national grade computation ──
+ * Turns raw indicator scores into a letter-grade "report card" (A+ .. D-)
+ * per state, in 5 human-readable categories. Grading is always PERCENTILE-
+ * RANKED against the other 47 states, never against an absolute threshold —
+ * see CONTEXT.md: absolute thresholds would dump every state in the D range
+ * because *_nat score ranges are narrow in absolute terms. */
 const _GRADE_CATS = [
   { k: 'Water Durability',       cols: ['water_score_nat', 'aquifer_score_nat', 'waterway_score_nat', 'water_stress_score_nat'] },
   { k: 'Grid Access',            cols: ['tx_score_nat', 'substation_score_nat', 'fiber_score_nat', 'grid_capacity_score_nat'] },
@@ -9,6 +28,10 @@ const _GRADE_CATS = [
   { k: 'Contamination Distance', cols: ['contamination_score_nat', 'superfund_score_nat', 'rcra_score_nat'] },
 ];
 
+// Maps a 0-indexed rank position (0 = best) among `total` states to a letter
+// grade using fixed percentile cutoffs (top 8% = A+, bottom 8% = D-, etc).
+// This is the percentile curve mentioned above — same rank produces the same
+// letter regardless of how tightly or widely the underlying scores cluster.
 function _rankToGrade(rank, total) {
   // rank: 0 = best state, total-1 = worst state
   const pct = rank / Math.max(total - 1, 1);
@@ -26,6 +49,7 @@ function _rankToGrade(rank, total) {
   return 'D−';
 }
 
+// Picks a CSS color by grade letter only (A/B/C/D bucket, ignoring +/-).
 function _gradeColor(g) {
   const l = g[0];
   if (l === 'A') return 'var(--evergreen)';
@@ -34,11 +58,18 @@ function _gradeColor(g) {
   return 'var(--basalt)';
 }
 
+// "1st", "2nd", "3rd", "4th"... — standard English ordinal suffix logic.
+// The (v - 20) % 10 trick handles 21st/22nd/23rd correctly (not 21th).
 function _ordinal(n) {
   const s = ['th','st','nd','rd'], v = n % 100;
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
+// Produces the plain-language paragraph shown when a user clicks a grade
+// chip in GradeStrip, e.g. "Washington ranks 12th of 48 states for water
+// durability...". `tier` buckets the letter grade into high/mid/low so the
+// same canned paragraph is reused across A+/A/A- etc. This is a static copy
+// bank, not computed from live data beyond the rank/name/count substitution.
 function _catWhy(cat, grade, name, rank, n) {
   const letter = grade[0];
   const tier = (letter === 'A' || letter === 'B') ? 'high' : letter === 'C' ? 'mid' : 'low';
@@ -73,6 +104,13 @@ function _catWhy(cat, grade, name, rank, n) {
   return (bank[cat] || {})[tier] || '';
 }
 
+// For a set of features (e.g. all cells in a state), computes one mean score
+// per _GRADE_CATS category. Each category can span multiple *_nat columns
+// (e.g. Water Durability = water + aquifer + waterway + water_stress), so
+// this first means each column across the features, then means those column
+// means together — a "mean of means" so a category with 4 sub-indicators
+// isn't diluted relative to one with 2. Missing/NaN values are skipped, not
+// treated as zero.
 function _catMeans(feats) {
   return _GRADE_CATS.map(cat => {
     const colMeans = cat.cols.map(col => {
@@ -87,6 +125,11 @@ function _catMeans(feats) {
   });
 }
 
+// Average composite score (using the user's current slider weights, always
+// against *_nat columns — `true` passed to propsToInd) across a set of
+// features. Used to rank a state/selection against all other states under
+// the SAME weights the user is currently viewing, so "overall rank" moves
+// live as sliders are dragged, not just the per-category letter grades.
 function _weightedMean(feats, weights) {
   const M = window.MERA;
   const pi = window.propsToInd;
@@ -96,6 +139,13 @@ function _weightedMean(feats, weights) {
   return n > 0 ? sum / n : 0;
 }
 
+// Core ranking engine: given a set of features (a state's cells, or a
+// user's manually-selected tiles) and a display label, computes category
+// grades AND an overall grade by comparing against every other loaded
+// state. This iterates `window.getStateFeatures(st)` for all 48 states on
+// every call — fine for a single state/tile-selection lookup, but see
+// computeAllStateGrades() below for why this must NOT be called in a loop
+// for a full leaderboard (O(n) becomes O(n^2)).
 function _rankFeats(feats, label, weights) {
   if (!feats.length || !window.getStateFeatures || !window.STATE_NAMES) return null;
   const myCats = _catMeans(feats);
@@ -133,6 +183,9 @@ function _rankFeats(feats, label, weights) {
   return { stateGrade: _rankToGrade(overallRank, n), overallRank, stateName: label, grades, stateCode: null };
 }
 
+// Public API (exposed on window) for grading a single state. Called by
+// ExplorerPage whenever the selected state or weights change, and by the
+// fact-sheet pages. Wraps _rankFeats with the state's own cells.
 function computeStateGrades(stateCode, weights) {
   if (!window.getStateFeatures || !window.STATE_NAMES) return null;
   const feats = window.getStateFeatures(stateCode);
@@ -174,6 +227,12 @@ function computeAllStateGrades() {
   return { states, n, cats: _GRADE_CATS.map(c => c.k) };
 }
 
+// Renders the row of 5 grade-letter "chips" (Water Durability, Grid Access,
+// etc.) plus the big overall state grade shown at the top-left of the
+// Explorer results when no tiles are individually selected. Clicking a
+// chip toggles an inline plain-language explanation (`open` state, indexes
+// into `grades`) sourced from _catWhy(). Rendered by ExplorerPage below
+// whenever gradeData is available and nothing is selected.
 function GradeStrip({ grades, stateGrade, stateName, stateCode }) {
   const M = window.MERA;
   const gs = grades || M.GRADES;
@@ -215,6 +274,10 @@ function GradeStrip({ grades, stateGrade, stateName, stateCode }) {
   );
 }
 
+// Sortable table of known/proposed data-center clusters (M.CLUSTERS, a
+// static list in data.js — e.g. Wallula Gap, Moses Lake) scored at fixed
+// default weights, used on marketing/landing-adjacent pages rather than the
+// live Explorer map itself. Click a column header to sort by it.
 function ClusterTable() {
   const M = window.MERA;
   const { ramp } = React.useContext(MeraCtx);
@@ -224,6 +287,9 @@ function ClusterTable() {
     const vb = sort.k === 'name' ? b.name : sort.k === 'status' ? b.status : b.composite;
     return (va < vb ? -1 : va > vb ? 1 : 0) * sort.dir;
   });
+  // th() builds one clickable, sortable column header; clicking the same
+  // column again flips direction (dir *= -1), clicking a new column
+  // defaults to descending (-1).
   const th = (k, label) => (
     <th style={{ cursor: 'pointer' }} onClick={() => setSort({ k, dir: sort.k === k ? -sort.dir : -1 })}>
       {label}{sort.k === k ? (sort.dir < 0 ? ' ▾' : ' ▴') : ''}
@@ -259,6 +325,8 @@ function ClusterTable() {
   );
 }
 
+// Static press-quote banner. No data dependency — purely decorative social
+// proof, currently a single hardcoded blockquote.
 function NewsBand() {
   return (
     <section style={{ marginTop: 34 }}>
@@ -274,17 +342,31 @@ function NewsBand() {
   );
 }
 
+// Detail panel shown below GradeStrip: category ranking table, strongest/
+// weakest category callouts, cell counts (including how many are excluded
+// by the two hard gates), and median physical raw-value stats (precip,
+// aquifer depth, K-sat, etc — the *_dist_m / *_depth_ft / *_pga_g raw
+// columns from the pipeline, not the normalized scores). Accepts EITHER a
+// stateCode (derives cells from the shared grid cache) OR a `feats` array
+// directly, so the same component serves both "whole state selected" and
+// "user picked N tiles by hand" modes — see ExplorerPage below, which
+// currently always passes feats=null + stateCode (tile-selection mode goes
+// through TileCard instead).
 function StateFactSheet({ stateCode, feats: featsProp, gradeData }) {
   const feats = featsProp || (stateCode && window.getStateFeatures ? window.getStateFeatures(stateCode) : []);
   if (!feats.length || !gradeData) return null;
 
   const props = feats.map(f => f.properties);
+  // Median helper — sorts the column's non-null values and picks the
+  // middle (or averages the two middle values for an even count).
   const med = col => {
     const vals = props.map(p => p[col]).filter(v => v != null && !isNaN(v)).sort((a,b)=>a-b);
     if (!vals.length) return null;
     const m = Math.floor(vals.length / 2);
     return vals.length % 2 ? vals[m] : (vals[m-1] + vals[m]) / 2;
   };
+  // Unused in the current render below but kept available: % of cells
+  // passing/failing a threshold on a raw column.
   const pct = (col, thresh, cmp) => {
     const vals = props.filter(p => p[col] != null);
     if (!vals.length) return null;
@@ -293,6 +375,10 @@ function StateFactSheet({ stateCode, feats: featsProp, gradeData }) {
   };
 
   const totalCells = props.length;
+  // Hard gate counts: flood_score === 0 means inside a FEMA flood zone;
+  // protected_score === 0 means >25% of the cell is protected/tribal land.
+  // Either gate alone excludes a cell from "viable" regardless of its other
+  // 21 indicator scores (see CONTEXT.md "Hard gates" section).
   const floodGated = props.filter(p => p.flood_score === 0).length;
   const protectedGated = props.filter(p => p.protected_score === 0).length;
   const viable = props.filter(p => p.flood_score > 0 && p.protected_score > 0).length;
@@ -307,9 +393,12 @@ function StateFactSheet({ stateCode, feats: featsProp, gradeData }) {
   const { grades, overallRank, stateGrade, stateName } = gradeData;
   const n = grades[0] ? grades[0].n : 48;
 
+  // Lower rank number = better (0 = best of n), so ascending sort surfaces
+  // the strongest category first and descending surfaces the weakest.
   const bestCat = [...grades].sort((a,b) => a.rank - b.rank)[0];
   const worstCat = [...grades].sort((a,b) => b.rank - a.rank)[0];
 
+  // Small inline stat tile: label on top, big value + optional unit below.
   const Stat = ({ label, value, unit }) => (
     <div style={{ padding: '7px 0', borderBottom: '1px solid var(--line-soft)' }}>
       <div style={{ fontSize: 11, color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: '.08em' }}>{label}</div>
@@ -384,6 +473,13 @@ function StateFactSheet({ stateCode, feats: featsProp, gradeData }) {
   );
 }
 
+// Replaces GradeStrip/StateFactSheet when the user has clicked one or more
+// ZCTA cells on the map (`selectedCells` in ExplorerPage). Shows an average
+// composite score plus a full indicator-by-indicator breakdown (bar +
+// numeric score + raw physical value), the three hard-gate PASS/GATED
+// chips, and the "save to workspace" / "submit inquiry" actions that feed
+// the Builder surface. Re-renders (via `key={'tile-' + selectedCells.size}`
+// in ExplorerPage) whenever the selection size changes.
 function TileCard({ feats, weights, selectedState }) {
   const M = window.MERA;
   const { ramp } = React.useContext(MeraCtx);
@@ -393,6 +489,10 @@ function TileCard({ feats, weights, selectedState }) {
   const n = feats.length;
   const props = feats.map(f => f.properties);
 
+  // Composite score per selected cell, averaged across the selection.
+  // !selectedState -> nat=true: when no state filter is active (national
+  // view) we're comparing cells across state lines, so use the *_nat
+  // (cross-state normalized) columns instead of state-relative ones.
   const pi = window.propsToInd;
   let avgComposite = null;
   if (pi && M && weights) {
@@ -400,15 +500,26 @@ function TileCard({ feats, weights, selectedState }) {
     avgComposite = scores.reduce((a, b) => a + b, 0) / scores.length;
   }
 
+  // Mean of a single raw/score column across the selected cells, skipping
+  // missing/NaN values. Used both for indicator scores and raw physical
+  // values (precip, distance-to-transmission, etc) in the breakdown below.
   const avg = col => {
     const vals = props.map(p => p[col]).filter(v => v != null && !isNaN(v));
     return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
   };
 
+  // Same national-vs-state column choice as avgComposite above, but for
+  // the per-indicator display: sc('tx_score') becomes 'tx_score_nat' when
+  // useNat is true, so the breakdown list stays consistent with the badge.
   const hasNat = props[0] && props[0].tx_score_nat != null;
   const useNat = !selectedState && hasNat;
   const sc = base => useNat ? base + '_nat' : base;
 
+  // Display config for the indicator breakdown list: which score column to
+  // read, which raw physical column to show alongside it, and how to
+  // format that raw value (unit conversion, decimal places). Not every
+  // indicator has a meaningful raw column (e.g. community burden, soil
+  // permeability) — those entries have raw: null and just show the score bar.
   const INDS_DISPLAY = [
     { k: 'Transmission',       base: 'tx_score',            raw: 'tx_dist_m',        rLabel: 'Tx distance',   rUnit: 'km',    rFmt: v => (v / 1000).toFixed(1) },
     { k: 'Water availability', base: 'water_score',         raw: 'ann_precip_mm',    rLabel: 'Annual precip', rUnit: 'mm',    rFmt: v => Math.round(v) + '' },
@@ -428,6 +539,9 @@ function TileCard({ feats, weights, selectedState }) {
     { k: 'Hydraulic K-sat',    base: 'ksat_score',          raw: 'ksat_mean_ums',    rLabel: 'K-sat',         rUnit: 'um/s',  rFmt: v => v.toFixed(2) },
   ];
 
+  // "Saved" toggle: reads/writes the Builder workspace, which lives in
+  // localStorage (mera_saved_v1, via the saved-cell IIFE in data.js), not
+  // server state — so this works for anonymous, unauthenticated users too.
   const [allSaved, setAllSaved] = React.useState(() =>
     window.isCellSaved ? feats.every(f => window.isCellSaved(f.properties._fid)) : false
   );
@@ -441,6 +555,12 @@ function TileCard({ feats, weights, selectedState }) {
     }
   };
 
+  // Hard-gate PASS/GATED chips for the selection. Note flat_frac's default
+  // of 0 (missing -> fails terrain) vs protected_frac's default of 1
+  // (missing -> fails protected) — deliberately conservative in opposite
+  // directions so an absent column never silently looks like a pass.
+  // Thresholds mirror the pipeline: flat_frac < 0.03 gates terrain,
+  // protected_frac > 0.25 gates protected land, flood_score === 0 gates flood.
   const terrainPass = props.every(p => (p.flat_frac || 0) >= 0.03);
   const protectedPass = props.every(p => (p.protected_frac || 1) <= 0.25);
   const floodPass = props.every(p => (p.flood_score || 0) > 0);
@@ -502,6 +622,8 @@ function TileCard({ feats, weights, selectedState }) {
             const v = avg(sc(ind.base));
             if (v == null) return null;
             const rawV = ind.raw ? avg(ind.raw) : null;
+            /* score >0.6 green, 0.35-0.6 amber, <0.35 red — same tri-color
+               convention used elsewhere in the app for at-a-glance signal */
             const barColor = v > 0.6 ? 'var(--evergreen)' : v > 0.35 ? '#b8860b' : '#c0392b';
             return (
               <div key={ind.base} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '1px solid var(--line-soft)' }}>
@@ -524,8 +646,22 @@ function TileCard({ feats, weights, selectedState }) {
   );
 }
 
+// Top-level page component for the Explorer (routed at #/explorer). Owns
+// all Explorer state: current weight sliders, which state is selected
+// (null = national view), which cells are clicked/selected, the power-grid
+// overlay toggle, the minimum-score filter, and ZIP search. Composes
+// WAMap (the Leaflet map itself, in map.jsx) with WeightPanel and either
+// TileCard (cells selected) or GradeStrip+StateFactSheet (nothing
+// selected, showing the state/national report card instead).
+// NOTE (CONTEXT.md): ExplorerPage has no Washington default — the
+// scorecard section only populates once a state is actually selected.
 function ExplorerPage({ query }) {
   const M = window.MERA;
+  // Weight sliders can be seeded from a shared link's `?w=` query param
+  // (see WeightPanel's "Share these weights" button in map.jsx, which
+  // encodes weights as a comma-joined list in indicator order). Falls back
+  // to the platform defaults if the param is missing, malformed, or the
+  // wrong length (e.g. stale link from before an indicator was added).
   const initial = React.useMemo(() => {
     if (query && query.w) {
       const parts = query.w.split(',').map(Number);
@@ -551,6 +687,9 @@ function ExplorerPage({ query }) {
 
   const hasSelection = selectedCells.size > 0;
 
+  // Toggle a single cell (by its _fid, assigned at grid-load time in
+  // map.jsx) in/out of the selection Set. Passed down to WAMap as
+  // onCellToggle and fired from the map's click handler.
   function handleCellToggle(fid) {
     setSelectedCells(prev => {
       const next = new Set(prev);
@@ -563,8 +702,15 @@ function ExplorerPage({ query }) {
     setSelectedCells(new Set());
   }
 
+  // Switching states (or going back to national) invalidates any tile
+  // selection made in the previous state/view.
   React.useEffect(() => { clearSelection(); }, [selectedState]);
 
+  // ZIP code finder (sidebar search box): validates the 5-digit format,
+  // looks the ZCTA up in the already-loaded grid cache via
+  // window.findZip (map.jsx), and on a hit switches the state selector to
+  // match and sets zipTarget — WAMap watches zipTarget to pan/zoom to the
+  // match and draw a dashed highlight border around it.
   function handleZipSearch() {
     const zip = zipInput.trim();
     if (zip.length !== 5 || !/^\d{5}$/.test(zip)) { setZipError('Enter a 5-digit ZIP'); return; }
@@ -573,9 +719,17 @@ function ExplorerPage({ query }) {
     if (!feat) { setZipError('ZIP not found'); return; }
     setZipError(null);
     setSelectedState(feat.properties._state);
+    // Timestamp suffix guarantees a fresh value even for repeat searches on
+    // the same ZIP, so the effect watching zipTarget always re-fires.
     setZipTarget(zip + '_' + Date.now());
   }
 
+  // Recomputes the state report card whenever the selected state or the
+  // slider weights change. Retries with a 500ms backoff (up to 10 times)
+  // because computeStateGrades depends on window.getStateFeatures, which
+  // depends on the grid cache — on a fresh page load or state switch the
+  // relevant state's GeoJSON may not have finished streaming in yet (see
+  // "Lazy loading" in README.md); this polls until it's ready or gives up.
   React.useEffect(() => {
     if (!selectedState) { setGradeData(null); return; }
     let attempts = 0;
@@ -632,6 +786,10 @@ function ExplorerPage({ query }) {
               <MapLegend />
             </div>
           </div>
+          {/* Mutually exclusive result panels: clicked cells show the
+              per-cell TileCard breakdown; with no selection, the
+              state/national grade report card (GradeStrip + StateFactSheet)
+              is shown instead once gradeData has resolved. */}
           {hasSelection && window.getFeaturesById && (
             <TileCard key={'tile-' + selectedCells.size}
               feats={window.getFeaturesById(selectedCells)}
@@ -658,4 +816,7 @@ function ExplorerPage({ query }) {
   );
 }
 
+// No module bundler is used (see file header) — every component/function
+// this file exposes to app.jsx (the router) or other JSX files has to be
+// explicitly attached to `window` here.
 Object.assign(window, { ExplorerPage, GradeStrip, ClusterTable, StateFactSheet, TileCard, computeStateGrades, computeAllStateGrades, _gradeColor });

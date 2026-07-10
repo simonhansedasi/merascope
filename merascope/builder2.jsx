@@ -1,7 +1,31 @@
-/* ── Surface B (cont.): site profile, watchlist, portfolio ── */
+/*
+ * builder2.jsx — Builder surface, part 2: Status (CRM) tab + Portfolio screening tab.
+ * Continues builder.jsx (Workspace + My Inquiry); together the two files implement all four Builder
+ * sub-nav tabs (BuilderSubNav lives in builder.jsx and is shared by both files).
+ *
+ * This file renders:
+ *   - SiteProfile: a legacy/demo detail page driven by mock M.SITES data (see the "kept for legacy
+ *     refs" note on SiteCard in builder.jsx) — not part of the live saved-cell workflow.
+ *   - StatusPage (#/builder/status): per-saved-cell CRM tracker — status pipeline, contacts, activity
+ *     log, notes — built from CrmPanel.
+ *   - PortfolioPage (#/builder/portfolio): CSV upload of candidate site coordinates, client-side
+ *     nearest-cell matching against the loaded grid, hard-gate + composite-score screening, and a
+ *     PASS/FAIL results table with CSV export.
+ *
+ * Like builder.jsx, this is plain Babel-compiled JSX with no bundler — components are attached to
+ * `window` at the bottom so app.jsx's router can reach them, and shared state/helpers (composite(),
+ * propsToInd(), cellLabel(), findNearestCell(), CRM getters/setters, serverLog(), MERA_SESSION) come
+ * from data.js globals.
+ */
 
+// Tab labels for the legacy SiteProfile detail page (below).
 const PROFILE_TABS = ['Overview', 'Water & Rights', 'Grid & Queue', 'Hazard & Insurance', 'Community & Permitting Posture', 'Heat-Reuse & Carbon Upside', 'Field Truth', 'Comparables'];
 
+/* Legacy/demo site-detail page keyed by a mock site id (M.SITES, not real saved-cell/case data).
+   Renders a tabbed deep-dive (water rights, grid queue, hazard/insurance, community posture,
+   heat-reuse upside, field-truth surveys, comparable sites) with mostly illustrative/placeholder
+   copy and derived numbers rather than live pipeline scores. Predates the real Workspace/My Inquiry
+   flow; kept around for its UI patterns and linked from SiteCard's "Open full profile" button. */
 function SiteProfile({ id }) {
   const M = window.MERA;
   const site = M.SITES.find(s => s.id === id) || M.SITES[0];
@@ -146,6 +170,8 @@ function SiteProfile({ id }) {
   );
 }
 
+// The 5-stage CRM pipeline a builder can move a saved site through (per-cell, not per-case — this is
+// the builder's own outreach tracker, separate from the formal case/docket stage machine in M.STAGES).
 var CRM_STATUSES = [
   { k: 'researching',  label: 'Researching',   bg: 'var(--gate)',   color: 'var(--slate)' },
   { k: 'contacted',    label: 'Contacted',      bg: 'var(--med-bg)', color: 'var(--med-tx)' },
@@ -153,8 +179,11 @@ var CRM_STATUSES = [
   { k: 'negotiating',  label: 'Negotiating',    bg: 'var(--lo-bg)',  color: 'var(--lo-tx)' },
   { k: 'dead',         label: 'Dead',           bg: 'var(--hi-bg)',  color: 'var(--hi-tx)' },
 ];
+// Fixed set of activity-log entry types offered in CrmPanel's "+ Log activity" form.
 var EVENT_TYPES = ['Call', 'Email', 'Meeting', 'Site visit', 'Note'];
 
+/* Small colored pill showing a saved cell's current CRM status; falls back to the first status
+   (Researching) if the stored status key doesn't match anything in CRM_STATUSES. */
 function CrmStatusBadge({ status }) {
   var s = CRM_STATUSES.find(function(x) { return x.k === status; }) || CRM_STATUSES[0];
   return (
@@ -164,9 +193,18 @@ function CrmStatusBadge({ status }) {
   );
 }
 
+/* CRM detail panel for one saved cell (right-hand pane of StatusPage) — status pipeline buttons,
+   contacts list + add-contact form, activity log + add-event form, and a notes textarea. All
+   mutations write through to both localStorage (window.set/add/removeCrm* helpers from data.js, for
+   instant offline-tolerant UI) and the server (saveToServer, POST /api/crm/<fid>) so CRM data
+   survives across devices/sessions when signed in. `fid` is the cell's feature id, the CRM record's
+   join key alongside the session id (crm_state is keyed on (session_id, fid) server-side — see
+   CONTEXT.md session-scoping invariants). */
 function CrmPanel({ fid, cell, geo }) {
   var [crm, setCrm] = React.useState(function() { return window.getCrm ? window.getCrm(fid) : { status: 'researching', contacts: [], events: [], notes: '' }; });
 
+  // Fire-and-forget: persist the full CRM state blob for this cell to the server, scoped to the
+  // browser session id (never omitted — a missing session_id would otherwise mean "all sessions").
   var saveToServer = function(state) {
     fetch('/api/crm/' + fid, {
       method: 'POST',
@@ -175,6 +213,9 @@ function CrmPanel({ fid, cell, geo }) {
     });
   };
 
+  // On mount, pull the server's copy of this cell's CRM record (source of truth) and mirror it into
+  // the local mera_crm_v1 cache so other components reading from localStorage (e.g. StatusPage's list)
+  // stay in sync without needing their own fetch.
   React.useEffect(function() {
     fetch('/api/crm/' + fid + '?session_id=' + (window.MERA_SESSION || '')).then(function(r) { return r.json(); }).then(function(data) {
       if (!data) return;
@@ -187,6 +228,9 @@ function CrmPanel({ fid, cell, geo }) {
     });
   }, [fid]);
 
+  // Every mutation follows the same pattern: update the local helper (data.js's IIFE-backed
+  // localStorage store) for other components' benefit, merge into local component state for instant
+  // re-render, then push the merged state to the server.
   var setStatus = function(k) {
     window.setCrmStatus && window.setCrmStatus(fid, k);
     var next = Object.assign({}, crm, { status: k });
@@ -200,7 +244,8 @@ function CrmPanel({ fid, cell, geo }) {
     saveToServer(next);
   };
 
-  /* contact form */
+  /* contact form — a name is the only required field; the draft resets and the form collapses on
+     successful save. */
   var [showContactForm, setShowContactForm] = React.useState(false);
   var [contactDraft, setContactDraft] = React.useState({ name: '', title: '', org: '', email: '', phone: '' });
   var submitContact = function() {
@@ -215,7 +260,7 @@ function CrmPanel({ fid, cell, geo }) {
     setShowContactForm(false);
   };
 
-  /* event form */
+  /* event form — activity log entry; date defaults to today (ISO yyyy-mm-dd), summary is required. */
   var [showEventForm, setShowEventForm] = React.useState(false);
   var [eventDraft, setEventDraft] = React.useState({ type: 'Call', date: new Date().toISOString().slice(0, 10), summary: '' });
   var submitEvent = function() {
@@ -384,6 +429,9 @@ function CrmPanel({ fid, cell, geo }) {
   );
 }
 
+/* Top-level component for the Status tab (#/builder/status) — a master/detail layout: left column
+   lists every saved cell with a status badge + most recent activity-log entry, right column shows
+   the full CrmPanel for whichever cell is selected. Defaults to selecting the first saved cell. */
 function StatusPage() {
   var savedCells = window.getSavedCells ? window.getSavedCells() : [];
   var allCrm = window.getAllCrm ? window.getAllCrm() : {};
@@ -472,7 +520,13 @@ function StatusPage() {
   );
 }
 
-/* ── Portfolio Screening helpers ── */
+/* ── Portfolio Screening helpers ──
+   Pure functions (no React) used by PortfolioPage below to turn an uploaded CSV into scored,
+   gate-checked results — kept outside the component so they're easy to reason about independently. */
+
+/* Minimal CSV parser: splits on commas (no quoted-comma support), trims whitespace and surrounding
+   quote characters from every cell. First line is always treated as the header row. Returns null if
+   there isn't at least one data row after the header. */
 function parsePortfolioCSV(text) {
   var lines = text.trim().split(/\r?\n/);
   if (lines.length < 2) return null;
@@ -489,6 +543,9 @@ function parsePortfolioCSV(text) {
   return { headers: headers, rows: rows };
 }
 
+/* Guesses which uploaded columns are name/lat/lon by matching lower-cased header text against a list
+   of common aliases (e.g. 'lng' or 'long' for longitude). Returns '' for any column the user needs to
+   pick manually in the mapping step. */
 function autoDetectPortfolioCols(headers) {
   var lc = headers.map(function(h) { return h.toLowerCase(); });
   var find = function(candidates) {
@@ -505,6 +562,14 @@ function autoDetectPortfolioCols(headers) {
   };
 }
 
+/* Core screening engine: for every uploaded row, finds the nearest grid cell (client-side, via
+   window.findNearestCell — brute-force lat/lon search against the already-loaded _gridCache, no
+   server round-trip), scores it, checks both hard gates, and decides PASS/FAIL against the given
+   score threshold. A row can fail for three distinct reasons that are NOT mutually exclusive with a
+   found cell: bad coordinates, no nearby cell at all, or a found cell that fails a gate/threshold —
+   each produces a different `error`/`reasons` shape so the results table can explain exactly why.
+   Terrain is computed (`terrainOk`) but — matching the rest of the app — is not a hard gate here
+   either; only `protected` and `flood` feed into `gatesOk`/`pass`. */
 function screenPortfolioRows(rows, colMap, threshold) {
   var M   = window.MERA;
   var pi  = window.propsToInd;
@@ -526,8 +591,11 @@ function screenPortfolioRows(rows, colMap, threshold) {
     }
     var feat = match.feature;
     var p    = feat.properties;
+    // Always scored at DEFAULT_WEIGHTS (national scale) — portfolio screening is a bulk/objective
+    // pass, not tied to any one user's tuned Explorer weights.
     var natComp   = (pi && M) ? M.composite(pi(p, true),  M.DEFAULT_WEIGHTS) : null;
     var stateComp = (pi && M) ? M.composite(pi(p, false), M.DEFAULT_WEIGHTS) : null;
+    // Same "missing property fails safe" defaults as SavedCellCard's viability check.
     var flat  = p.flat_frac      != null ? p.flat_frac      : 0;
     var prot  = p.protected_frac != null ? p.protected_frac : 1;
     var flood = p.flood_score    != null ? p.flood_score    : 0;
@@ -539,6 +607,8 @@ function screenPortfolioRows(rows, colMap, threshold) {
     var reasons     = [];
     if (!protectedOk)            reasons.push('Protected: ' + (prot*100).toFixed(0) + '% (need <=25%)');
     if (!floodOk)                reasons.push('Flood: SFHA overlap');
+    // Score-threshold reason is only reported once the gates already pass — a gate failure is the
+    // more actionable/primary reason and we don't want to bury it under a secondary score complaint.
     if (gatesOk && !scoreOk)     reasons.push('Score ' + (natComp||0).toFixed(3) + ' below threshold ' + threshold.toFixed(2));
     out.push({
       name: name, lat: lat, lon: lon, feature: feat,
@@ -552,6 +622,10 @@ function screenPortfolioRows(rows, colMap, threshold) {
   return out;
 }
 
+/* Top-level component for the Portfolio screening tab (#/builder/portfolio). A wizard with four
+   stages tracked in `stage` state: 'upload' (drop a CSV) -> 'mapping' (confirm which columns are
+   name/lat/lon + set the pass threshold) -> 'running' (loads the full 48-state grid into memory if
+   not already cached, then screens every row) -> 'results' (sortable/exportable PASS/FAIL table). */
 function PortfolioPage() {
   var M   = window.MERA;
   var ctx = React.useContext(MeraCtx);
@@ -582,6 +656,9 @@ function PortfolioPage() {
     reader.readAsText(file);
   };
 
+  // Ensures the full national grid is loaded (loadGridCache() is idempotent/cached — a second
+  // portfolio run in the same session is near-instant) before running screenPortfolioRows, then logs
+  // a summary event (pass/fail counts + threshold) for usage analytics.
   var runScreening = function() {
     if (!colMap.latCol || !colMap.lonCol) { setErr('Select latitude and longitude columns.'); return; }
     setStage('running');
@@ -599,6 +676,8 @@ function PortfolioPage() {
     });
   };
 
+  // Client-side CSV export (no server round-trip) — builds a data: URI and triggers a synthetic
+  // click on a hidden <a download> to save the file, then removes the element.
   var exportResults = function() {
     var hdr  = ['name','cell','lat_input','lon_input','dist_km','nat_composite','state_composite','protected','flood','result','failure_reasons'];
     var body = results.map(function(r) {
@@ -801,4 +880,6 @@ function PortfolioPage() {
   );
 }
 
+// Expose these page components on window for app.jsx's router (no bundler/module system — see the
+// file header note).
 Object.assign(window, { SiteProfile, StatusPage, PortfolioPage });

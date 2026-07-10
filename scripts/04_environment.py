@@ -135,6 +135,10 @@ out geom;
 
 def plot_environment(cfg, state, dc_gdf, grid, processed):
     layers = [
+        # NOTE: subtitle says "Superfund NPL" but contamination_score here is
+        # TRI-facility distance (Superfund NPL/RCRA proximity is 12_superfund.py,
+        # added later). Cosmetic mislabel in this diagnostic PNG only — doesn't
+        # affect grid_scores.geojson.
         ("contamination_score", "Contamination Proximity", "(1 = far from Superfund NPL site)"),
         ("waterway_score",      "Waterway Sensitivity",    "(1 = far from major river)"),
     ]

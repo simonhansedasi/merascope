@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Survey management CLI.
+"""Survey management CLI — community indicator-weight survey (see METHODS.md's
+"Community Survey" section for the full method writeup).
+
+Public respondents rank all 12 SURVEY_INDICATORS 1 (most important) to 12; this
+CLI operates on the sqlite survey.db that collects those rankings (separate
+from the main PostgreSQL app DB in schema.sql). `snapshot` is the mechanism
+referenced by METHODS.md's "Snapshot mechanism" note: at a formal comment
+deadline, current weights get frozen with a timestamp label so reports can
+show both "as of [date]" and "current" community weights side by side.
 
 Usage:
   python manage_survey.py snapshot <state> <region> "<label>"
@@ -23,6 +31,9 @@ N = len(SURVEY_INDICATORS)
 
 
 def compute_weights(rows):
+    # Borda count (de Borda, 1781): rank r -> (N+1-r) points, so rank 1 (most
+    # important) scores N points and rank N scores 1. No response -> 0 points,
+    # not excluded, so partial/skipped rankings don't get discarded.
     if not rows:
         eq = 1.0 / N
         return {k: eq for k in SURVEY_INDICATORS}
@@ -35,6 +46,10 @@ def compute_weights(rows):
             point_lists[k].append(pts)
     means  = {k: statistics.mean(v) for k, v in point_lists.items()}
     stdevs = {k: statistics.stdev(v) if len(v) > 1 else 0.0 for k, v in point_lists.items()}
+    # Dividing by (1 + stdev) before normalizing is a deliberate in-house
+    # addition, not part of classic Borda counting: it discounts indicators
+    # respondents disagree about, on the premise that unanimous priorities
+    # should carry more weight than contested ones with the same mean score.
     raw    = {k: means[k] / (1.0 + stdevs[k]) for k in SURVEY_INDICATORS}
     total  = sum(raw.values()) or 1.0
     return {k: raw[k] / total for k in SURVEY_INDICATORS}

@@ -57,6 +57,10 @@
 /* END USAGE */
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Scoped CSS for the floating panel and every Tweak* control (glassy translucent
+// panel chrome, sliders, segmented radio, toggle switch, number stepper, color chips,
+// etc.), injected via a <style> tag in TweaksPanel below. Kept as a single template
+// string (not a stylesheet file) so this file stays a drop-in, dependency-free script.
 const __TWEAKS_STYLE = `
   .twk-panel{position:fixed;right:16px;bottom:16px;z-index:2147483646;width:280px;
     max-height:calc(100vh - 32px);display:flex;flex-direction:column;
@@ -286,6 +290,8 @@ function TweaksPanel({ title = 'Tweaks', children }) {
 
 // ── Layout helpers ──────────────────────────────────────────────────────────
 
+// Uppercase section-divider label inside the panel body (e.g. "Typography", "Theme")
+// — purely a heading, `children` (if any) render right after it in normal flow.
 function TweakSection({ label, children }) {
   return (
     <>
@@ -295,6 +301,10 @@ function TweakSection({ label, children }) {
   );
 }
 
+// Shared row wrapper every control below is built on: a label (+ optional current-
+// value readout) above or beside the control itself. `inline` switches from a
+// stacked (label-above-control) layout to a horizontal one (label-beside-control),
+// used by TweakToggle and the color/native-picker fallback.
 function TweakRow({ label, value, children, inline = false }) {
   return (
     <div className={inline ? 'twk-row twk-row-h' : 'twk-row'}>
@@ -309,6 +319,8 @@ function TweakRow({ label, value, children, inline = false }) {
 
 // ── Controls ────────────────────────────────────────────────────────────────
 
+// Numeric range slider with the live value (formatted with `unit`) shown in the row
+// label — the simplest control, wraps a plain <input type="range">.
 function TweakSlider({ label, value, min = 0, max = 100, step = 1, unit = '', onChange }) {
   return (
     <TweakRow label={label} value={`${value}${unit}`}>
@@ -318,6 +330,8 @@ function TweakSlider({ label, value, min = 0, max = 100, step = 1, unit = '', on
   );
 }
 
+// Boolean on/off switch (custom <button role="switch">, not a checkbox) — the
+// horizontal-row layout puts the label on the left and the switch on the right.
 function TweakToggle({ label, value, onChange }) {
   return (
     <div className="twk-row twk-row-h">
@@ -401,6 +415,9 @@ function TweakRadio({ label, value, options, onChange }) {
   );
 }
 
+// Native <select> dropdown fallback for option lists too long/numerous for the
+// TweakRadio segmented control (also used directly by TweakRadio when it decides
+// segments won't fit — see the fitsAsSegments check above).
 function TweakSelect({ label, value, options, onChange }) {
   return (
     <TweakRow label={label}>
@@ -415,6 +432,7 @@ function TweakSelect({ label, value, options, onChange }) {
   );
 }
 
+// Plain single-line text input tweak.
 function TweakText({ label, value, placeholder, onChange }) {
   return (
     <TweakRow label={label}>
@@ -424,6 +442,9 @@ function TweakText({ label, value, placeholder, onChange }) {
   );
 }
 
+// Number stepper with a "scrub" affordance: dragging the label left/right (via
+// onScrubStart) adjusts the value like a mini slider, in addition to typing directly
+// into the numeric <input>. Snaps drag deltas to `step` and clamps to min/max.
 function TweakNumber({ label, value, min, max, step = 1, unit = '', onChange }) {
   const clamp = (n) => {
     if (min != null && n < min) return min;
@@ -470,6 +491,8 @@ function __twkIsLight(hex) {
   return r * 299 + g * 587 + b * 114 > 148000;
 }
 
+// Checkmark glyph overlaid on the selected TweakColor chip; `light` (from
+// __twkIsLight) picks a stroke color that stays legible against that chip's hero color.
 const __TwkCheck = ({ light }) => (
   <svg viewBox="0 0 14 14" aria-hidden="true">
     <path d="M3 7.2 5.8 10 11 4.2" fill="none" strokeWidth="2.2"
@@ -527,6 +550,8 @@ function TweakColor({ label, value, options, onChange }) {
   );
 }
 
+// Plain action button (e.g. "Reset to defaults") — `secondary` swaps to a muted
+// style for less prominent actions alongside a primary TweakButton.
 function TweakButton({ label, onClick, secondary = false }) {
   return (
     <button type="button" className={secondary ? 'twk-btn secondary' : 'twk-btn'}
@@ -534,6 +559,8 @@ function TweakButton({ label, onClick, secondary = false }) {
   );
 }
 
+// Export onto `window` — this file is loaded as a plain <script> (no bundler/module
+// system), so consuming prototypes reference these globally (see USAGE block above).
 Object.assign(window, {
   useTweaks, TweaksPanel, TweakSection, TweakRow,
   TweakSlider, TweakToggle, TweakRadio, TweakSelect,

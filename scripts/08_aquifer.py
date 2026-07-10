@@ -9,10 +9,16 @@ Method:
     from USGS Water Data API (field-measurements collection, new post-2025 API)
   - Computes median depth per monitoring site
   - IDW interpolation from well sites to grid cell centroids
-  - Normalizes: p95 cap → 0-1 (high score = deep water table = low aquifer sensitivity)
+  - Normalizes: p95 cap → 0-1 (high score = shallow water table = easy cooling-water access)
 
-Rationale: deep water table reduces risk of surface-spill groundwater contamination;
-sites above shallow aquifers carry higher environmental risk for data center siting.
+Rationale: this scores for cooling-water accessibility, not contamination risk — a
+shallow water table means cheaper/easier well access for cooling makeup water, so
+aquifer_score is high (near 1) when depth is small. (An earlier version of this
+docstring described the opposite rationale — deep table favored for lower spill-
+contamination risk — but that is NOT what the formula below computes; the plot
+legend's "0=shallow/1=deep" label is similarly stale/backwards relative to the
+actual score direction. If contamination risk needs its own indicator, it should
+be a separate score rather than redefining this one.)
 
 Usage:
   python 08_aquifer.py WA

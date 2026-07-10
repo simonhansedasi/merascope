@@ -1,11 +1,24 @@
-"""State configuration table for the data center siting pipeline."""
+"""
+config.py — State registry + path helpers shared by every pipeline script.
+
+Every numbered script (01-16) and the build/normalize/patch scripts import
+`get_state()` for the bbox/FIPS/UTM zone and `get_paths()` for where to read
+raw downloads from and write grid_scores.geojson to. Centralizing this here
+means adding a new state or changing the on-disk layout only touches one file.
+
+DC = "data center"; the module predates the ZCTA rework and the name stuck.
+"""
 
 import os
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent
 
-# (west, south, east, north) in WGS84
+# (west, south, east, north) in WGS84 — used to build the fishnet grid (see
+# 02_indicators.py:create_fishnet) and as the query bbox for every Overpass/
+# Esri/Census REST call in the pipeline. DC excluded here but present below;
+# AK/HI are in the table but not part of the live 48-contiguous-state product
+# (see map.jsx GRID_URLS — only the 48 contiguous states are actually served).
 STATES = {
     "AL": {"name": "Alabama",             "fips": "01", "bbox": (-88.474, 30.144, -84.889, 35.008)},
     "AK": {"name": "Alaska",              "fips": "02", "bbox": (-179.231, 51.214, -129.979, 71.365)},
@@ -62,7 +75,15 @@ STATES = {
 
 
 def utm_epsg(bbox):
-    """Return UTM zone EPSG for the center of the given bbox (northern hemisphere)."""
+    """Return UTM zone EPSG for the center of the given bbox (northern hemisphere).
+
+    Every script reprojects to this EPSG before doing distance-based scoring
+    (nearest-transmission-line, IDW, etc.) so that "meters" actually means
+    meters instead of degrees. All target states are north of the equator,
+    so the EPSG:326xx (northern) series is hardcoded — this would need a
+    326xx/327xx branch if the pipeline ever covers a southern-hemisphere
+    territory.
+    """
     center_lon = (bbox[0] + bbox[2]) / 2
     zone = int((center_lon + 180) / 6) + 1
     return f"EPSG:{32600 + zone}"
@@ -75,7 +96,7 @@ def get_state(abbr: str) -> dict:
     cfg = STATES[abbr].copy()
     cfg["abbr"] = abbr
     cfg["utm_epsg"] = utm_epsg(cfg["bbox"])
-    cfg["bbox_str"] = "{},{},{},{}".format(*cfg["bbox"])  # west,south,east,north
+    cfg["bbox_str"] = "{},{},{},{}".format(*cfg["bbox"])  # west,south,east,north — Esri REST bbox param format
     return cfg
 
 

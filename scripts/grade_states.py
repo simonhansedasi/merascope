@@ -7,6 +7,19 @@ Categories and columns match explorer.jsx _GRADE_CATS exactly (using _nat scores
 Output modes:
   python3 grade_states.py          -> prints summary table + JSON to grades_output.json
   python3 grade_states.py --patch  -> also patches data.js in place
+
+This is a top-level script, not a main()-guarded module — it runs its full
+pipeline (load -> rank -> generate why-text -> optionally patch data.js) at
+import time in the order the code appears below. Keep that in mind if this
+is ever imported rather than run directly.
+
+The letter grades and "why" narratives generated here duplicate logic that
+also exists client-side in explorer.jsx (_GRADE_CATS, _rankToGrade,
+_rankFeats) — this script is how the STATIC grades baked into data.js get
+(re)computed server-side from real _nat data whenever the pipeline output
+changes, rather than the frontend running the ranking itself over all 48
+states client-side. If the frontend's category list or grade thresholds
+ever change, this file's CATEGORIES/pct_to_grade must be updated to match.
 """
 
 import json
@@ -265,8 +278,9 @@ for cat in CATEGORIES:
     for st in states_list:
         my_score = means[st][key]
         if my_score is None:
-            rank = n // 2
+            rank = n // 2  # no data for this category — assume median rank rather than best/worst
         else:
+            # rank = count of states strictly better (0 = best); ties share the lower rank
             rank = sum(1 for s2 in states_list if means[s2].get(key) is not None and means[s2][key] > my_score)
         results[st]['cat_rank'][cat]  = rank
         results[st]['cat_grade'][cat] = pct_to_grade(rank, n)
@@ -340,6 +354,11 @@ if wa:
     src = re.sub(r'var GRADES\s*=\s*\[.*?\]', new_grades_block, src, flags=re.DOTALL)
     print(f"  Patched WA: {wa['overall']}", file=sys.stderr)
 
+# A regex-based rewrite of the mkState(...) calls in data.js would be fragile —
+# the grade string and grades array both contain nested quotes/braces/brackets
+# (apostrophes in "why" text, nested {} objects per grade entry), so a plain
+# regex either over- or under-matches. This hand-rolled bracket/quote-aware
+# scanner walks the source char-by-char to find exact splice points instead.
 def find_mkstate_bounds(src, st):
     """Bracket-aware scanner: returns (grade_start, grade_end, array_start, array_end) or None."""
     anchor = f"{st}: mkState('{st}',"

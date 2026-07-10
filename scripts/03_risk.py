@@ -39,6 +39,10 @@ def fetch_seismic(state_gdf, raw):
         return pd.read_csv(path)
     bounds = state_gdf.total_bounds
     state_union = state_gdf.geometry.union_all()
+    # 6x10 sample points, not one per grid cell — USGS rate-limits (hence the
+    # 0.3s sleep below) and PGA varies smoothly over tens of km, so a coarse
+    # sample + idw_k() interpolation onto the full grid is both faster and
+    # accurate enough.
     sample_lats = np.linspace(bounds[1] + 0.4, bounds[3] - 0.2, 6)
     sample_lons = np.linspace(bounds[0] + 0.4, bounds[2] - 0.2, 10)
     api_url = "https://earthquake.usgs.gov/ws/designmaps/asce7-22.json"
@@ -85,6 +89,9 @@ def fetch_flood(state_gdf, raw):
                 r = requests.get(nfhl_url, params={
                     "geometry": bbox, "geometryType": "esriGeometryEnvelope",
                     "inSR": "4326", "spatialRel": "esriSpatialRelIntersects",
+                    # FEMA zone codes for the 1%-annual-chance ("100-year") flood plain —
+                    # the regulatory threshold that triggers flood insurance/permitting.
+                    # X/B/C zones (minimal risk) are intentionally excluded.
                     "where": "FLD_ZONE IN ('A','AE','AH','AO','AR','A99','VE','V')",
                     "outFields": "FLD_ZONE", "returnGeometry": "true",
                     "outSR": "4326", "resultRecordCount": "1000", "f": "geojson",
@@ -106,6 +113,14 @@ def fetch_flood(state_gdf, raw):
     return None
 
 
+# Shared IDW (inverse-distance weighting) pattern, duplicated (not imported)
+# across 03/04/05/08/09/10/patch_raws.py — each copy is nearly identical:
+# k-nearest-neighbor weighted average, weight = 1/dist^power. Used wherever a
+# sparse point sample (seismic grid, heat-flow stations, well depths, soil
+# map-unit centroids) needs to be interpolated onto the dense fishnet.
+# This copy is the simplest variant: exact hits are handled by flooring the
+# distance to 1e-6 rather than short-circuiting to the source value directly
+# (compare to the exact-hit branch in later scripts' idw_k).
 def idw_k(src_pts, src_vals, tgt_pts, k=8, power=2):
     tree = cKDTree(src_pts)
     dists, idxs = tree.query(tgt_pts, k=min(k, len(src_pts)))

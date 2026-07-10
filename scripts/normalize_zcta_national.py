@@ -9,6 +9,14 @@ directly without re-ranking.
 Must be run AFTER all 48 states have been scored by run_zcta_study.py.
 Output: *_nat columns written in-place to data/{STATE}/zcta/grid_scores.geojson.
 
+Differs from normalize_national.py (the fishnet equivalent): that script
+re-derives *_nat from each indicator's underlying raw physical column
+(tx_dist_m, seismic_pga_g, etc). This script has no such raw columns to fall
+back on, so it re-normalizes the already-0-1 *_score value directly — i.e. a
+second p01/p99 min-max stretch on top of the per-ZCTA score, not a re-ranking
+from physical units. A missing score defaults its _nat column to 0.0 (treated
+as worst-case), not skipped/neutral.
+
 Usage:
   /home/simonhans/anaconda3/envs/merascope/bin/python3 -u scripts/normalize_zcta_national.py
   /home/simonhans/anaconda3/envs/merascope/bin/python3 -u scripts/normalize_zcta_national.py --states WA OR

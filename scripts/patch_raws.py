@@ -19,6 +19,12 @@ Raw columns added:
 NOT added here (require SRTM tiles, already deleted):
   flat_frac, slope_mean_deg — available for new states going forward
 
+Not purely historical: run_pipeline.py invokes this automatically after every
+state's main run (see its Post-processing step), so this stays live going
+forward rather than being a one-time backfill. idw_k() below is the same
+pattern used across 03/05/08/09/10_zcta/patch_raws_zcta.py — duplicated per
+file, not imported from a shared module.
+
 Usage:
   python3 scripts/patch_raws.py WA OR TX CA NV UT ID MT AZ
 """

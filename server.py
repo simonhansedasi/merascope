@@ -1,6 +1,42 @@
 """
 Merascope server — PostgreSQL backend.
 Requires DATABASE_URL env var: postgresql://user:pass@host/dbname
+
+This is the entire Flask backend for Merascope: a data-center site suitability
+and permitting-coordination platform. It serves the compiled React frontend
+(static files under merascope/dist/), the Jinja2-rendered permit justification
+report, and every /api/* JSON route the frontend calls.
+
+Big picture of what lives in this file, roughly top to bottom:
+  - Rate limiters (magic-link auth, telemetry, lead capture) — simple in-process,
+    per-gunicorn-worker token buckets keyed by client IP.
+  - Postgres connection pool + a thin `_DB` wrapper so the rest of the file can
+    write SQLite-style `?` placeholders (translated to psycopg2's `%s`).
+  - `init_db()` — idempotent schema creation/migration, run once at import time.
+  - Event logging (`/api/log`) and CSV export routes for the Builder workspace
+    and CRM tracker (session-scoped — see the security notes below).
+  - Case-file routes: invites, conditions, documents, rebuttal deadlines,
+    stage transitions, cryptographic record anchoring at Resolution.
+  - The docket (`/api/cases`), Permitter Inbox (`/api/steward/inbox`), and bulk
+    CSV intake (`/api/steward/bulk_import`) — steward-facing triage tooling.
+  - Builder submission flow (`/api/builder/submit`), including the anonymous
+    "demo" branch that writes to a TTL'd `demo_cases` table instead of `cases`.
+  - Magic-link email auth (`/api/auth/*`) and the `require_steward` decorator.
+  - Steward weight templates + geographic zones (gate builders below a minimum
+    score in a locked zone) with pure-Python point-in-polygon, no GDAL.
+  - The permit justification report (`/report/<case_id>`, `/report`) — server-
+    rendered Jinja2 HTML, no React involved.
+  - The static file catch-all, which allowlists only front-end asset
+    extensions so the rsynced repo (including this very file, `.env`, `.db`
+    files, etc.) is never directly downloadable.
+
+Security model in one paragraph: every case write and document route funnels
+through `_case_write_guard()` (single-case reads through `_can_access_case()`),
+which treats demo/fixture ids as open (public demo) and requires a real,
+authorized session for everything else. Builder CRM/workspace data is scoped
+by anonymous browser-session UUID, not login, so every route touching it must
+require and filter on `session_id` — never fall back to "no session = all
+sessions." See CONTEXT.md's Security model section for the full writeup.
 """
 
 from flask import Flask, request, jsonify, send_from_directory, Response, redirect, g, render_template
@@ -16,6 +52,9 @@ import psycopg2.pool
 import json, csv, io, os, secrets, smtplib, time, threading, hashlib, math
 
 try:
+    # boto3 is only needed for S3-backed document storage (see _get_s3 below).
+    # Import is optional so the server still starts locally without it — in
+    # that case upload_doc/serve_doc fall back to local disk under DOCS_DIR.
     import boto3
     from botocore.client import Config as BotoConfig
 except ImportError:
@@ -42,8 +81,13 @@ def _client_ip():
 
 
 def _check_rate_limit(ip):
+    """Sliding-window check for the magic-link limiter: True if this IP is still
+    under _RL_LIMIT requests within the trailing _RL_WINDOW seconds (and records
+    this hit), False if it should be rejected with 429."""
     now = time.time()
     with _rl_lock:
+        # Drop timestamps outside the window, then check remaining count —
+        # this makes the window slide rather than reset on a fixed boundary.
         hits = [t for t in _rl_store.get(ip, []) if now - t < _RL_WINDOW]
         if len(hits) >= _RL_LIMIT:
             return False
@@ -61,6 +105,8 @@ _LOG_RL_LIMIT  = 600
 
 
 def _check_log_rate(ip):
+    """Same sliding-window pattern as _check_rate_limit, but for /api/log
+    telemetry (own store/limits — see _log_rl_store above)."""
     now = time.time()
     with _log_rl_lock:
         hits = [t for t in _log_rl_store.get(ip, []) if now - t < _LOG_RL_WINDOW]
@@ -81,6 +127,8 @@ _LEAD_RL_LIMIT  = 5
 
 
 def _check_lead_rate(ip):
+    """Same sliding-window pattern again, for /api/lead pricing-page submits
+    (own store — see comment above _lead_rl_store)."""
     now = time.time()
     with _lead_rl_lock:
         hits = [t for t in _lead_rl_store.get(ip, []) if now - t < _LEAD_RL_WINDOW]
@@ -91,8 +139,8 @@ def _check_lead_rate(ip):
     return True
 
 
-ROOT     = os.path.dirname(os.path.abspath(__file__))
-DOCS_DIR = os.path.join(ROOT, 'data', 'docs')
+ROOT     = os.path.dirname(os.path.abspath(__file__))  # repo root — used to build every data/ and template path below
+DOCS_DIR = os.path.join(ROOT, 'data', 'docs')           # local-disk fallback for case document uploads when S3 isn't configured
 
 # Static demo case files that live in the frontend (data.js), not the DB. These
 # stay writable without auth so the public demo case view works. Any other id
@@ -100,7 +148,11 @@ DOCS_DIR = os.path.join(ROOT, 'data', 'docs')
 _DEMO_FIXTURE_IDS = {'26-0142', '26-0171', '26-0168'}
 
 # ── report indicator metadata (mirrors data.js INDICATORS) ────────────────────
-
+# Python-side copy of the same 22-indicator metadata that lives in the frontend's
+# data.js INDICATORS array. Used only by the server-rendered permit justification
+# report (_build_report_context / templates/report.html), which has no access to
+# the JS bundle. If a new indicator is added to data.js, it must be added here
+# too or it will silently be missing from the printable report.
 _REPORT_INDICATORS = [
     {'k': 'transmission', 'label': 'Transmission proximity',  'score_col': 'tx_score',           'nat_col': 'tx_score_nat',           'source': 'EIA Form 860 + OSM',           'method': 'Centroid-to-line distance (UTM)',             'freq': 'Annual (EIA 860)',                      'confidence': 'High'},
     {'k': 'water',        'label': 'Water availability',      'score_col': 'water_score',         'nat_col': 'water_score_nat',         'source': 'PRISM Climate Group',           'method': 'Nearest-pixel raster lookup',                'freq': '30-yr normals (updated decennially)',   'confidence': 'High'},
@@ -127,12 +179,16 @@ _REPORT_INDICATORS = [
 ]
 
 # ── object storage ─────────────────────────────────────────────────────────────
+# Case documents (upload_doc / serve_doc) live in S3-compatible object storage
+# in production, or on local disk (DOCS_DIR) in dev. Presence of S3_ENDPOINT is
+# what decides which mode is active — see _USE_S3 below.
 
 S3_BUCKET = os.environ.get('S3_BUCKET', 'merascope-docs')
 _USE_S3   = bool(os.environ.get('S3_ENDPOINT'))
 _s3       = None
 
 def _get_s3():
+    """Lazily create and cache the boto3 S3 client (module-level singleton)."""
     global _s3
     if _s3 is None:
         if boto3 is None:
@@ -146,12 +202,14 @@ def _get_s3():
             region_name='us-east-1',
         )
     return _s3
-_pool    = None
+_pool    = None  # module-level ThreadedConnectionPool singleton, created on first use by _get_pool()
 
 
 # ── connection pool ────────────────────────────────────────────────────────────
 
 def _get_pool():
+    """Lazily create and cache the psycopg2 ThreadedConnectionPool (1-10 conns).
+    Tests monkeypatch this module's _pool directly to point at a test database."""
     global _pool
     if _pool is None:
         dsn = os.environ.get('DATABASE_URL', 'postgresql://merascope:merascope@localhost/merascope')
@@ -176,6 +234,7 @@ def _int_arg(v, default):
 
 
 def _row(row):
+    # Apply _coerce to every column of a RealDictCursor row (or pass through None).
     return {k: _coerce(v) for k, v in row.items()} if row else None
 
 
@@ -185,6 +244,10 @@ class _DB:
         self._cur = cur
 
     def execute(self, sql, params=()):
+        # Every call site in this file writes SQLite-style '?' placeholders;
+        # translate to psycopg2's '%s' here so the rest of the code never has
+        # to think about which DB driver it's talking to. Never write '%s'
+        # directly in a SQL string passed to this method — it would break here.
         self._cur.execute(sql.replace('?', '%s'), params or ())
         return self
 
@@ -196,12 +259,20 @@ class _DB:
 
     @property
     def lastrowid(self):
+        # psycopg2 has no native lastrowid; every INSERT that needs the new id
+        # must append "RETURNING id" and this reads that row. Must be called
+        # while the surrounding `with get_db() as db:` block is still open —
+        # the cursor is closed on exit and a later call raises InterfaceError.
         row = self._cur.fetchone()
         return row['id'] if row else None
 
 
 def _session_user():
-    """Return {email, role, agency_key} from the mera_sess cookie, or None."""
+    """Return {email, role, agency_key} from the mera_sess cookie, or None.
+
+    Non-throwing by design: this is called on nearly every route (including
+    fully public ones) just to check "is someone logged in", so a DB hiccup
+    or missing/expired cookie should degrade to "anonymous", never a 500."""
     token = request.cookies.get('mera_sess', '')
     if not token:
         return None
@@ -250,13 +321,19 @@ def _can_access_case(user, case_row):
 
 
 def _next_case_id(db):
-    """Mint a unique case id (YY-NNNN) from the case_seq sequence."""
+    """Mint a unique case id (YY-NNNN) from the case_seq sequence.
+    A Postgres SEQUENCE (not COUNT(*)) so ids stay monotonic and collision-free
+    even under concurrent requests or after rows are deleted."""
     n = db.execute("SELECT nextval('case_seq') AS n").fetchone()['n']
     return '{}-{}'.format(datetime.now().strftime('%y'), n)
 
 
 @contextmanager
 def get_db():
+    """Checkout a pooled connection + RealDictCursor for the duration of a
+    `with` block. Commits on clean exit, rolls back and re-raises on any
+    exception, and always returns the connection to the pool. Yields a _DB
+    wrapper, not the raw cursor — use db.execute(...).fetchone()/.fetchall()."""
     conn = _get_pool().getconn()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
@@ -273,6 +350,16 @@ def get_db():
 # ── schema ─────────────────────────────────────────────────────────────────────
 
 def init_db():
+    """Create every table this app needs, then apply idempotent ALTER TABLE
+    migrations on top. Runs once at import time (see the try/except at the
+    bottom of this file) and is safe to call repeatedly — every statement is
+    CREATE TABLE/INDEX IF NOT EXISTS or ADD COLUMN IF NOT EXISTS.
+
+    Ordering matters: every CREATE TABLE for a given table happens before any
+    ALTER TABLE that touches it, so a brand-new database (e.g. a fresh test DB)
+    initializes cleanly in one pass — an ALTER on a table that doesn't exist
+    yet would error. When adding a new migration, append it near the bottom of
+    this function, after the CREATE for the table it modifies."""
     with get_db() as db:
         db.execute('''CREATE TABLE IF NOT EXISTS event_log (
             id          SERIAL PRIMARY KEY,
@@ -286,6 +373,9 @@ def init_db():
         db.execute('CREATE INDEX IF NOT EXISTS idx_fid     ON event_log(fid)')
         db.execute('CREATE INDEX IF NOT EXISTS idx_type    ON event_log(event_type)')
 
+        # Which agencies (co-parties) are on a case, and how they were invited —
+        # either from the pre-registered AGENCY_DIRECTORY (agency_key) or by raw
+        # email (invited_email, added later — see the ALTER TABLE below).
         db.execute('''CREATE TABLE IF NOT EXISTS case_invites (
             id          SERIAL PRIMARY KEY,
             case_id     TEXT NOT NULL,
@@ -294,6 +384,10 @@ def init_db():
             UNIQUE(case_id, agency_key)
         )''')
 
+        # Proposed/negotiated permit conditions on a case. Co-party proposals
+        # land with pending_approval=1 until the lead approves (status flips
+        # to 'Proposed') or rejects (row deleted) — see update_condition/
+        # delete_condition below.
         db.execute('''CREATE TABLE IF NOT EXISTS case_conditions (
             id                SERIAL PRIMARY KEY,
             case_id           TEXT NOT NULL,
@@ -306,6 +400,8 @@ def init_db():
             ts                TIMESTAMP DEFAULT NOW()
         )''')
 
+        # Uploaded document metadata; the actual file bytes live in S3 or
+        # DOCS_DIR (see the object storage section) keyed by `filename`.
         db.execute('''CREATE TABLE IF NOT EXISTS case_docs (
             id            SERIAL PRIMARY KEY,
             case_id       TEXT NOT NULL,
@@ -316,6 +412,8 @@ def init_db():
             ts            TIMESTAMP DEFAULT NOW()
         )''')
 
+        # One row per case: rebuttal-cycle deadline + cycle counter, set via
+        # set_deadline() and read by the Rebuttal Cycle clock in the case file UI.
         db.execute('''CREATE TABLE IF NOT EXISTS case_meta (
             case_id           TEXT PRIMARY KEY,
             rebuttal_due_date TEXT,
@@ -323,6 +421,10 @@ def init_db():
             rebuttal_max      INTEGER DEFAULT 3
         )''')
 
+        # The core case-file table: one row per real (non-demo) builder
+        # submission or steward-created case. `owner_email` (builder) and
+        # `lead_agency` (steward) are what list_cases/_can_access_case scope
+        # visibility by. See demo_cases below for the anonymous-submission twin.
         db.execute('''CREATE TABLE IF NOT EXISTS cases (
             id                 SERIAL PRIMARY KEY,
             case_id            TEXT NOT NULL UNIQUE,
@@ -347,18 +449,27 @@ def init_db():
             owner_email        TEXT
         )''')
 
+        # Tracks the current M.STAGES value per case (Site Inquiry -> ... ->
+        # Resolution) plus when it last changed — cases.stage is kept in sync
+        # too (see set_stage), but this table's `ts` is what steward_inbox's
+        # "days stuck in this stage" calculation reads.
         db.execute('''CREATE TABLE IF NOT EXISTS case_stage_overrides (
             case_id TEXT PRIMARY KEY,
             stage   TEXT NOT NULL,
             ts      TIMESTAMP DEFAULT NOW()
         )''')
 
+        # Marks a condition (identified by item_key, an arbitrary client-chosen
+        # string) as having been routed to mediation via the impasse register.
         db.execute('''CREATE TABLE IF NOT EXISTS case_impasse_routes (
             id       SERIAL PRIMARY KEY,
             item_key TEXT NOT NULL UNIQUE,
             ts       TIMESTAMP DEFAULT NOW()
         )''')
 
+        # Checklist-item completion state for the Mandated Studies workbench
+        # (STUDY_SECTIONS templates in steward2.jsx); (study_name, section_idx)
+        # presence = checked.
         db.execute('''CREATE TABLE IF NOT EXISTS study_checks (
             id          SERIAL PRIMARY KEY,
             study_name  TEXT NOT NULL,
@@ -367,6 +478,10 @@ def init_db():
             UNIQUE(study_name, section_idx)
         )''')
 
+        # Mandated independent studies. case_id/finding are added later via
+        # ALTER TABLE (case_id links a study to one case; finding links it to a
+        # specific indicator, used to show a "study mandated" badge on that
+        # finding's evidence-record card). NULL case_id = global workbench study.
         db.execute('''CREATE TABLE IF NOT EXISTS studies (
             id    SERIAL PRIMARY KEY,
             name  TEXT NOT NULL UNIQUE,
@@ -375,6 +490,8 @@ def init_db():
             ts    TIMESTAMP DEFAULT NOW()
         )''')
 
+        # Standalone litigation tracker (LitigationPage in steward2.jsx) — not
+        # linked to a specific case_id, just a flat list of matters.
         db.execute('''CREATE TABLE IF NOT EXISTS litigation (
             id     SERIAL PRIMARY KEY,
             name   TEXT NOT NULL,
@@ -385,6 +502,8 @@ def init_db():
             ts     TIMESTAMP DEFAULT NOW()
         )''')
 
+        # Builder-submitted rebuttal text against findings, shown during the
+        # Rebuttal Cycle stage (builder-only write, see permission matrix).
         db.execute('''CREATE TABLE IF NOT EXISTS case_rebuttals (
             id      SERIAL PRIMARY KEY,
             case_id TEXT NOT NULL,
@@ -392,6 +511,7 @@ def init_db():
             ts      TIMESTAMP DEFAULT NOW()
         )''')
 
+        # Sales-touch leads captured from the pricing page (POST /api/lead).
         db.execute('''CREATE TABLE IF NOT EXISTS leads (
             id         SERIAL PRIMARY KEY,
             email      TEXT NOT NULL,
@@ -404,6 +524,10 @@ def init_db():
             ts         TIMESTAMP DEFAULT NOW()
         )''')
 
+        # Builder CRM tracker (contacts/activity/notes/status) per saved cell.
+        # Keyed on (session_id, fid) — NOT fid alone — so one browser's CRM data
+        # for a cell never collides with (or is readable by) another browser's.
+        # `state` is an opaque JSON blob written by save_crm/get_crm below.
         db.execute('''CREATE TABLE IF NOT EXISTS crm_state (
             session_id TEXT NOT NULL DEFAULT '',
             fid        TEXT NOT NULL,
@@ -412,11 +536,16 @@ def init_db():
             PRIMARY KEY (session_id, fid)
         )''')
 
+        # ── magic-link auth tables ──
+        # users: one row per email that has ever requested a magic link.
         db.execute('''CREATE TABLE IF NOT EXISTS users (
             email      TEXT PRIMARY KEY,
             created_at TIMESTAMP DEFAULT NOW()
         )''')
 
+        # sessions: the magic-link tokens themselves. A token is both the
+        # one-time login link AND (once verified) the long-lived mera_sess
+        # cookie value — see auth_request/verify_magic_link.
         db.execute('''CREATE TABLE IF NOT EXISTS sessions (
             token      TEXT PRIMARY KEY,
             email      TEXT NOT NULL REFERENCES users(email) ON DELETE CASCADE,
@@ -424,6 +553,9 @@ def init_db():
             created_at TIMESTAMP DEFAULT NOW()
         )''')
 
+        # user_roles: role + agency assignment, seeded manually via SQL (see
+        # README "Pre-seed the lead steward" section) — there is no self-serve
+        # signup path for steward/co-party roles.
         db.execute('''CREATE TABLE IF NOT EXISTS user_roles (
             email      TEXT NOT NULL REFERENCES users(email) ON DELETE CASCADE,
             role       TEXT NOT NULL,
@@ -431,6 +563,8 @@ def init_db():
             PRIMARY KEY (email, role)
         )''')
 
+        # ── steward weight templates + zones (gate builders below a minimum
+        # score in a locked geographic zone) ──
         db.execute('''CREATE TABLE IF NOT EXISTS steward_templates (
             id           SERIAL PRIMARY KEY,
             agency_key   TEXT NOT NULL,
@@ -442,6 +576,9 @@ def init_db():
             updated_at   TIMESTAMP DEFAULT NOW()
         )''')
 
+        # Snapshot of a steward_templates row taken right before every edit or
+        # rollback, so weight-template changes have an audit trail (see
+        # update_steward_template / rollback_template below).
         db.execute('''CREATE TABLE IF NOT EXISTS template_history (
             id           SERIAL PRIMARY KEY,
             template_id  INTEGER NOT NULL,
@@ -454,6 +591,10 @@ def init_db():
             summary      TEXT NOT NULL
         )''')
 
+        # A geographic area (state / bbox / county / zcta — see zone_type) that
+        # a steward has attached a weight template to. When the template is
+        # locked, builder cells inside the zone are gate-checked against it
+        # (see gate_check / zones_active below).
         db.execute('''CREATE TABLE IF NOT EXISTS steward_zones (
             id           SERIAL PRIMARY KEY,
             agency_key   TEXT NOT NULL,
@@ -470,10 +611,18 @@ def init_db():
         # Monotonic case-number source. Immune to deletes/races, unlike COUNT(*).
         db.execute("CREATE SEQUENCE IF NOT EXISTS case_seq START WITH 1001")
 
+        # ── post-creation migrations (idempotent ALTER TABLE) ──
         db.execute("ALTER TABLE studies ADD COLUMN IF NOT EXISTS case_id TEXT")
         db.execute("ALTER TABLE studies ADD COLUMN IF NOT EXISTS finding TEXT")
+        # Original schema had a UNIQUE constraint on studies.name; dropped
+        # because case-specific + global studies can legitimately share a name.
         db.execute("ALTER TABLE studies DROP CONSTRAINT IF EXISTS studies_name_key")
+        # Scoring weights at submission time, logged for the "Platform defaults"
+        # vs "Custom weights" chip in the case file (see _build_report_context
+        # and CaseFilePage).
         db.execute("ALTER TABLE cases ADD COLUMN IF NOT EXISTS weights_json TEXT")
+        # Cryptographic record anchor, written once a case reaches Resolution
+        # (see _compute_anchor / set_stage). One row per case, upserted.
         db.execute('''CREATE TABLE IF NOT EXISTS case_anchors (
             case_id      TEXT PRIMARY KEY,
             hash         TEXT NOT NULL,
@@ -481,6 +630,10 @@ def init_db():
             payload_json TEXT NOT NULL
         )''')
 
+        # Anonymous/unauthenticated builder submissions land here instead of
+        # `cases` — a lightweight, TTL'd (20 min) twin table so the public demo
+        # flow never needs a real login. See builder_submit's `if not user`
+        # branch and the demo case routes further down.
         db.execute('''CREATE TABLE IF NOT EXISTS demo_cases (
             id            SERIAL PRIMARY KEY,
             case_id       TEXT UNIQUE NOT NULL,
@@ -527,6 +680,11 @@ def init_db():
 
 @app.route('/api/log', methods=['POST'])
 def log_event():
+    """Fire-and-forget telemetry sink. The frontend's window.serverLog() posts
+    here for every meaningful builder-workspace action (save_cell, status_change,
+    contact_add, portfolio_run, etc.) — see CONTEXT.md 'Server-side logging'.
+    Feeds the CSV exports below and the admin log viewer. Append-only, rate
+    limited per IP so an anonymous flood can't fill the table."""
     if not _check_log_rate(_client_ip()):
         return jsonify({'ok': False, 'err': 'rate limited'}), 429
     data  = request.get_json(silent=True) or {}
@@ -591,8 +749,11 @@ def lead_submit():
 
 @app.route('/api/export/workspace')
 def export_workspace():
-    # Scope strictly to the caller's own session. A missing session_id must NOT
-    # fall through to "all sessions" — that would export every user's saved sites.
+    """CSV export of the caller's saved-cell Workspace (Builder tab 1) — one row
+    per unique fid ever saved, latest save_cell event wins ties via the
+    "seen" set below since rows are read newest-first. Scope strictly to the
+    caller's own session. A missing session_id must NOT fall through to "all
+    sessions" — that would export every user's saved sites."""
     sid = (request.args.get('session_id') or '').strip()
     if not sid:
         return jsonify({'ok': False, 'err': 'session_id required'}), 400
@@ -640,9 +801,12 @@ def export_workspace():
 
 @app.route('/api/export/status')
 def export_status():
-    # Scope strictly to the caller's own session. A missing session_id must NOT
-    # fall through to "all sessions" — that would export every user's CRM
-    # contacts, activity, and notes.
+    """CSV export of the caller's CRM activity (Builder tab 2 — Status/CRM
+    tracker): status changes, activity log entries, contact adds/removes, and
+    note updates, one row per event_log row. Scope strictly to the caller's
+    own session. A missing session_id must NOT fall through to "all
+    sessions" — that would export every user's CRM contacts, activity, and
+    notes."""
     sid = (request.args.get('session_id') or '').strip()
     if not sid:
         return jsonify({'ok': False, 'err': 'session_id required'}), 400
@@ -660,6 +824,8 @@ def export_status():
     w.writerow(['fid', 'session_id', 'event_type', 'event_date', 'detail', 'logged_at'])
     for row in rows:
         p = json.loads(row['payload'] or '{}')
+        # Each event_type stores a different payload shape (see serverLog call
+        # sites in builder2.jsx); render a human-readable one-line summary per type.
         if row['event_type'] == 'status_change':
             detail = 'Status -> ' + p.get('status', '')
         elif row['event_type'] == 'activity_log':
@@ -683,14 +849,19 @@ def export_status():
 
 @app.route('/api/admin/log')
 def admin_log():
-    # Fail closed: with no MERA_ADMIN_KEY configured the endpoint is disabled
-    # entirely, rather than falling back to a guessable shared default.
+    """Raw event_log viewer for debugging, gated by a shared secret query param
+    (?key=...) rather than session auth — not tied to any user role.
+    Fail closed: with no MERA_ADMIN_KEY configured the endpoint is disabled
+    entirely, rather than falling back to a guessable shared default."""
     admin_key = os.environ.get('MERA_ADMIN_KEY')
     key = request.args.get('key', '')
     if not admin_key or not secrets.compare_digest(key, admin_key):
         return jsonify({'err': 'forbidden'}), 403
     sid   = request.args.get('session_id')
     etype = request.args.get('event_type')
+    # Built with raw '%s' (not '?') since the filter clauses are optional and
+    # assembled dynamically — _DB.execute's '?'->'%s' replace is a no-op here,
+    # this is just psycopg2's native paramstyle used directly.
     q = 'SELECT * FROM event_log WHERE 1=1'
     params = []
     if sid:   q += ' AND session_id=%s'; params.append(sid)
@@ -705,6 +876,8 @@ def admin_log():
 
 @app.route('/api/case/<case_id>/invites')
 def get_invites(case_id):
+    """List co-parties invited to a case, as a flat list of display strings
+    (directory agency_key, or the raw email for an email-only invite)."""
     err = _case_write_guard(case_id)
     if err:
         return err
@@ -717,6 +890,10 @@ def get_invites(case_id):
 
 @app.route('/api/case/<case_id>/invite', methods=['POST'])
 def add_invite(case_id):
+    """Invite a co-party to a case, either by AGENCY_DIRECTORY key (lead picks
+    from the searchable directory modal) or by raw email (fallback for
+    unregistered agencies). Exactly one of the two is stored per row — see the
+    case_invites schema note above. Email invites also fire a notification."""
     err = _case_write_guard(case_id)
     if err:
         return err
@@ -755,6 +932,8 @@ def add_invite(case_id):
 
 
 def _haversine_km(lat1, lon1, lat2, lon2):
+    """Great-circle distance in km between two lat/lon points. Pure Python
+    (no GDAL/geopandas) — deliberate, per the project's no-GDAL rule."""
     r = 6371.0
     p1, p2 = math.radians(lat1), math.radians(lat2)
     dp = math.radians(lat2 - lat1)
@@ -764,6 +943,11 @@ def _haversine_km(lat1, lon1, lat2, lon2):
 
 @app.route('/api/case/<case_id>/nearby')
 def nearby_cases(case_id):
+    """Cases within radius_km of this case's site that share the same lead
+    agency, for the case-file "Nearby cases" panel. Excludes the case itself
+    and anything already at Resolution. Access is authorized on the ORIGIN
+    case only, so the response is deliberately stripped to map-safe fields —
+    never the neighbor's applicant contact info (see comment below)."""
     err = _case_write_guard(case_id)
     if err:
         return err
@@ -807,6 +991,7 @@ def nearby_cases(case_id):
 
 @app.route('/api/case/<case_id>/conditions')
 def get_conditions(case_id):
+    """All proposed/negotiated conditions on a case, in insertion order."""
     err = _case_write_guard(case_id)
     if err:
         return err
@@ -818,6 +1003,9 @@ def get_conditions(case_id):
 
 @app.route('/api/case/<case_id>/conditions', methods=['POST'])
 def add_condition(case_id):
+    """Propose a new condition. Lead-proposed conditions are live immediately;
+    co-party proposals carry pending_approval=1 and show as "Pending lead
+    approval" until update_condition's approve path clears the flag."""
     err = _case_write_guard(case_id)
     if err:
         return err
@@ -851,6 +1039,10 @@ def _condition_submitter(db, case_id, cond_id):
 
 @app.route('/api/case/<case_id>/conditions/<int:cond_id>', methods=['PATCH'])
 def update_condition(case_id, cond_id):
+    """Two distinct things can happen here depending on the payload: `approve`
+    clears pending_approval on a co-party proposal and notifies the proposer;
+    `status` is a plain status-dropdown change (lead editing any condition,
+    e.g. moving one to 'Impasse') and never notifies anyone."""
     err = _case_write_guard(case_id)
     if err:
         return err
@@ -881,6 +1073,8 @@ def update_condition(case_id, cond_id):
 
 @app.route('/api/case/<case_id>/conditions/<int:cond_id>', methods=['DELETE'])
 def delete_condition(case_id, cond_id):
+    """Remove a condition. When it was a pending co-party proposal, this is a
+    reject — capture the submitter before deleting so we can notify them."""
     err = _case_write_guard(case_id)
     if err:
         return err
@@ -955,6 +1149,8 @@ def _require_steward_or_admin():
 
 @app.route('/api/case/<case_id>/docs')
 def get_docs(case_id):
+    """List a case's uploaded documents (metadata only — file bytes are
+    fetched separately via serve_doc)."""
     err = _case_write_guard(case_id)
     if err:
         return err
@@ -970,11 +1166,13 @@ def get_docs(case_id):
 
 @app.route('/api/case/<case_id>/docs', methods=['POST'])
 def upload_doc(case_id):
+    """Upload a document to the case's document chain, storing to S3 or local
+    disk depending on _USE_S3. Note this is stricter than _case_write_guard
+    alone: file upload always requires a real session — even for demo/fixture
+    ids — so anonymous callers can't push arbitrary files into object storage."""
     err = _case_write_guard(case_id)
     if err:
         return err
-    # File upload always requires a real session — even for demo/fixture ids —
-    # so anonymous callers can't push arbitrary files into object storage.
     if not _session_user():
         return jsonify({'ok': False, 'err': 'authentication required'}), 401
     if 'file' not in request.files:
@@ -1009,6 +1207,8 @@ def upload_doc(case_id):
 
 @app.route('/api/case/<case_id>/docs/<filename>')
 def serve_doc(case_id, filename):
+    """Fetch a previously uploaded document. In S3 mode, redirects to a
+    short-lived presigned URL rather than proxying bytes through Flask."""
     err = _case_write_guard(case_id)
     if err:
         return err
@@ -1028,6 +1228,8 @@ def serve_doc(case_id, filename):
 
 @app.route('/api/case/<case_id>/deadline')
 def get_deadline(case_id):
+    """Days remaining on the current rebuttal cycle, for the countdown badge
+    shown on a case's page. Returns None if no deadline has been set yet."""
     err = _case_write_guard(case_id)
     if err:
         return err
@@ -1044,6 +1246,8 @@ def get_deadline(case_id):
 
 @app.route('/api/case/<case_id>/deadline', methods=['POST'])
 def set_deadline(case_id):
+    """Set/update the rebuttal deadline for a case. Upserts into case_meta
+    (one row per case_id) so re-setting a deadline overwrites the prior one."""
     err = _case_write_guard(case_id)
     if err:
         return err
@@ -1068,6 +1272,11 @@ def set_deadline(case_id):
 
 @app.route('/api/cases')
 def list_cases():
+    """Paginated case list, scoped per persona: a builder sees only their own
+    submissions (by owner_email), a steward sees their agency's docket (by
+    lead_agency), a co-party sees cases they were invited into (via
+    case_invites), and an admin sees everything. Unauthenticated callers get
+    an empty list rather than an error, so the frontend can render gracefully."""
     user   = _session_user()
     role   = (user or {}).get('role') or ('builder' if user else None)
     limit  = min(_int_arg(request.args.get('limit'), 50), 200)
@@ -1210,6 +1419,9 @@ def steward_inbox():
 
 @app.route('/api/cases', methods=['POST'])
 def create_case():
+    """Steward-initiated case creation (as opposed to builder_submit below,
+    which is the builder-initiated path). Used when a permitter wants to open
+    a case file directly rather than waiting for an inbound builder inquiry."""
     err = _require_steward_or_admin()
     if err:
         return err
@@ -1236,6 +1448,13 @@ def create_case():
 
 @app.route('/api/builder/submit', methods=['POST'])
 def builder_submit():
+    """Builder-facing site-inquiry submission — the main entry point into the
+    permitting flow from the Explorer/Builder UI. Branches on whether the
+    caller is a logged-in user: authenticated submissions become a real,
+    durable row in `cases`; anonymous (not-logged-in) submissions are treated
+    as a throwaway demo and written to the TTL'd `demo_cases` table instead,
+    tagged 'demo-<hex>' so they're visually and structurally distinguishable
+    and expire instead of cluttering a steward's real docket."""
     data               = request.get_json(silent=True) or {}
     site               = (data.get('site') or '').strip()
     applicant          = (data.get('applicant') or '').strip()
@@ -1257,6 +1476,8 @@ def builder_submit():
     weights_json = json.dumps({k: float(v) for k, v in raw_weights.items()}) if raw_weights else None
     user        = _session_user()
 
+    # Anonymous caller: park the submission in demo_cases (short TTL, never
+    # joins the real docket) rather than creating a durable case record.
     if not user:
         demo_id     = 'demo-{}'.format(secrets.token_hex(4))
         demo_session = (data.get('session_id') or '').strip()
@@ -1336,6 +1557,10 @@ def bulk_import():
 
 @app.route('/api/builder/case/<case_id>/confirm', methods=['PATCH'])
 def confirm_case(case_id):
+    """Steward action: acknowledge a builder's site inquiry, stamp it with the
+    agency's own tracking number, and advance the case from Site Inquiry to
+    Intake. Notifies the builder by email so they know their submission was
+    seen (not just sitting silently in a queue)."""
     err = _case_write_guard(case_id)
     if err:
         return err
@@ -1368,6 +1593,9 @@ def confirm_case(case_id):
 
 @app.route('/api/builder/case/<case_id>')
 def get_builder_case(case_id):
+    """Full detail view for a single case, used by the Builder Workspace case
+    page. Includes the anchor (hash/timestamp) if the case has reached
+    Resolution and been cryptographically anchored."""
     user = _session_user()
     with get_db() as db:
         row = db.execute('SELECT * FROM cases WHERE case_id=?', (case_id,)).fetchone()
@@ -1391,6 +1619,10 @@ def get_builder_case(case_id):
 
 @app.route('/api/case/<case_id>/anchor')
 def get_anchor(case_id):
+    """Fetch the anchor record (hash + the exact canonical payload it was
+    computed over) for the evidentiary-record UI. 404s with a friendly message
+    if the case hasn't reached Resolution yet — anchoring is one-time and
+    happens automatically on that stage transition (see _compute_anchor)."""
     user = _session_user()
     with get_db() as db:
         row = db.execute('SELECT * FROM cases WHERE case_id=?', (case_id,)).fetchone()
@@ -1415,8 +1647,9 @@ def get_anchor(case_id):
 
 @app.route('/api/crm/<fid>')
 def get_crm(fid):
-    # CRM is private per browser session. No session id → nothing to return
-    # (never fall back to a global per-cell record).
+    """Load the builder's saved CRM notes/status for one ZCTA cell (fid).
+    CRM is private per browser session. No session id → nothing to return
+    (never fall back to a global per-cell record)."""
     sid = (request.args.get('session_id') or '').strip()
     if not sid:
         return jsonify(None)
@@ -1428,6 +1661,8 @@ def get_crm(fid):
 
 @app.route('/api/crm/<fid>', methods=['POST'])
 def save_crm(fid):
+    """Upsert the builder's CRM state (notes, follow-up status, etc.) for one
+    ZCTA cell, scoped to their browser session."""
     data = request.get_json(silent=True) or {}
     sid  = (data.get('session_id') or request.args.get('session_id') or '').strip()
     if not sid:
@@ -1489,6 +1724,9 @@ def _compute_anchor(db, case_id):
 
 @app.route('/api/case/<case_id>/stage')
 def get_stage(case_id):
+    """Current stage override for a case (case_stage_overrides is the
+    mutable source of truth used by the UI's stage tracker; cases.stage is
+    kept in sync alongside it — see set_stage below)."""
     err = _case_write_guard(case_id)
     if err:
         return err
@@ -1498,6 +1736,11 @@ def get_stage(case_id):
 
 @app.route('/api/case/<case_id>/stage', methods=['PATCH'])
 def set_stage(case_id):
+    """Advance (or otherwise change) a case's stage. This is the one place a
+    case gets cryptographically anchored: the moment the stage becomes
+    'Resolution', we compute a SHA-256 over the canonical case payload and
+    write it to case_anchors (upsert, so re-entering Resolution re-anchors
+    rather than erroring). Also emails the builder that their case moved."""
     err = _case_write_guard(case_id)
     if err:
         return err
@@ -1512,6 +1755,8 @@ def set_stage(case_id):
             (case_id, stage)
         )
         db.execute('UPDATE cases SET stage=? WHERE case_id=?', (stage, case_id))
+        # Anchor only fires on entry to Resolution — every other stage change
+        # is a no-op here.
         if stage == 'Resolution':
             hash_val, canonical = _compute_anchor(db, case_id)
             if hash_val:
@@ -1543,12 +1788,17 @@ def set_stage(case_id):
 
 @app.route('/api/impasse/routes')
 def get_impasse_routes():
+    """List of condition/item keys that have already been routed to
+    mediation, so the UI doesn't offer to route the same item twice."""
     with get_db() as db:
         rows = db.execute('SELECT item_key FROM case_impasse_routes').fetchall()
     return jsonify([r['item_key'] for r in rows])
 
 @app.route('/api/impasse/route', methods=['POST'])
 def add_impasse_route():
+    """Mark a disputed condition/item as routed to mediation. If a case_id is
+    given, also flips that case's stage to Mediation and drops an event_log
+    row so the transition shows up in exports/audit trails."""
     data    = request.get_json(silent=True) or {}
     key     = (data.get('key') or '').strip()
     case_id = (data.get('case_id') or '').strip()
@@ -1581,6 +1831,8 @@ def add_impasse_route():
 
 @app.route('/api/impasse/items')
 def get_impasse_items():
+    """All conditions across all cases currently flagged Impasse — the
+    cross-case worklist a steward/mediator triages from."""
     with get_db() as db:
         rows = db.execute(
             '''SELECT cc.id, cc.case_id, cc.text, cc.type, cc.by, cc.ts,
@@ -1597,6 +1849,10 @@ def get_impasse_items():
 
 @app.route('/api/studies')
 def get_studies():
+    """Mandated-study registry, with three modes: studies tied to one case
+    (?case_id=...), every study across every case (?all=1, for the steward's
+    global studies dashboard), or — the default — only the case-independent
+    "standing" studies (case_id IS NULL), e.g. agency-wide research."""
     case_id = request.args.get('case_id') or None
     all_studies = request.args.get('all') == '1'
     with get_db() as db:
@@ -1697,15 +1953,21 @@ def add_rebuttal(case_id):
 
 
 # ── mandated study checks ──────────────────────────────────────────────────────
+# Tracks which sections of which mandated studies have been reviewed/checked
+# off, keyed by (study_name, section_idx) rather than a case_id — this is a
+# global checklist shared across the steward UI, not per-case state.
 
 @app.route('/api/studies/checks')
 def get_study_checks():
+    """All currently-checked (study_name, section_idx) pairs."""
     with get_db() as db:
         rows = db.execute('SELECT study_name, section_idx FROM study_checks').fetchall()
     return jsonify(rows)
 
 @app.route('/api/studies/check', methods=['POST'])
 def toggle_study_check():
+    """Check or uncheck one study section. Checked = row exists; unchecked =
+    row deleted — the presence of the row IS the checked state."""
     data        = request.get_json(silent=True) or {}
     name        = data.get('study_name', '')
     idx         = data.get('section_idx')
@@ -1726,14 +1988,23 @@ def toggle_study_check():
 
 
 # ── auth ─────────────────────────────────────────────────────────────────────
+# Magic-link email auth: no passwords. A user requests a link, we email a
+# single-use token, they click it, we set a long-lived session cookie.
 
 APP_URL    = os.environ.get('APP_URL', 'http://localhost:8877')
 MAGIC_TTL  = timedelta(hours=1)
 SESS_TTL   = timedelta(days=30)
+# Gotcha: the session cookie's Secure flag is driven by APP_ENV, NOT by
+# whether APP_URL happens to be https. Deploying behind a proxy/tunnel with
+# APP_ENV unset (so this defaults to non-production) will silently issue
+# non-Secure cookies even on an https:// URL — check APP_ENV, not the URL,
+# when debugging cookie/session issues.
 _SECURE    = os.environ.get('APP_ENV') == 'production'
 
 
 def _send_magic_email(to_email, token):
+    """Send the sign-in email (plaintext + styled HTML) containing the
+    single-use /verify?token=... link. Pulls SMTP creds from env vars."""
     host   = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
     port   = int(os.environ.get('SMTP_PORT', '587'))
     user   = os.environ.get('SMTP_USER', '')
@@ -1834,6 +2105,10 @@ def _send_notification(to_email, subject, body):
 
 @app.route('/api/auth/request', methods=['POST'])
 def auth_request():
+    """Step 1 of magic-link login: rate-limited (3 per 15 min per IP),
+    creates the user row if new, generates a single-use token, and emails
+    the sign-in link. Any old expired sessions for that email are pruned
+    here too, opportunistically."""
     ip = _client_ip()
     if not _check_rate_limit(ip):
         return jsonify({'ok': False, 'err': 'Too many requests. Try again in 15 minutes.'}), 429
@@ -1866,6 +2141,11 @@ def auth_request():
 
 @app.route('/verify')
 def verify_magic_link():
+    """Step 2 of magic-link login: the link the user clicked from their
+    inbox. If the token is valid and unexpired, extend it from the short
+    MAGIC_TTL to the long-lived SESS_TTL (the same token row now doubles as
+    the session token) and set it as the mera_sess cookie. Redirects into
+    the steward or builder SPA route depending on the user's role."""
     token = request.args.get('token', '')
     if not token:
         return redirect('/#/login')
@@ -1883,6 +2163,8 @@ def verify_magic_link():
     dest = '/#/steward' if role == 'steward' else '/#/builder'
     sess_exp = datetime.utcnow() + SESS_TTL
     with get_db() as db:
+        # Same token, longer expiry — turns the one-time magic-link token
+        # into the ongoing session token so a second table isn't needed.
         db.execute(
             'UPDATE sessions SET expires_at=? WHERE token=?', (sess_exp, token)
         )
@@ -1897,6 +2179,10 @@ def verify_magic_link():
 
 @app.route('/api/auth/me')
 def auth_me():
+    """Whoami check the frontend calls on load to decide which UI to render
+    (builder vs steward vs admin) and whether the session cookie is still
+    valid. admin is treated as read_only by convention — see role checks
+    elsewhere in the file."""
     token = request.cookies.get('mera_sess', '')
     if not token:
         return jsonify(None), 401
@@ -1920,6 +2206,8 @@ def auth_me():
 
 @app.route('/api/auth/logout', methods=['POST'])
 def auth_logout():
+    """Invalidate the session server-side (delete the row, not just the
+    cookie) so a stolen/cached cookie can't be replayed after logout."""
     token = request.cookies.get('mera_sess', '')
     if token:
         with get_db() as db:
@@ -1930,7 +2218,14 @@ def auth_logout():
 
 
 # ── steward templates — presets + helpers ─────────────────────────────────────
+# A "template" is a named set of indicator weights (+ a minimum score gate) a
+# steward can save and apply, so their agency scores sites consistently
+# instead of every builder using ad hoc weights. Presets below are shipped
+# starting points; stewards can also save their own via the templates CRUD
+# routes further down.
 
+# Must mirror the indicator keys used by the frontend's data.js INDICATORS
+# array — kept in sync by hand, not generated.
 _IND_KEYS = [
     'transmission', 'water', 'community', 'seismic', 'flood', 'contamination',
     'waterway', 'geothermal', 'flatness', 'aquifer', 'soil', 'slope',
@@ -1940,8 +2235,11 @@ _IND_KEYS = [
 ]
 
 def _zero_weights():
+    """Baseline dict with every indicator at 0, so each preset below only
+    has to spell out the weights it actually cares about."""
     return {k: 0 for k in _IND_KEYS}
 
+# Built-in weight-template presets offered to every steward out of the box.
 PRESET_TEMPLATES = [
     {
         'id': 'balanced',
@@ -1982,10 +2280,15 @@ PRESET_TEMPLATES = [
 
 
 # ── boundary GeoJSON cache + point-in-polygon ─────────────────────────────────
+# Deliberately pure-Python (no GDAL/shapely/rasterio) so geographic zone
+# gating works with only requests+json — see workspace policy against
+# GDAL-stack packages. Boundary files are pre-baked GeoJSON on disk.
 
 _geo_cache = {}
 
 def _load_boundary(path):
+    """Read+cache a boundary GeoJSON file by path. Caches a miss (None) too,
+    so a bad/missing path doesn't re-hit the filesystem on every call."""
     if path not in _geo_cache:
         try:
             with open(path) as f:
@@ -1996,6 +2299,10 @@ def _load_boundary(path):
 
 
 def _point_in_ring(lon, lat, ring):
+    """Classic ray-casting point-in-polygon test for a single linear ring:
+    cast a ray from the point out to +lon and count how many ring edges it
+    crosses. Odd crossing count = inside, even = outside. `ring` is a list of
+    [lon, lat] pairs (GeoJSON coordinate order, not [lat, lon])."""
     inside = False
     n = len(ring)
     j = n - 1
@@ -2009,6 +2316,9 @@ def _point_in_ring(lon, lat, ring):
 
 
 def _point_in_geometry(lon, lat, geom):
+    """Point-in-polygon for a full GeoJSON geometry, handling both Polygon
+    (first ring is the outer boundary, any further rings are holes to
+    subtract) and MultiPolygon (point must be in at least one part)."""
     gtype = geom.get('type')
     if gtype == 'Polygon':
         rings = geom['coordinates']
@@ -2032,6 +2342,10 @@ def _point_in_geometry(lon, lat, geom):
 
 
 def _point_in_county(lon, lat, state_code, county_fips):
+    """Is (lon, lat) inside the given county? Scans that state's census
+    tracts GeoJSON for tracts matching county_fips and tests each — a tract
+    is used as the unit rather than a dedicated county boundary file because
+    that's what's already on disk per state."""
     path = os.path.join(ROOT, 'data', state_code, 'raw', 'tracts.geojson')
     gj = _load_boundary(path)
     if not gj:
@@ -2044,6 +2358,7 @@ def _point_in_county(lon, lat, state_code, county_fips):
 
 
 def _point_in_zcta(lon, lat, state_code, zcta_code):
+    """Is (lon, lat) inside the given ZCTA (zip code tabulation area)?"""
     path = os.path.join(ROOT, 'data', state_code, 'zcta', 'zcta.geojson')
     gj = _load_boundary(path)
     if not gj:
@@ -2058,6 +2373,9 @@ def _point_in_zcta(lon, lat, state_code, zcta_code):
 # ── require_steward decorator ─────────────────────────────────────────────────
 
 def require_steward(f):
+    """Route decorator: reject unless the caller has a valid session AND a
+    'steward' role. Populates flask.g (user_email/user_role/agency_key) so
+    the wrapped view doesn't need to re-look-up the session itself."""
     @wraps(f)
     def decorated(*args, **kwargs):
         token = request.cookies.get('mera_sess', '')
@@ -2086,14 +2404,20 @@ def require_steward(f):
 
 @app.route('/api/steward/presets')
 def get_steward_presets():
+    """The built-in weight-template presets (no auth required — these are
+    static and public, unlike a steward's own saved templates below)."""
     return jsonify(PRESET_TEMPLATES)
 
 
 # ── steward templates CRUD ────────────────────────────────────────────────────
+# A steward's own saved weight templates, scoped to their agency_key (every
+# route here is behind @require_steward and filters by g.agency_key, so one
+# agency can never see or touch another agency's templates).
 
 @app.route('/api/steward/templates')
 @require_steward
 def list_steward_templates():
+    """All templates saved by the caller's agency."""
     with get_db() as db:
         rows = db.execute(
             'SELECT * FROM steward_templates WHERE agency_key=? ORDER BY created_at',
@@ -2111,6 +2435,10 @@ def list_steward_templates():
 @app.route('/api/steward/templates', methods=['POST'])
 @require_steward
 def create_steward_template():
+    """Save a new weight template for the caller's agency. Any indicator key
+    not supplied defaults to 0 (via _zero_weights) and unknown keys are
+    silently dropped, so a stale/malformed frontend payload can't inject
+    arbitrary columns into the stored JSON."""
     data    = request.get_json(silent=True) or {}
     name    = (data.get('name') or '').strip()
     weights = data.get('weights') or {}
@@ -2132,6 +2460,10 @@ def create_steward_template():
 @app.route('/api/steward/templates/<int:tmpl_id>', methods=['PATCH'])
 @require_steward
 def update_steward_template(tmpl_id):
+    """Edit an existing template in place. Before overwriting, snapshots the
+    template's prior state into template_history (so rollback_template below
+    has something to roll back to) along with a human-readable summary of
+    what changed, built by diffing old vs. new field-by-field."""
     data = request.get_json(silent=True) or {}
     with get_db() as db:
         row = db.execute(
@@ -2176,6 +2508,8 @@ def update_steward_template(tmpl_id):
 @app.route('/api/steward/templates/<int:tmpl_id>/history')
 @require_steward
 def get_template_history(tmpl_id):
+    """Last 20 snapshots for a template, most recent first — the undo log
+    shown in the template editor's history panel."""
     with get_db() as db:
         rows = db.execute(
             '''SELECT id, changed_by, changed_at, weights_json, min_score, locked, summary
@@ -2190,6 +2524,9 @@ def get_template_history(tmpl_id):
 @app.route('/api/steward/templates/<int:tmpl_id>/rollback', methods=['POST'])
 @require_steward
 def rollback_template(tmpl_id):
+    """Restore a template to a prior snapshot from template_history. The
+    current state is itself snapshotted first (so rollback is undoable too,
+    not a destructive one-way trip)."""
     data = request.get_json(silent=True) or {}
     history_id = data.get('history_id')
     if not history_id:
@@ -2231,6 +2568,9 @@ def rollback_template(tmpl_id):
 @app.route('/api/steward/templates/<int:tmpl_id>', methods=['DELETE'])
 @require_steward
 def delete_steward_template(tmpl_id):
+    """Delete a template. Any zone that had this template assigned is
+    unlinked (template_id → NULL) rather than left dangling or cascade-
+    deleted — a zone without a template just stops gating on it."""
     with get_db() as db:
         row = db.execute(
             'SELECT id FROM steward_templates WHERE id=? AND agency_key=?',
@@ -2244,8 +2584,14 @@ def delete_steward_template(tmpl_id):
 
 
 # ── steward zones CRUD ────────────────────────────────────────────────────────
+# A "zone" is a geographic area (whole state, a bbox, a county, or a ZCTA) an
+# agency can attach a weight template to, so that a builder's score gets
+# gated by that template's min_score when their site falls inside the zone.
+# See zones_active()/gate_check() below for where the gating actually happens.
 
 def _shape_zone(r):
+    """Normalize a raw zone row: decode bbox_json into a bbox dict/list (or
+    None if this isn't a bbox-type zone)."""
     z = dict(r)
     z['bbox'] = json.loads(z['bbox_json']) if z.get('bbox_json') else None
     z.pop('bbox_json', None)
@@ -2255,6 +2601,9 @@ def _shape_zone(r):
 @app.route('/api/steward/zones')
 @require_steward
 def list_steward_zones():
+    """All zones for the caller's agency, with the attached template's
+    weights/min_score/locked flag inlined (left-joined, so a zone with no
+    template attached still returns, just without those fields)."""
     with get_db() as db:
         rows = db.execute(
             '''SELECT z.*, t.name AS template_name, t.min_score AS template_min_score,
@@ -2277,6 +2626,9 @@ def list_steward_zones():
 @app.route('/api/steward/zones', methods=['POST'])
 @require_steward
 def create_steward_zone():
+    """Create a new zone. zone_type determines which of state_code/bbox/
+    county_fips/zcta_code is actually meaningful — the others are just
+    stored as NULL. template_id may be omitted (zone with no gating yet)."""
     data        = request.get_json(silent=True) or {}
     name        = (data.get('name') or '').strip()
     zone_type   = (data.get('zone_type') or 'state').strip()
@@ -2304,6 +2656,9 @@ def create_steward_zone():
 @app.route('/api/steward/zones/<int:zone_id>', methods=['PATCH'])
 @require_steward
 def update_steward_zone(zone_id):
+    """Partial update of a zone. Note the `data.get('x', row['x'])` pattern:
+    missing keys keep the existing value, so callers can PATCH a single
+    field (e.g. just template_id) without resending the whole zone."""
     data = request.get_json(silent=True) or {}
     with get_db() as db:
         row = db.execute(
@@ -2330,6 +2685,8 @@ def update_steward_zone(zone_id):
 @app.route('/api/steward/zones/<int:zone_id>', methods=['DELETE'])
 @require_steward
 def delete_steward_zone(zone_id):
+    """Delete a zone outright (unlike deleting a template, there's nothing
+    downstream that needs to be unlinked first)."""
     with get_db() as db:
         row = db.execute(
             'SELECT id FROM steward_zones WHERE id=? AND agency_key=?',
@@ -2342,9 +2699,17 @@ def delete_steward_zone(zone_id):
 
 
 # ── public zone endpoints ─────────────────────────────────────────────────────
+# Unlike the CRUD routes above, these are unauthenticated — the Explorer map
+# and builder-facing gate check need to read zone/template data for anyone,
+# not just the owning steward. Only LOCKED templates' zones are exposed here
+# (an unlocked/draft template shouldn't gate builders yet).
 
 @app.route('/api/zones/active')
 def zones_active():
+    """All locked zones across every agency, for rendering zone overlays on
+    the Explorer map. For ZCTA-type zones, also inlines the actual polygon
+    geometry (+ its bounding box) looked up from that state's ZCTA GeoJSON,
+    so the frontend doesn't need a second round trip just to draw the shape."""
     with get_db() as db:
         rows = db.execute(
             '''SELECT z.id AS zone_id, z.name AS zone_name, z.agency_key,
@@ -2387,6 +2752,11 @@ def zones_active():
 
 @app.route('/api/gate_check')
 def gate_check():
+    """Given a builder's candidate site (lat/lon/state), return every locked
+    zone whose geography actually contains that point (county- or ZCTA-type
+    zones only — state-wide and bbox zones are handled client-side and don't
+    need a server round trip). The frontend uses this to enforce the zone's
+    template min_score before letting the builder proceed."""
     try:
         lat   = float(request.args.get('lat', ''))
         lon   = float(request.args.get('lon', ''))
@@ -2427,9 +2797,13 @@ def gate_check():
 
 
 # ── demo case store (PostgreSQL — shared across all gunicorn workers) ──────────
+# Anonymous ("try it without an account") submissions from builder_submit()
+# land here rather than in `cases`. Uses Postgres (not a per-process dict) so
+# the TTL and session scoping work correctly across multiple gunicorn workers.
 
 @app.route('/api/demo/cases')
 def demo_cases_list():
+    """List the caller's own demo cases from the last 20 minutes."""
     # Scope the demo docket to the caller's own browser session. Without this it
     # returns every visitor's demo submission (contact email included) to everyone.
     sid = (request.args.get('session') or request.args.get('session_id') or '').strip()
@@ -2445,6 +2819,9 @@ def demo_cases_list():
 
 @app.route('/api/demo/case/<case_id>/stage', methods=['PATCH'])
 def demo_case_stage(case_id):
+    """Advance a demo case's stage. No auth/session check — demo cases are
+    ephemeral (20-min TTL) and not linked to anything sensitive, so this is
+    intentionally looser than the real set_stage route."""
     data  = request.get_json(silent=True) or {}
     stage = (data.get('stage') or '').strip()
     if not stage:
@@ -2455,6 +2832,8 @@ def demo_case_stage(case_id):
 
 @app.route('/api/demo/case/<case_id>')
 def demo_case_get(case_id):
+    """Fetch one demo case by id, provided it hasn't aged past the 20-minute
+    TTL — an expired row is treated the same as a missing one."""
     with get_db() as db:
         c = db.execute(
             "SELECT * FROM demo_cases WHERE case_id=? AND created_at > NOW() - INTERVAL '20 minutes'",
@@ -2581,6 +2960,11 @@ def _build_report_context(case_row, props):
 
 @app.route('/report/<case_id>')
 def report_case(case_id):
+    """Server-rendered (Jinja2, no React) permit justification report for a
+    real or demo case — the document a builder can hand to a permitter as
+    supporting evidence. Demo cases skip the access-control check (they're
+    public/ephemeral already) and never carry an anchor, since only real
+    cases reach Resolution and get anchored."""
     user    = _session_user()
     is_demo = case_id.startswith('demo-')
     with get_db() as db:
@@ -2641,6 +3025,9 @@ _ALLOWED_STATIC_EXT = {
 
 
 def _bundle_version():
+    """Cache-busting query param for bundle.js, derived from its file mtime
+    on disk. Lets index.html be served with no-store while the JS bundle
+    itself can still be cached hard by the browser/CDN between deploys."""
     try:
         return str(int(os.path.getmtime(os.path.join(ROOT, 'merascope', 'dist', 'bundle.js'))))
     except Exception:
@@ -2648,6 +3035,9 @@ def _bundle_version():
 
 @app.route('/')
 def index():
+    """Serve the SPA shell. Rewrites the bundle.js script tag to include
+    ?v=<mtime> so a fresh deploy is picked up immediately instead of being
+    served from a stale cached bundle."""
     with open(os.path.join(ROOT, 'index.html'), 'r') as f:
         html = f.read().replace(
             'merascope/dist/bundle.js"',
@@ -2659,6 +3049,11 @@ def index():
 
 @app.route('/<path:path>')
 def static_files(path):
+    """Catch-all static asset server (JS/CSS/images/fonts/etc. under ROOT).
+    Also implicitly serves the React SPA's client-side routes: any path that
+    doesn't match a real file/allowlisted extension falls through to 404
+    rather than index.html, so this relies on the frontend using hash-based
+    routing (#/...) instead of real paths for its client-side router."""
     # Refuse dotfiles / dot-directories (.env, .git, ...) at any depth.
     if any(seg.startswith('.') for seg in path.split('/')):
         return 'Not found', 404

@@ -1,6 +1,26 @@
 /* ── Merascope data layer: synthetic-but-plausible WA suitability model ── */
+// This is the shared data/state layer loaded on every page (plain <script>, not a
+// JSX module — everything here hangs off `window`). It bundles several distinct
+// things that grew up together in one file:
+//   1. Real, load-bearing app data: the 22-entry INDICATORS metadata array (source/
+//      method/confidence used by weight sliders, fact sheets, and the permit report),
+//      DEFAULT_WEIGHTS, the composite() scoring function, cellLabel()/serverLog(),
+//      MERA_SESSION, and AGENCY_DIRECTORY (the 95 real WA agencies).
+//   2. Two localStorage-backed IIFEs: the builder "saved cells" workspace and the
+//      CRM tracker, both used by builder.jsx/builder2.jsx.
+//   3. A legacy synthetic WA/ID/OR/UT/NV suitability model (indicatorsAt/genCells/
+//      mkState/STATES) that predates the real per-state ZCTA pipeline in data/. It's
+//      not the live scoring path (map.jsx loads real GeoJSON grids per state) — it
+//      now mostly backs demo fixtures: hardcoded showcase listings (SITES), the
+//      docket demo case (CASE_DETAIL_MAP['demo-EX-0001']), watchlist ALERTS, and
+//      the PORTFOLIO screening example rows.
+// Everything is assembled into a single window.MERA object at the bottom of the file.
 
 /* ── session ID + server-side event log ── */
+// Every browser tab gets a stable random ID (persisted in localStorage), used to
+// scope anonymous/demo data server-side (crm_state, demo_cases) without requiring
+// login. This is a security boundary, not just an analytics convenience — see the
+// "Session-scoped builder data" section of CONTEXT.md.
 window.MERA_SESSION = (function() {
   var k = 'mera_session_v1';
   var id = localStorage.getItem(k);
@@ -8,6 +28,9 @@ window.MERA_SESSION = (function() {
   return id;
 })();
 
+// Human-readable display name for a scored cell/ZCTA, e.g. "Texas #42" or
+// "Washington ZIP 98926". Used in workspace cards, Status CRM, portfolio results,
+// and map tooltips. `cell_id` is 0-indexed in the GeoJSON; display is 1-indexed.
 window.cellLabel = function(p) {
   var state = (window.STATE_NAMES ? window.STATE_NAMES[p._state] : null) || p._state || '';
   if (p.zcta) return state + ' ZIP ' + p.zcta;
@@ -15,6 +38,9 @@ window.cellLabel = function(p) {
   return state + num;
 };
 
+// Fire-and-forget POST to /api/log — the append-only server-side event log
+// (SQLite, never deletes). Failures are silently swallowed so logging never
+// blocks or breaks the UI action that triggered it.
 window.serverLog = function(eventType, fid, payload) {
   try {
     fetch('/api/log', {
@@ -41,9 +67,13 @@ window.getCurrentWeights = function() {
 };
 
 /* ── builder workspace: saved cells (localStorage) ── */
+// Backs the Workspace tab (builder.jsx: SavedCellCard grid, ComparisonPanel).
+// A Builder saves cells from the Explorer map into a client-side list — no login
+// or server round-trip required. Each saved cell also gets a reverse-geocoded
+// municipality name (cached separately) and is logged server-side for analytics.
 (function() {
-  var KEY = 'mera_saved_v1';
-  var GEO_KEY = 'mera_geo_v1';
+  var KEY = 'mera_saved_v1';       // saved cell list
+  var GEO_KEY = 'mera_geo_v1';     // fid -> {county, city, state, display} cache
   function load() { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch(e) { return []; } }
   function store(cells) { try { localStorage.setItem(KEY, JSON.stringify(cells)); } catch(e) {} }
   function loadGeo() { try { return JSON.parse(localStorage.getItem(GEO_KEY) || '{}'); } catch(e) { return {}; } }
@@ -51,6 +81,12 @@ window.getCurrentWeights = function() {
 
   window.getSavedCells = function() { return load(); };
 
+  // Adds a clicked map cell/ZCTA feature to the builder's saved-cell workspace.
+  // No-ops if already saved (id'd by GeoJSON `_fid`, stamped at load time in
+  // map.jsx). Computes the cell's centroid from its polygon ring, its national
+  // and in-state composite scores (under platform DEFAULT_WEIGHTS, not whatever
+  // the user has the sliders set to), and its rank within the state — all of
+  // which get stored locally and also shipped to the server log for analytics.
   window.saveCellToBuilder = function(feat) {
     var fid = feat.properties._fid;
     if (fid == null) return;
@@ -59,6 +95,8 @@ window.getCurrentWeights = function() {
     var coords = feat.geometry && feat.geometry.coordinates && feat.geometry.coordinates[0];
     var lat = null, lon = null;
     if (coords && coords.length) {
+      // Simple average-of-vertices centroid — good enough for ~14km ZCTA cells,
+      // not a true polygon centroid (fine for display/logging, not for area math).
       lat = coords.reduce(function(s,c){return s+c[1];},0) / coords.length;
       lon = coords.reduce(function(s,c){return s+c[0];},0) / coords.length;
     }
@@ -76,6 +114,9 @@ window.getCurrentWeights = function() {
     cells.push({ fid: fid, properties: feat.properties, lat: lat, lon: lon, stateRank: stateRank });
     store(cells);
     var logPayload = { props: feat.properties, lat: lat, lon: lon, state_rank: stateRank, nat_composite: natComp, state_composite: stateComp };
+    // Reverse-geocode is async and best-effort: log immediately if we have no
+    // coordinates to look up, otherwise wait for the municipality name so the
+    // server log entry is complete in one write instead of two.
     if (lat != null) {
       window.fetchMunicipality(fid, lat, lon).then(function(geo) {
         if (geo) logPayload.municipality = geo.display;
@@ -93,6 +134,12 @@ window.getCurrentWeights = function() {
   window.isCellSaved = function(fid) { return load().some(function(c){return c.fid === fid;}); };
 
   /* returns cached municipality or fetches+caches from Nominatim */
+  // Public OpenStreetMap Nominatim reverse-geocode API — used to show a friendly
+  // "City, County" label on saved-cell cards and to auto-detect the lead agency
+  // during builder site-inquiry submission. Results are cached per-fid forever
+  // (municipality boundaries don't move), so this network call happens at most
+  // once per saved cell. Silently returns null on any failure (rate limit, no
+  // network) — callers must tolerate a missing municipality label.
   window.fetchMunicipality = function(fid, lat, lon) {
     var geo = loadGeo();
     if (geo[fid]) return Promise.resolve(geo[fid]);
@@ -119,6 +166,11 @@ window.getCurrentWeights = function() {
 })();
 
 /* ── CRM tracker (localStorage) ── */
+// Backs the Status tab (builder2.jsx: CrmPanel) — a lightweight per-saved-cell
+// CRM so a Builder can track their own outreach on a site: pipeline status,
+// contacts, an activity log, and free-text notes. Purely client-side storage
+// (keyed by `fid`, not by session/login); every mutation is mirrored to the
+// server event log via serverLog() for the CSV export + analytics.
 (function() {
   var KEY = 'mera_crm_v1';
   function load() { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch(e) { return {}; } }
@@ -163,12 +215,26 @@ window.getCurrentWeights = function() {
   };
 })();
 
+// ── Main data IIFE ──────────────────────────────────────────────────────────
+// Builds window.MERA — the single object nearly every other frontend file reads
+// from. Contains a mix of genuinely-load-bearing data (INDICATORS, composite(),
+// AGENCY_DIRECTORY) and a legacy synthetic scoring model (indicatorsAt/fbm/WA
+// polygon/genCells) built before the real ZCTA pipeline existed. The synthetic
+// model is kept alive to generate plausible-looking demo/fixture content —
+// CLUSTERS, RECOMMENDED, SITES, and the small per-state STATES entries — since
+// hand-authoring realistic-looking indicator vectors for every fixture would be
+// tedious and the model happens to produce sensible geography (transmission
+// corridors near real substations, water scarcity east of the Cascades, etc).
 (function () {
   'use strict';
   var clamp = function (v, a, b) { return Math.max(a, Math.min(b, v)); };
   var lerp = function (a, b, t) { return a + (b - a) * t; };
 
   /* ── color ramps ── */
+  // Maps a 0-1 score to a display color. 'field' = default green-to-red suitability
+  // ramp; 'cb' = colorblind-safe viridis-style alternative (the `ramp` tweak in
+  // MeraCtx, set via TweaksPanel). rampText() picks readable label text color
+  // against the interpolated background.
   var RAMPS = {
     field: ['#C0392B', '#E67E22', '#F1C40F', '#7DBB6C', '#1F8A4C'],
     cb: ['#440154', '#414487', '#2A788E', '#7AD151', '#FDE725']
@@ -187,6 +253,11 @@ window.getCurrentWeights = function() {
   }
 
   /* ── deterministic value noise ── */
+  // Classic "sine hash" pseudo-random field: same (x,y) always produces the same
+  // noise value (no seed state), so the synthetic indicator surface below is
+  // stable across reloads without needing to store per-cell random data. fbm()
+  // (fractal Brownian motion) layers three octaves for a more organic-looking
+  // texture than a single noise pass.
   function n2(x, y) { var s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return s - Math.floor(s); }
   function smoothN(x, y) {
     var xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
@@ -196,6 +267,9 @@ window.getCurrentWeights = function() {
   function fbm(x, y) { return 0.62 * smoothN(x, y) + 0.27 * smoothN(x * 2.13 + 7, y * 2.13 + 3) + 0.11 * smoothN(x * 4.31 + 13, y * 4.31 + 5); }
 
   /* ── WA boundary (simplified) ── */
+  // Hand-simplified polygon (not the real TIGER boundary) used only to decide
+  // which synthetic grid cells fall inside Washington for the legacy demo model
+  // below — the real state boundaries used for scoring live in data/{STATE}/raw/.
   var WA = [
     [-124.73, 48.39], [-124.55, 47.95], [-124.35, 47.55], [-124.18, 47.15], [-124.10, 46.80],
     [-124.07, 46.40], [-124.05, 46.25], [-123.70, 46.20], [-123.40, 46.22], [-123.12, 46.15],
@@ -205,6 +279,8 @@ window.getCurrentWeights = function() {
     [-122.76, 49.00], [-122.80, 48.75], [-123.00, 48.70], [-123.15, 48.55], [-123.30, 48.45],
     [-124.00, 48.35], [-124.73, 48.39]
   ];
+  // Standard ray-casting point-in-polygon test (same technique used server-side
+  // in server.py's _point_in_ring for real steward zone gating).
   function inWA(lon, lat) {
     var inside = false;
     for (var i = 0, j = WA.length - 1; i < WA.length; j = i++) {
@@ -213,10 +289,17 @@ window.getCurrentWeights = function() {
     }
     return inside;
   }
+  // Rough lon/lat distance with a longitude compression factor (~cos of WA's
+  // mid-latitude) so distances read as roughly isotropic on screen — not a true
+  // geodesic distance, just good enough for the synthetic proximity falloffs below.
   function dist(lon, lat, LON, LAT) { var dx = (lon - LON) * 0.72, dy = lat - LAT; return Math.sqrt(dx * dx + dy * dy); }
   function minDistTo(pts, lon, lat) { var m = 99; for (var i = 0; i < pts.length; i++) { var d = dist(lon, lat, pts[i][0], pts[i][1]); if (d < m) m = d; } return m; }
 
   /* ── geography features ── */
+  // Hand-placed anchor points/lines that drive the synthetic indicator surface:
+  // transmission corridor hotspots, the Columbia River path, urban centers (community
+  // burden), contamination sites, and protected-land circles (hard gate). Loosely
+  // modeled on real WA geography but not derived from the actual pipeline data.
   var TX = [ /* transmission corridors [lon,lat,strength] */
     [-118.98, 47.96, 1.0], [-119.85, 47.23, 0.92], [-120.31, 47.42, 0.85], [-119.20, 46.22, 0.9],
     [-122.30, 47.50, 0.95], [-122.40, 47.25, 0.9], [-122.62, 45.70, 0.95], [-117.40, 47.66, 0.85],
@@ -237,6 +320,10 @@ window.getCurrentWeights = function() {
     { c: [-121.10, 48.15], r: 0.30 }, { c: [-121.95, 46.15], r: 0.32 }, { c: [-121.45, 46.20], r: 0.24 }
   ];
 
+  // Synthetic per-point indicator generator for the legacy WA demo model: combines
+  // hand-placed geography features above with fbm noise to produce a plausible-looking
+  // set of 9 indicator scores (0-1) for any lon/lat in WA. NOT the real scoring pipeline
+  // — real per-ZCTA scores come from data/{STATE}/zcta/grid_scores.geojson via map.jsx.
   function indicatorsAt(lon, lat) {
     var nA = fbm(lon * 2.6, lat * 2.6), nB = fbm(lon * 2.6 + 31, lat * 2.6 + 17), nC = fbm(lon * 4.1 + 53, lat * 4.1 + 7);
     var riverProx = Math.exp(-minDistTo(RIVER, lon, lat) * 3.2);
@@ -285,6 +372,10 @@ window.getCurrentWeights = function() {
   }
 
   /* ── grid ── */
+  // Coarse 0.15°-cell synthetic grid covering WA, generated once at load time.
+  // Each cell gets an indicatorsAt() score set and a hard "gate" flag (terrain too
+  // steep, or inside a protected-land circle) that disqualifies it outright. This
+  // powers the legacy demo model only, not the real per-state ZCTA grids.
   var lonMin = -124.85, latMax = 49.05, D = 0.15;
   var cols = 53, rows = 24;
   var cells = [], cellIndex = {};
@@ -300,11 +391,22 @@ window.getCurrentWeights = function() {
       cells.push(cell); cellIndex[cell.id] = cell;
     }
   }
+  // Look up the synthetic grid cell containing a given lat/lon (used by the legacy
+  // demo model's spatial lookups — the real ZCTA lookup is findNearestCell in map.jsx).
   function cellAt(lat, lon) {
     var r2 = Math.floor((latMax - lat) / D), c2 = Math.floor((lon - lonMin) / D);
     return cellIndex[r2 + '-' + c2] || null;
   }
 
+  // ── REAL, LOAD-BEARING DATA (not part of the synthetic model above) ──
+  // The 22 indicators used across the whole app: Explorer/Builder weight sliders,
+  // fact sheets, indicator breakdown panels, confidence tiers shown to stewards, and
+  // the permit justification report. Each entry documents its own data lineage
+  // (source/method/freq) and a confidence tier (High/Medium/Low) with a plain-English
+  // caveat — this is what lets Merascope show its work rather than just a black-box score.
+  // `def` is the default weight (0-100) baked into DEFAULT_WEIGHTS below; `score_col`/
+  // `nat_col` are the actual column names in the per-state ZCTA GeoJSON (state-relative
+  // and national-percentile normalized, respectively).
   var INDICATORS = [
     { k: 'transmission', label: 'Transmission proximity', def: 40, icon: 'pylon',
       score_col: 'tx_score', nat_col: 'tx_score_nat',
@@ -395,8 +497,15 @@ window.getCurrentWeights = function() {
       source: 'EIA Form 860M', method: 'State-level ISO queue aggregation', freq: 'Monthly (860M planned sheet)',
       confidence: 'Medium', confidence_note: 'State-level ISO interconnection queue; does not reflect local subgrid or distribution constraints.' }
   ];
+  // Platform default weights (0-100 per indicator), derived from each indicator's `def`.
+  // These are what a fresh Explorer session starts with before a Builder tunes sliders;
+  // window.setCurrentWeights/getCurrentWeights (top of file) persist any tuned overrides.
   var DEFAULT_WEIGHTS = {};
   INDICATORS.forEach(function (m) { DEFAULT_WEIGHTS[m.k] = m.def; });
+  // THE core scoring function, used everywhere a composite suitability score is shown
+  // (Explorer map, Builder site cards, Steward report cards, permit report). Weighted
+  // average of per-indicator scores (0-1), normalized by total weight so it stays in
+  // [0,1] regardless of how many/which indicators are turned on.
   function composite(ind, w) {
     var s = 0, tot = 0;
     for (var i = 0; i < INDICATORS.length; i++) {
@@ -407,6 +516,10 @@ window.getCurrentWeights = function() {
   }
 
   /* ── clusters (real composites from the published model) ── */
+  // Actual existing/proposed WA data center sites with real published composite scores
+  // (not synthetic) — shown on the Explorer map as reference pins. The forEach below
+  // stamps each cluster's real indicator vector onto its containing synthetic grid cell
+  // so the map cell itself reflects the real score at that location.
   var CLUSTERS = [
     { name: 'Quincy', lat: 47.23, lon: -119.85, status: 'existing', composite: 0.599, ind: { transmission: 0.85, water: 0.35, community: 0.55, seismic: 0.86, flood: 0.78, contamination: 0.74, waterway: 0.62, geothermal: 0.12, flatness: 0.769 } },
     { name: 'Malaga–East Wenatchee', lat: 47.37, lon: -120.26, status: 'existing', composite: 0.656, ind: { transmission: 0.78, water: 0.60, community: 0.52, seismic: 0.80, flood: 0.66, contamination: 0.82, waterway: 0.40, geothermal: 0.18, flatness: 0.479 } },
@@ -421,6 +534,10 @@ window.getCurrentWeights = function() {
   CLUSTERS.forEach(function (cl) { var cell = cellAt(cl.lat, cl.lon); if (cell) { cell.ind = cl.ind; cell.gate = null; cell.cluster = cl.name; } });
 
   /* ── top unclaimed cells (pinned: identical indicator vector ⇒ weight-invariant) ── */
+  // Handpicked "best available" demo cells for the Explorer's recommended-sites list.
+  // Every indicator is pinned to the same `score` value, so composite() returns that
+  // score regardless of how the weight sliders are set — guarantees these always show
+  // up near the top of the ranking no matter what a visitor tunes.
   var RECOMMENDED = [
     { lat: 46.07, lon: -122.22, score: 0.996, label: 'Cell 46.07N / 122.22W' },
     { lat: 45.77, lon: -122.67, score: 0.953, label: 'Cell 45.77N / 122.67W' },
@@ -431,15 +548,22 @@ window.getCurrentWeights = function() {
     if (cell) { var ind2 = {}; INDICATORS.forEach(function (m) { ind2[m.k] = rc.score; }); cell.ind = ind2; cell.gate = null; cell.pinned = rc.score; }
   });
 
+  // Finds the nearest real CLUSTERS entry to a lat/lon, within a 0.5 (lon-compressed)
+  // distance cutoff — used to show "near an existing data center" context on the map.
   function nearestCluster(lat, lon) {
     var best = null, bd = 99;
     CLUSTERS.forEach(function (cl) { var d = dist(lon, lat, cl.lon, cl.lat); if (d < bd) { bd = d; best = cl; } });
     return bd < 0.5 ? best : null;
   }
 
+  // Static summary counts shown on stat cards ("X of Y cells hard-gated") — precomputed
+  // rather than derived from `cells` live, so they match the numbers used in marketing copy.
   var GATE_COUNTS = { terrain: 61, protected: 82, total: 124, scored: 974, viable: 850 };
 
   /* ── builder site listings ── */
+  // Hardcoded showcase site listings for the Builder's site-search results (SiteCard /
+  // SiteDetailPage in builder.jsx). Each has a rich fixed narrative (blurb, flags,
+  // per-category bars) so the Builder surface has believable content beyond a bare score.
   var SITES = [
     { id: 'kittitas', title: 'Kittitas Corridor', cell: 'Cell 46.97N / 120.54W', lat: 46.97, lon: -120.54, composite: 0.81, acres: 412, kv: 345, kvDist: 3.1, zcta: '98926', pop: 21400, parcels: 14,
       bars: { Water: 0.71, Grid: 0.88, Community: 0.74, Hazard: 0.69, 'Heat-reuse': 0.55 },
@@ -476,15 +600,20 @@ window.getCurrentWeights = function() {
   ];
 
   /* ── watchlist + alerts ── */
+  // Demo feed for the Builder Status tab's regulatory/market alert stream — fixed
+  // fixture content, not live-fetched. `tone` drives the badge color (lo/med/hi urgency).
   var ALERTS = [
     { kind: 'bill', icon: '⚠', title: 'New bill filed: WA HB — data center water reporting', detail: 'Affects 3 watched sites (Kittitas Corridor, Moses Lake North, Creston Ridge). Disclosure of consumptive use above 50k gal/day.', age: '2h ago', tone: 'med' },
     { kind: 'rate', icon: '▲', title: 'Rate case opened — Grant PUD', detail: 'New large-load tariff class proposed. Filing 26-UE-0388; comment window 30 days.', age: '1d ago', tone: 'med' },
     { kind: 'moratorium', icon: '●', title: 'Moratorium expired — Frederick Co, MD', detail: 'Out-of-state comparable you follow. County resumed application intake with new substation setback rules.', age: '3d ago', tone: 'lo' },
     { kind: 'score', icon: '◆', title: 'Score change: Moses Lake North 0.66 → 0.64', detail: 'USGS spring aquifer survey lowered the water indicator from 0.35 to 0.31.', age: '5d ago', tone: 'hi' }
   ];
-  var WATCHED = ['kittitas', 'moses', 'creston', 'centralia'];
+  var WATCHED = ['kittitas', 'moses', 'creston', 'centralia']; // SITES ids shown as "watched" in the demo
 
   /* ── portfolio screening ── */
+  // Demo rows for the Builder's bulk portfolio-screening feature: a fixed set of
+  // candidate sites (some deliberately failing on real gates/thresholds) used to show
+  // how the tool would flag bad sites before an operator wastes diligence on them.
   var PORTFOLIO = [
     { name: 'Candidate A — Wallula bench', cell: '46.06N / 118.93W', composite: 0.506, fail: true, why: 'Water 0.000 — would have flagged like all 2025 WA cancellations.' },
     { name: 'Candidate B — Kittitas Corridor', cell: '46.97N / 120.54W', composite: 0.81, fail: false, why: '' },
@@ -496,14 +625,22 @@ window.getCurrentWeights = function() {
   ];
 
   /* ── steward docket ── */
+  // The permitting-process stages a case moves through, shown as a progress rail on
+  // the docket and case-file pages. IMPORTANT (per CONTEXT.md): 'Site Inquiry' MUST
+  // remain the first entry — other code assumes that index/value marks case creation.
   var STAGES = ['Site Inquiry', 'Intake', 'Analysis', 'Findings Exchange', 'Negotiation', 'Rebuttal Cycle', 'Mediation', 'Resolution'];
-  var CASES = [];
+  var CASES = []; // populated below: EXAMPLE case is pushed in; real cases come from the server
   var PARTY_NAMES = { KC: 'Klickitat County', YN: 'Yakama Nation', PUD: 'Public Utility District', GC: 'Grant County', BC: 'Benton County', AG: 'Attorney General', CT: 'CTUIR', WW: 'Walla Walla County', UT: 'Serving utility', SC: 'Spokane County' };
 
   var CASE_DETAIL = {};
   var CASE_DETAIL_MAP = {};
 
   /* ── EXAMPLE completed case (hardcoded) ── */
+  // The one case every visitor can see regardless of login/session — a fully worked
+  // example of a resolved permitting docket (findings, conditions, docs, studies) so
+  // stewards and co-parties can see what a finished case file looks like before they
+  // have any real cases of their own. CaseFilePage (in case-file.jsx) special-cases
+  // this id: it skips all server fetches and renders entirely from this static object.
   CASE_DETAIL_MAP['demo-EX-0001'] = {
     id: 'demo-EX-0001',
     title: 'Mattawa Technology Campus — Grant County',
@@ -554,6 +691,8 @@ window.getCurrentWeights = function() {
     ]
   };
 
+  // Docket-list entry (summary row) for the EXAMPLE case, separate from the full
+  // CASE_DETAIL_MAP record above — this is what shows up in the docket table itself.
   CASES.push({
     id: 'demo-EX-0001',
     site: 'Mattawa Technology Campus',
@@ -567,12 +706,17 @@ window.getCurrentWeights = function() {
     is_example: true
   });
 
+  // Placeholders for demo features not populated with fixture data (kept as real arrays/
+  // objects so consuming pages can render an empty state without null-checks everywhere).
   var IMPASSES = [];
   var IMPASSE_UNLOCKS = {};
   var LITIGATION = [];
+  // Mandated-studies list seeded from the EXAMPLE case's studies (so the studies page
+  // has content to show even before any real case has been created).
   var STUDIES = (CASE_DETAIL_MAP['demo-EX-0001'] && CASE_DETAIL_MAP['demo-EX-0001'].studies) || [];
 
   /* ── shared context ── */
+  // Homepage/marketing stat callouts (hardcoded figures, not live-computed).
   var STATS = [
     { n: '300+', t: 'state data-center bills filed in the first six weeks of 2026' },
     { n: '7+ yrs', t: 'average wait from interconnection queue to power' },
@@ -580,6 +724,8 @@ window.getCurrentWeights = function() {
     { n: '2 of 3', t: 'recent U.S. data centers sit in water-stressed areas' },
     { n: '>40%', t: 'of 2025\u2019s canceled projects cited water' }
   ];
+  // WA statewide report-card grades (per indicator category) with plain-English
+  // rationale — shown on the state summary/report-card view.
   var GRADES = [
     { k: 'Water Durability', g: 'A', why: 'Mixed water picture. Strengths: Precipitation availability is strong (0.68). Long-term supply stress is low (0.86). Watch: Aquifer access is limited or heavily drawn (0.27). Waterway proximity is weak (0.21) — cooling and process water options are limited.' },
     { k: 'Grid Access', g: 'C+', why: 'Strong grid position. ISO interconnection queue headroom is favorable (0.67).' },
@@ -589,6 +735,9 @@ window.getCurrentWeights = function() {
   ];
   var STATE_GRADE = 'B+';
   var DATA_SOURCES = 'OSM (ODbL) · Census ACS · PRISM Climate Group · USGS NWIS + ASCE 7-22 · FEMA NFHL · EPA TRI + Envirofacts NPL + RCRA · EPA Green Book · SSURGO SDM · IHFC 2024 GHFDB · SRTM1 · EIA Form 860 + 860M · WRI Aqueduct 3.0 · PeeringDB';
+  // The core trust claim shown across the site (homepage, PromiseBadge in ui.jsx): all
+  // users see the same methodology/weights/sources — subscriptions unlock workflow
+  // tooling, never a rosier score.
   var PROMISE = {
     short: 'Same Score Promise',
     long: 'Our methodology, weights, and sources are public and identical for every user. Subscriptions buy resolution and workflow. They have never bought a friendlier number, and they never will; a flattering score on a failing site bankrupts everyone who trusted it. The aquifer doesn\u2019t read press releases.'
@@ -596,6 +745,10 @@ window.getCurrentWeights = function() {
   var VERSION = 'v2026.06.25';
 
   /* ── additional states: synthetic aggregate models (public high-level layer) ── */
+  // Everything below generalizes the legacy WA synthetic model (indicatorsAt/inWA/grid
+  // construction above) into a reusable per-state generator, so a handful of other
+  // states (ID/OR/UT/NV) can show a plausible-looking public preview without needing
+  // the real ZCTA pipeline run for them yet.
   function pip(poly, lon, lat) {
     var inside = false;
     for (var i = 0, j = poly.length - 1; i < poly.length; j = i++) {
@@ -604,6 +757,10 @@ window.getCurrentWeights = function() {
     }
     return inside;
   }
+  // Generic version of the WA grid-construction loop above, parameterized by a per-state
+  // `cfg` (boundary polygon, transmission points, river path, urban centers, contamination
+  // points, protected-land circles, plus water/seismic/geothermal/flatness functions).
+  // Builds and scores a synthetic grid the same way, just for an arbitrary state shape.
   function genCells(cfg) {
     var lo = 999, hi = -999, la = 999, ha = -999;
     cfg.poly.forEach(function (p) { if (p[0] < lo) lo = p[0]; if (p[0] > hi) hi = p[0]; if (p[1] < la) la = p[1]; if (p[1] > ha) ha = p[1]; });
@@ -641,12 +798,19 @@ window.getCurrentWeights = function() {
     }
     return { cells: out, cols: sCols, rows: sRows, lonMin: sLonMin, latMax: sLatMax, D: D };
   }
+  // Wraps genCells() into a full per-state record shaped like the WA entry below
+  // (GRID/CLUSTERS/RECOMMENDED/grade/etc) so ExplorerPage can treat WA and the
+  // synthetic states uniformly.
   function mkState(key, name, cfg, grade, grades) {
     var G = genCells(cfg);
     var viable = 0; G.cells.forEach(function (x) { if (!x.gate) viable++; });
     return { key: key, name: name, GRID: G, CLUSTERS: [], RECOMMENDED: [], isWA: false, grade: grade, grades: grades, scored: G.cells.length, viable: viable };
   }
 
+  // Per-state registry consumed by ExplorerPage's state picker. WA uses the real,
+  // hand-tuned model built above; ID/OR/UT/NV are generated via mkState() with their
+  // own boundary/feature configs (defined inline below) — a lighter-weight synthetic
+  // preview, not the real per-state ZCTA pipeline output.
   var STATES = {
     WA: { key: 'WA', name: 'Washington', GRID: { cells: cells, cols: cols, rows: rows, lonMin: lonMin, latMax: latMax, D: D }, CLUSTERS: CLUSTERS, RECOMMENDED: RECOMMENDED, isWA: true, grade: STATE_GRADE, grades: GRADES, scored: 974, viable: 850 },
     ID: mkState('ID', 'Idaho', {
@@ -723,6 +887,11 @@ window.getCurrentWeights = function() {
     ])
   };
 
+  // REAL data (not fixture): pre-registered agency directory used by the invite-co-parties
+  // modal on a case file (search by name/type/state). WA has a full slate of real named
+  // agencies (95 entries once counties/tribes/utilities below are included); every other
+  // state gets a standard 4-role set (Env/AG/SHPO/DNR-equivalent) so the co-party invite
+  // flow works nationwide even before a state has bespoke agency data.
   var AGENCY_DIRECTORY = [
     /* WA state + city */
     { key: 'OPCD',   name: 'Seattle OPCD',                             type: 'city',    state: 'WA' },
@@ -1053,6 +1222,11 @@ window.getCurrentWeights = function() {
     { key: 'PPCORP', name: 'Pacific Power',                   type: 'utility', state: 'WA' }
   ];
 
+  // ── The single export: every other frontend file reads app data through this object ──
+  // (e.g. window.MERA.INDICATORS, window.MERA.composite(...), window.MERA.STATES.WA).
+  // Mixes real/load-bearing data (INDICATORS, composite, AGENCY_DIRECTORY, PROMISE) with
+  // the legacy synthetic model's output (GRID, CLUSTERS-derived cells, STATES, SITES,
+  // ALERTS, PORTFOLIO) — see the file header above for which is which.
   window.MERA = {
     RAMPS: RAMPS, rampColor: rampColor, rampText: rampText, clamp: clamp,
     GRID: { cells: cells, cols: cols, rows: rows, lonMin: lonMin, latMax: latMax, D: D },

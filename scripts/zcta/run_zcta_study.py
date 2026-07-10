@@ -3,11 +3,21 @@
 run_zcta_study.py — Run the ZCTA-resolution study pipeline for a state.
 
 Outputs to data/{STATE}/zcta/grid_scores.geojson (separate from the fishnet atlas).
-Steps 03-07 from the parent pipeline are reused — they are geometry-agnostic.
-The DC_SUBDIR=zcta env var tells config.get_paths() to read/write the zcta subdir.
+Steps 03-16 from the parent pipeline are reused as-is — they only touch grid
+centroids/geometry generically, so they work unchanged against ZCTA polygons
+instead of fishnet cells. Only step 02 has a ZCTA-specific replacement
+(02_zcta_indicators.py instead of 02_indicators.py) because fishnet
+construction itself is geometry-specific. The DC_SUBDIR=zcta env var tells
+config.get_paths() to read/write the zcta subdir for every step except 02.
 
 Raw data (precip cache, transmission, state boundary) is shared with the fishnet run.
 If the fishnet pipeline has already run for this state, step 02 is the only cold fetch.
+
+NOT run by this script — separate manual passes after all 48 states are done:
+normalize_zcta_national.py (cross-state *_nat columns) and, only if
+deliberately merging ZCTA scores back into the fishnet product,
+build_fishnet_from_zcta.py (see its CAUTION note — it overwrites the fishnet
+grid_scores.geojson in place).
 
 Usage:
   conda activate merascope

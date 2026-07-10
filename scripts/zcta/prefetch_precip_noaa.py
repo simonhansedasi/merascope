@@ -4,6 +4,15 @@ prefetch_precip_noaa.py — Build precip_coarse.csv for all 48 states using
 NOAA 1991-2020 Climate Normals station data. No API rate limits — two bulk
 file downloads, then local IDW per state.
 
+Alternative to prefetch_precip.py (Open-Meteo), which rate-limits from
+datacenter IPs and must be run from a residential connection. This script has
+no such restriction — run it on Hetzner directly — but NOAA station density
+is sparser than Open-Meteo's synthetic per-state sample grid, so results can
+differ slightly in states with few stations. Same output format either way
+(lat, lon, ann_precip_mm), and both are moot once
+data/prism_ppt_30yr.tif exists (PRISM is sampled directly instead — see
+02_zcta_indicators.py's sample_prism_precip()).
+
 Run locally or on Hetzner. Saves data/{STATE}/raw/precip_coarse.csv.
 
 Usage:

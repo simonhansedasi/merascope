@@ -8,6 +8,14 @@ Preserves all original fishnet geometry and non-score properties.
 
 Must run AFTER normalize_zcta_national.py so *_nat columns are present.
 
+CAUTION: fishnet_path below is data/{STATE}/grid_scores.geojson — the SAME
+file the main 01-16 pipeline writes to (this script does not use DC_SUBDIR).
+Running this OVERWRITES the fishnet-scored product in place with ZCTA-derived
+score/_nat columns, keeping only the original fishnet geometry. Only run this
+intentionally when you want the ZCTA study's scores to replace the fishnet
+scores for these states — re-running the main pipeline afterward would be
+needed to restore fishnet-native scoring.
+
 Usage:
   python scripts/build_fishnet_from_zcta.py WA
   python scripts/build_fishnet_from_zcta.py --all

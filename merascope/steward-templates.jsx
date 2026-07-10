@@ -1,8 +1,42 @@
 /* ── Steward template + zone management ── */
 
+/*
+ * steward-templates.jsx — the "Weight templates" surface (#/steward/templates),
+ * added 2026-06-22. Separate concern from the rest of the steward files: where
+ * steward.jsx/steward2.jsx manage individual cases, this file lets a lead
+ * agency define reusable *scoring* policy and attach it to a geography.
+ *
+ * The core idea: a steward names a set of indicator weights (a "template",
+ * e.g. "Water-First"), sets a minimum composite score under those weights, and
+ * attaches the template to a "zone" (a state, county, ZCTA, or custom bounding
+ * box). If the steward locks the template, any builder whose cell falls inside
+ * that zone and scores below the minimum sees a gate warning in the Explorer
+ * hover tooltip (implemented in map.jsx's _checkStewardGateLocal / gate_check
+ * fetch — this file only manages the templates/zones, not the gating itself).
+ * Five starter templates ship as server-side constants (PRESET_TEMPLATES in
+ * server.py) and are offered via PresetPickerModal below; stewards can also
+ * build a template from scratch with WeightEditor. Every save to a template
+ * writes a history row server-side, browsable and revertible from
+ * ZoneDetailPanel's "Change log".
+ *
+ * Top-level component is StewardTemplatesPage at the bottom of this file,
+ * which composes ZoneListPanel (left rail) + ZoneDetailPanel (editor) and
+ * hangs off the same StewardSubNav tab bar as steward.jsx/steward2.jsx.
+ */
+
+// Every US state as [code, full name] pairs, sorted alphabetically by name —
+// feeds the state <select> dropdowns in ZoneDetailPanel's state/county/zcta
+// zone-type forms below.
 var STATE_LIST = Object.entries(window.STATE_NAMES || {}).sort((a, b) => a[1].localeCompare(b[1]));
 
 /* ── mini weight bar used in preset cards and zone detail ── */
+// Read-only horizontal bar chart of a weight set — one row per indicator that
+// has a non-zero weight, sorted in whatever order M.INDICATORS defines. Used
+// both to preview a preset before picking it (PresetPickerModal) and to show
+// a selected template's current weights in the zone detail panel. Percentages
+// are normalized against the sum of active weights, not against 100 directly,
+// so partial/sparse weight sets (e.g. only 3 of 15 indicators set) still read
+// as a sensible 0-100% breakdown.
 function WeightBars({ weights }) {
   var M = window.MERA;
   var total = M.INDICATORS.reduce(function(s, m) { return s + (weights[m.k] || 0); }, 0) || 1;
@@ -27,6 +61,12 @@ function WeightBars({ weights }) {
 }
 
 /* ── weight editor: sliders + number inputs for all indicators ── */
+// Full editable form for a weight template — one slider + linked number input
+// per indicator in M.INDICATORS, all 0-100 raw values (not yet normalized;
+// normalization to percentages is display-only, same math as WeightBars).
+// Controlled from outside: this component holds no state of its own, it just
+// calls onChange(nextWeightsObject) on every edit so the parent (ZoneDetailPanel)
+// owns the draft until "Save template" is clicked.
 function WeightEditor({ weights, onChange }) {
   var M = window.MERA;
   var total = M.INDICATORS.reduce(function(s, m) { return s + (weights[m.k] || 0); }, 0) || 1;
@@ -70,6 +110,12 @@ function WeightEditor({ weights, onChange }) {
 }
 
 /* ── preset picker modal ── */
+// Full-screen overlay offering the 5 starter templates (PRESET_TEMPLATES,
+// server-side constants — never stored in the DB, fetched fresh each time via
+// GET /api/steward/presets) as a shortcut to creating a new named template.
+// Picking a preset (either the card or its button) calls onPick(p); the
+// caller (ZoneDetailPanel.applyPreset) is responsible for actually POSTing a
+// new template row using this preset's weights/min_score as the starting values.
 function PresetPickerModal({ presets, onPick, onClose }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
@@ -104,8 +150,22 @@ function PresetPickerModal({ presets, onPick, onClose }) {
 }
 
 /* ── zone detail panel ── */
+// The create/edit form for a single zone — the heart of this file. A zone
+// pairs a geography (state / county / ZCTA / custom bbox, chosen via
+// zone_type) with an optional weight template. Selecting a template pulls its
+// weights/min_score into local editable state (localWeights/localMinScore) so
+// changes can be previewed before "Save template" persists them; locking the
+// template is what actually turns the zone into a binding gate — unlocked
+// templates are advisory only, builders aren't blocked. Also surfaces the
+// template's change history with per-entry rollback. Rendered by
+// StewardTemplatesPage for both new zones (isNew, zone has no id) and
+// existing ones (passed a real zone row with a `key` forcing remount on
+// selection change, so this component's local state never leaks between zones).
 function ZoneDetailPanel({ zone, templates, presets, onSave, onDelete, onClose, onTemplateCreated, onTemplateUpdated }) {
   var isNew = !zone.id;
+  // draft holds the in-progress edits to the zone's own fields (name, geography,
+  // which template_id it points to) — separate from localWeights/localMinScore,
+  // which track edits to the *template itself* once one is selected.
   var [draft, setDraft] = React.useState(function() { return Object.assign({}, zone); });
   var [showWeightEditor, setShowWeightEditor] = React.useState(false);
   var [showPresets, setShowPresets] = React.useState(false);
@@ -115,10 +175,18 @@ function ZoneDetailPanel({ zone, templates, presets, onSave, onDelete, onClose, 
   var [localMinScore, setLocalMinScore] = React.useState(0);
   var [history, setHistory] = React.useState([]);
 
+  // Generic single-field updater for the draft object, used by every input below.
   function set(k, v) { setDraft(function(d) { return Object.assign({}, d, {[k]: v}); }); }
 
+  // Look up the full template row (with its live weights/min_score/locked
+  // state) that corresponds to whatever template_id is currently selected in
+  // the draft — null if none chosen yet.
   var selectedTemplate = templates.find(function(t) { return t.id === draft.template_id; }) || null;
 
+  // When the selected template changes (including on first mount if the zone
+  // already has one), seed the local editable weight/min-score state from it
+  // and fetch its change history. Keyed only on the template's id (not the
+  // whole object) so this doesn't re-fire on every render.
   React.useEffect(function() {
     if (selectedTemplate) {
       setLocalWeights(selectedTemplate.weights || {});
@@ -131,12 +199,19 @@ function ZoneDetailPanel({ zone, templates, presets, onSave, onDelete, onClose, 
     }
   }, [selectedTemplate ? selectedTemplate.id : null]);
 
+  // Re-pull the change log after an action (rollback, lock toggle) that the
+  // server logs as a new history entry, so the log stays current without a
+  // full page reload.
   function refreshHistory(tmplId) {
     fetch('/api/steward/templates/' + tmplId + '/history')
       .then(function(r) { return r.json(); })
       .then(function(d) { if (Array.isArray(d)) setHistory(d); });
   }
 
+  // Revert the template to a prior state recorded in its history (server does
+  // the actual revert and returns the restored weights/min_score/locked);
+  // mirror that result into local state and notify the parent list so other
+  // views (e.g. the zone list's lock icon) stay in sync.
   function handleRollback(histId) {
     if (!selectedTemplate) return;
     fetch('/api/steward/templates/' + selectedTemplate.id + '/rollback', {
@@ -153,6 +228,11 @@ function ZoneDetailPanel({ zone, templates, presets, onSave, onDelete, onClose, 
     });
   }
 
+  // Turn a chosen preset (from PresetPickerModal) into a real, persisted
+  // template row via POST, then point this zone's draft at the newly created
+  // template's id. Presets themselves are never mutated — this always creates
+  // a fresh template so multiple zones can start from the same preset and
+  // diverge independently.
   function applyPreset(p) {
     var name = p.name;
     fetch('/api/steward/templates', {
@@ -171,6 +251,9 @@ function ZoneDetailPanel({ zone, templates, presets, onSave, onDelete, onClose, 
       });
   }
 
+  // Persist the zone itself (its geography fields + which template it points
+  // to — NOT the template's weights, which save separately via the "Save
+  // template" button below). POST for a new zone, PATCH for an existing one.
   function handleSave() {
     setSaving(true); setErr(null);
     var payload = {
@@ -201,6 +284,10 @@ function ZoneDetailPanel({ zone, templates, presets, onSave, onDelete, onClose, 
       .then(function(d) { if (d.ok) onDelete(); });
   }
 
+  // Flip the selected template's locked flag. This is the switch that
+  // actually turns a template from advisory into a binding gate — the
+  // enforcement logic (blocking builders whose cell scores below min_score)
+  // lives in map.jsx, not here; this just toggles the flag the server checks.
   function handleLockToggle() {
     if (!selectedTemplate) return;
     var newLocked = selectedTemplate.locked ? 0 : 1;
@@ -450,8 +537,14 @@ function ZoneDetailPanel({ zone, templates, presets, onSave, onDelete, onClose, 
 }
 
 /* ── zone list panel ── */
+// Left-hand sidebar listing every zone the steward's agency has defined, with
+// a compact geography label and (if attached) the template name + a lock
+// icon. Purely a selector — clicking a row just tells the parent which zone
+// id to show in ZoneDetailPanel; it holds no state of its own.
 function ZoneListPanel({ zones, selectedId, onSelect, onNew }) {
   var M = window.MERA;
+  // Renders a short human-readable geography string per zone_type, since raw
+  // fields (county_fips, zcta_code) aren't meaningful on their own in the list.
   function zoneTypeLabel(z) {
     if (z.zone_type === 'state') return z.state_code || 'State';
     if (z.zone_type === 'county') return 'County ' + (z.county_fips || '');
@@ -498,14 +591,28 @@ function ZoneListPanel({ zones, selectedId, onSelect, onNew }) {
 }
 
 /* ── main page ── */
+// Top-level component for #/steward/templates. Owns all the shared state
+// (zones, templates, presets) and fetches it once; ZoneListPanel and
+// ZoneDetailPanel are both pure display/edit surfaces over that state, with
+// this component gluing selection (selectedId/showNew) to which zone
+// ZoneDetailPanel currently edits. Note this manages *policy* (weights + gates
+// per zone) rather than any individual case — a separate concern from the
+// docket/case-file workflow in steward.jsx.
 function StewardTemplatesPage() {
   var [zones, setZones]             = React.useState([]);
   var [templates, setTemplates]     = React.useState([]);
   var [presets, setPresets]         = React.useState([]);
   var [selectedId, setSelectedId]   = React.useState(null);
+  // showNew toggles the detail panel into "create a new zone" mode; it's
+  // mutually exclusive with selectedId (see handleNew/handleSelect) — only
+  // one of "editing an existing zone" or "creating a new one" is active at a time.
   var [showNew, setShowNew]         = React.useState(false);
   var [loading, setLoading]         = React.useState(true);
 
+  // Fetches all three data sets in parallel and replaces state wholesale —
+  // called on mount and again after any save/delete so the list panel and
+  // detail panel both see the latest server state (rather than trying to
+  // patch local state piecemeal after every mutation).
   function reload() {
     setLoading(true);
     Promise.all([
@@ -523,13 +630,20 @@ function StewardTemplatesPage() {
   React.useEffect(function() { reload(); }, []);
 
   var selectedZone = zones.find(function(z) { return z.id === selectedId; }) || null;
+  // panelZone is what actually gets handed to ZoneDetailPanel: either a blank
+  // draft shape (new-zone mode) or the currently selected real zone.
   var panelZone = showNew ? { name: '', zone_type: 'state', state_code: '' } : selectedZone;
 
+  // handleSave also pokes window.refreshActiveZones (defined in map.jsx) so
+  // the builder-facing map picks up newly locked/updated gates immediately
+  // rather than waiting for its own next poll/reload.
   function handleSave() { setShowNew(false); reload(); if (window.refreshActiveZones) window.refreshActiveZones(); }
   function handleDelete() { setSelectedId(null); setShowNew(false); reload(); }
   function handleNew() { setSelectedId(null); setShowNew(true); }
   function handleSelect(id) { setShowNew(false); setSelectedId(id); }
   function handleClose() { setShowNew(false); setSelectedId(null); }
+  // Optimistic local updates so the list panel reflects a just-created/updated
+  // template immediately, without waiting on a full reload() round-trip.
   function handleTemplateCreated(t) { setTemplates(function(prev) { return prev.concat(t); }); }
   function handleTemplateUpdated(id, patch) {
     setTemplates(function(prev) {
@@ -537,7 +651,10 @@ function StewardTemplatesPage() {
     });
   }
 
-  // Sync template data into zones for display
+  // Zones and templates come back from the API as separate collections joined
+  // only by template_id — enrich each zone with its template's display name
+  // and lock state so ZoneListPanel/ZoneDetailPanel don't need to do their own
+  // lookups against the templates array.
   var enrichedZones = zones.map(function(z) {
     var t = templates.find(function(t) { return t.id === z.template_id; });
     return Object.assign({}, z, {
@@ -546,6 +663,9 @@ function StewardTemplatesPage() {
     });
   });
 
+  // Same enrichment applied to whichever single zone is currently open in the
+  // detail panel (new-draft or existing) so it can show the attached
+  // template's name/lock state too.
   var enrichedSelectedZone = panelZone ? (function() {
     var t = templates.find(function(t) { return t.id === panelZone.template_id; });
     return Object.assign({}, panelZone, {
@@ -593,3 +713,11 @@ function StewardTemplatesPage() {
     </div>
   );
 }
+
+// Note: unlike steward.jsx/steward2.jsx/steward-inbox.jsx, this file has no
+// trailing Object.assign(window, {...}) block. It doesn't need one — these
+// are plain top-level `function` declarations in a non-module script, so the
+// browser already attaches them to `window` itself; app.jsx's router can
+// reference StewardTemplatesPage directly. The explicit export blocks in the
+// other steward files exist for readability/documentation of what's "public,"
+// not because they're functionally required.

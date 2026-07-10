@@ -1,5 +1,12 @@
 /* ── Co-party surface: filtered docket for invited agencies ── */
+// Co-parties are agencies (tribes, counties, utilities, AG) invited onto a
+// specific case by the lead steward — they get propose-only permissions on
+// conditions and a read-only view of findings. This file is their landing page:
+// a "My Cases" list scoped to only the cases their agency was invited to.
+// Clicking a card opens CaseFilePage (steward.jsx) with co-party role gating
+// applied inside that shared component.
 
+// "My Cases" list for the co-party persona. Route: #/co-party.
 function CoDocketPage() {
   const M = window.MERA;
   const { ramp } = React.useContext(MeraCtx);
@@ -11,6 +18,9 @@ function CoDocketPage() {
   const isRealCoParty = !!(authUser && authUser.role === 'co-party');
   const [serverCases, setServerCases] = React.useState(null);
 
+  // Demo persona identifies itself via a localStorage party key (no real auth);
+  // partyName resolves a display label for either the real agency (from the
+  // authenticated session) or the matching entry in the static DEMO_CO_PARTIES list.
   const partyKey = (() => { try { return localStorage.getItem('mera_party_key') || ''; } catch (e) { return ''; } })();
   const partyName = isRealCoParty
     ? (authUser.agency_key || authUser.email)
@@ -19,6 +29,10 @@ function CoDocketPage() {
         return found ? found.name : (partyKey || 'Your agency');
       })();
 
+  // Real co-parties: fetch /api/cases, which server-side joins case_invites on
+  // the caller's agency_key (see CONTEXT.md "Real docket" — known limitation:
+  // an email-invited co-party only sees cases once their account's agency_key
+  // matches, not by email).
   React.useEffect(() => {
     if (!isRealCoParty) return;
     fetch('/api/cases?limit=50&offset=0')
@@ -27,11 +41,17 @@ function CoDocketPage() {
       .catch(() => { setServerCases([]); });
   }, [isRealCoParty]);
 
+  // Normalize server rows and demo-fixture rows to the same shape used below.
+  // `_dynamic: true` flags a server-backed case (vs. a static CASE_DETAIL_MAP fixture).
   const myCases = isRealCoParty
     ? (serverCases || []).map(c => ({ id: c.case_id, site: c.site, applicant: c.applicant, score: c.score || 0.5, stage: c.stage || 'Site Inquiry', days: c.days || 0, _dynamic: true, _lead: c.lead_agency }))
     : M.CASES.filter(c => c.parties && c.parties.includes(partyKey));
   const [livePending, setLivePending] = React.useState({});
 
+  // For every openable case (has a static fixture or is server-backed), fetch its
+  // live conditions and count how many are still pending lead approval — shown as
+  // a badge on the card. Re-runs when the server case list length changes (a crude
+  // dependency, but avoids re-fetching on every render).
   React.useEffect(() => {
     myCases.forEach(k => {
       if (!k._dynamic && !(M.CASE_DETAIL_MAP && M.CASE_DETAIL_MAP[k.id])) return;
@@ -75,6 +95,8 @@ function CoDocketPage() {
           {myCases.map(k => {
             const C = M.CASE_DETAIL_MAP && M.CASE_DETAIL_MAP[k.id];
             const openable = !!C || !!k._dynamic;
+            // Prefer the live-fetched count; fall back to the static fixture's
+            // baked-in pendingApproval flags until the live fetch resolves.
             const pendingCount = livePending[k.id] !== undefined
               ? livePending[k.id]
               : (C ? C.conditions.filter(c => c.pendingApproval).length : 0);
@@ -113,4 +135,5 @@ function CoDocketPage() {
   );
 }
 
+// Exposed on window for app.jsx's router (no module/import system in this build).
 Object.assign(window, { CoDocketPage });

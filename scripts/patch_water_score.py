@@ -1,7 +1,14 @@
 """
 patch_water_score.py — Update water_score in existing grid_scores.geojson using PRISM.
 
-Used to fix IDW artifact water_scores without re-running the full pipeline.
+Fixes states scored before 02_indicators.py switched water_score to direct PRISM
+raster sampling — an earlier run instead IDW-interpolated water_score from sparse
+point data, which produced visible interpolation-artifact banding/blobs at state
+scale. This patch resamples PRISM directly per this file's sample_prism() (same
+approach 02_indicators.py now uses going forward) and overwrites water_score in
+place. Drops any stray ann_precip_mm left over from the old approach so it
+doesn't collide with patch_raws.py's own (correctly-sourced) ann_precip_mm.
+
 Usage:
   python patch_water_score.py WA OR TX CA NV UT
 """

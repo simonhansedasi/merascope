@@ -1,13 +1,50 @@
 /* ── Surface C (cont.): impasse register, litigation, mandated studies ── */
 
+/*
+ * steward2.jsx — three more steward-only pages that steward.jsx doesn't hold.
+ *
+ * steward.jsx owns the docket (kanban) and the case file (findings, conditions,
+ * co-parties, rebuttal clock) — the core day-to-day workflow. This file is a
+ * "continuation" module for three more specialized steward surfaces that hang
+ * off the same StewardSubNav tab bar (also defined in steward.jsx):
+ *
+ *   - ImpassePage   (#/steward/impasse)  — conditions a lead/co-party could not
+ *     agree on, routed here when their status is set to "Impasse" in the case
+ *     file's conditions table. Lets the lead route a deadlocked condition to
+ *     mediation, which flips the case's stage to "Mediation" server-side.
+ *   - LitigationPage (#/steward/litigation) — a simple CRUD tracker for legal
+ *     matters tied to a case, independent of the case file itself.
+ *   - StudiesPage    (#/steward/studies) — the "mandated studies workbench":
+ *     every independent study a steward has commissioned (globally or per-case),
+ *     each with a section checklist (from STUDY_SECTIONS below) and a live
+ *     progress bar. The same "+ Mandate a study" flow also appears inline in
+ *     CaseFilePage (steward.jsx) for case-scoped studies; this page is the
+ *     global view across all of them.
+ *
+ * None of these three pages are reachable by co-parties or builders — they're
+ * lead-agency-only tooling, same access tier as the rest of the steward surface.
+ */
+
+// #/steward/impasse — the register of conditions that have deadlocked between
+// the lead agency and a builder/co-party. A condition lands here when its
+// status is manually set to "Impasse" via the dropdown in CaseFilePage's
+// conditions table (steward.jsx); this page queries those rows back out
+// server-side (case_conditions JOIN cases WHERE status='Impasse') and gives the
+// lead a one-click way to route a stuck condition into formal mediation, which
+// also advances the whole case's stage to "Mediation".
 function ImpassePage() {
   const [items, setItems] = React.useState([]);
   const [routed, setRouted] = React.useState({});
+  // Which impasse "type" (Water/EJ/Grid/Discharge) is selected in the right-hand
+  // "what unlocks this" panel; null until items load, then defaults below.
   const [cat, setCat] = React.useState(null);
   const M = window.MERA;
 
   React.useEffect(() => {
     fetch('/api/impasse/items').then(r => r.json()).then(setItems);
+    // /api/impasse/routes returns the list of items already routed to mediation
+    // (by their composite key); turn that array into a { key: true } lookup map
+    // so the table can render "Routed" vs the action button per row.
     fetch('/api/impasse/routes').then(r => r.json()).then(keys => {
       const init = {};
       keys.forEach(k => { init[k] = true; });
@@ -15,6 +52,10 @@ function ImpassePage() {
     });
   }, []);
 
+  // Atomically (server-side): logs the impasse->mediation route, flips the
+  // parent case's stage to 'Mediation', and appends a status_change event —
+  // see /api/impasse/route in server.py. Optimistically marks this row
+  // "Routed" in local state rather than waiting for a refetch.
   const routeToMediation = (key, caseId) => {
     fetch('/api/impasse/route', {
       method: 'POST',
@@ -24,8 +65,16 @@ function ImpassePage() {
     setRouted(r => Object.assign({}, r, { [key]: true }));
   };
 
+  // No explicit selection yet -> default the "what unlocks this" panel to the
+  // first impasse item's category so the panel isn't empty on first render.
   const activeCat = cat || (items[0] ? items[0].type : null);
 
+  // Static "what has historically resolved this category of impasse" reference
+  // data — hardcoded here rather than fetched, since it's advisory copy, not
+  // live case data. (The equivalent structure in data.js is left as an empty
+  // placeholder; this is the version actually used.) Each entry maps an
+  // impasse category to example conditions with a rough historical resolution
+  // rate, rendered as mini progress bars in the side panel below.
   const IMPASSE_UNLOCKS = {
     'Water': [{ c: 'Trucked construction water + 3:4 replenishment', p: 71 }, { c: 'Seasonal draw cap with public telemetry', p: 58 }],
     'EJ': [{ c: 'Genset relocation + Tier-4 retrofit', p: 66 }, { c: 'Community benefit agreement w/ air monitoring', p: 52 }],
@@ -48,8 +97,14 @@ function ImpassePage() {
               <thead><tr><th>Case</th><th>Site</th><th>Type</th><th>Condition</th><th>By</th><th></th></tr></thead>
               <tbody>
                 {items.map(im => {
+                  // Composite key (case + condition id) since a condition id alone
+                  // isn't unique across cases; must match the key shape /api/impasse/routes
+                  // returns so the `routed` lookup above hits.
                   const key = im.case_id + im.id;
                   const done = !!routed[key];
+                  // Clicking anywhere in the row (not just the button) switches the
+                  // right-hand "what unlocks this" panel to this row's category —
+                  // the Route button below stops propagation so it doesn't also fire this.
                   return (
                     <tr key={key} onClick={() => setCat(im.type)} style={{ cursor: 'pointer' }}>
                       <td style={{ fontWeight: 650 }}>{im.case_id}</td>
@@ -90,6 +145,13 @@ function ImpassePage() {
   );
 }
 
+// #/steward/litigation — a lightweight standalone tracker for legal matters
+// (lawsuits, appeals) that reference a case, kept separate from the case file
+// itself since litigation has its own lifecycle (court, docket number, status)
+// independent of the permitting stages in M.STAGES. Plain CRUD against
+// /api/litigation; "Export evidentiary record" here produces a plain-text
+// pointer document (not the full CSV export CaseFilePage produces) telling
+// whoever requested it to contact the lead agency reviewer for the real record.
 function LitigationPage() {
   const [matters, setMatters] = React.useState([]);
   const [form, setForm] = React.useState({ name: '', court: '', no: '', status: 'Active', filed: '' });
@@ -99,6 +161,9 @@ function LitigationPage() {
     fetch('/api/litigation').then(r => r.json()).then(setMatters);
   }, []);
 
+  // Downloads a short plain-text summary (not the actual evidentiary data —
+  // that lives server-side and requires the lead agency to pull it). This is a
+  // "here's proof this matter exists and who to contact" stub, not a real export.
   const exportRecord = l => {
     const lines = [
       'MERASCOPE EVIDENTIARY RECORD -- LITIGATION EXPORT',
@@ -180,10 +245,19 @@ function LitigationPage() {
   );
 }
 
+// Countdown helper shared by the mandated-studies UI: converts an ISO deadline
+// into whole days remaining, floored at 0 (never shows a negative "days left").
 function daysUntil(iso) {
   return Math.max(0, Math.ceil((new Date(iso) - new Date()) / 86400000));
 }
 
+// Section checklists for each of the 4 mandated-study templates a steward can
+// pick from (Moratorium impact study, Application review scorecard,
+// Water-availability assessment, Rate-impact memorandum). Each array is the
+// ordered list of sections a real study of that type needs to cover; StudiesPage
+// renders these as checkboxes and computes "N of M sections drafted" progress
+// from how many are checked (see the `checked` state below). Purely a drafting
+// checklist — checking a box does not attach any content, just tracks completion.
 var STUDY_SECTIONS = {
   'Moratorium impact study — NY-style': [
     'Executive summary', 'Statutory mandate + scope', 'Current application inventory',
@@ -213,12 +287,28 @@ var STUDY_SECTIONS = {
   ]
 };
 
+// #/steward/studies — the global "mandated studies workbench": every
+// independent study the steward has commissioned, whether attached to a
+// specific case (via the "+ Mandate a study" flow inside CaseFilePage,
+// steward.jsx) or created standalone from a template here. Each study card
+// shows a deadline countdown and an expandable section checklist (from
+// STUDY_SECTIONS above) with a live "N of M sections drafted" progress bar —
+// the checklist tracks drafting progress only, it doesn't hold the actual
+// study content.
 function StudiesPage() {
   const [studies, setStudies] = React.useState([]);
   const [expanded, setExpanded] = React.useState({});
+  // Flat map keyed 'studyName|sectionIndex' -> true/false, one entry per
+  // checked checklist item across all studies (see toggleCheck below for the
+  // key format this must match).
   const [checked, setChecked] = React.useState({});
 
   React.useEffect(() => {
+    // The static EXAMPLE case (demo-EX-0001) ships 3 hardcoded studies in
+    // M.STUDIES so the workbench isn't empty for a fresh/unauthenticated
+    // visitor. Merge them with the live server studies, but let a live study
+    // with a matching id win (avoids showing a stale duplicate if an example
+    // study was ever persisted server-side under the same id).
     var exampleStudies = (window.MERA && window.MERA.STUDIES || []).filter(function(s) { return s.is_example; });
     fetch('/api/studies?all=1').then(r => r.json()).then(function(live) {
       var liveIds = live.map(function(s) { return s.id; });
@@ -232,6 +322,10 @@ function StudiesPage() {
     });
   }, []);
 
+  // Creates a standalone (not case-linked) study from one of the 4 templates.
+  // Guards against adding the same template twice — the "Start from a
+  // template" buttons below also disable once a template's already in use.
+  // Due date defaults to +180 days from creation.
   const addTemplate = tpl => {
     if (studies.find(s => s.name === tpl)) return;
     const due = new Date(Date.now() + 180 * 86400000).toISOString().slice(0, 10);
@@ -251,6 +345,10 @@ function StudiesPage() {
 
   const toggleExpanded = name => setExpanded(e => Object.assign({}, e, { [name]: !e[name] }));
 
+  // Checklist keys are 'studyName|sectionIndex' strings (built where each
+  // checkbox is rendered below); split back into the two parts to persist the
+  // toggle server-side, then optimistically flip local state without waiting
+  // for the response.
   const toggleCheck = key => {
     const bar = key.lastIndexOf('|');
     const study_name = key.slice(0, bar);
@@ -337,4 +435,7 @@ function StudiesPage() {
   );
 }
 
+// No bundler module system — plain script concatenation into dist/bundle.js —
+// so these three page components are exposed on `window` for app.jsx's router
+// and for steward.jsx (StewardSubNav links to all three routes).
 Object.assign(window, { ImpassePage, LitigationPage, StudiesPage });

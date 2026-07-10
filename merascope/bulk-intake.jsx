@@ -1,5 +1,15 @@
 /* ── Surface C (cont.): Bulk intake -- CSV of existing applications to cases ── */
+// Steward-only tool at #/steward/bulk-import: lets a steward upload a spreadsheet
+// of applications they already have (not new inbound leads) and create a case
+// file for each row in one pass, instead of hand-entering every one through the
+// builder submit form. Reuses the same CSV-parse/column-mapping pattern as
+// Portfolio screening (builder2.jsx). Server side: POST /api/steward/bulk_import
+// creates cases at stage='Intake' with imported=1 (see CONTEXT.md).
 
+// Given the CSV's header row, guesses which column maps to which case field by
+// matching common header spellings (case-insensitive). Returns '' for any field
+// it can't confidently match, leaving that dropdown for the steward to fill in
+// manually on the mapping screen.
 function autoDetectBulkImportCols(headers) {
   var lc = headers.map(function(h) { return h.toLowerCase(); });
   var find = function(candidates) {
@@ -20,6 +30,8 @@ function autoDetectBulkImportCols(headers) {
   };
 }
 
+// Drives the column-mapping form: [state key, display label] pairs, in display order.
+// '*' in the label marks a required field; runImport() blocks on the four required ones.
 var BULK_COL_FIELDS = [
   ['nameCol', 'Site name *'],
   ['applicantCol', 'Applicant *'],
@@ -30,6 +42,10 @@ var BULK_COL_FIELDS = [
   ['permitIdCol', 'External permit ID (optional)'],
 ];
 
+// Steward bulk-import page. A 4-stage linear wizard driven by the `stage` state:
+// 'upload' (drop a CSV) -> 'mapping' (assign columns to case fields, preview
+// first 5 rows) -> 'running' (POST to the server) -> 'results' (created count +
+// any per-row errors). Route: #/steward/bulk-import.
 function BulkIntakePage() {
   var [stage,   setStage]   = React.useState('upload');
   var [parsed,  setParsed]  = React.useState(null);
@@ -37,6 +53,9 @@ function BulkIntakePage() {
   var [result,  setResult]  = React.useState(null);
   var [err,     setErr]     = React.useState(null);
 
+  // Reads the uploaded file as text, parses it as CSV (parsePortfolioCSV, shared
+  // with Portfolio screening), auto-detects column mapping, and advances to the
+  // 'mapping' stage. Bails out with an error if the file doesn't parse to any rows.
   var handleFile = function(file) {
     if (!file) return;
     var reader = new FileReader();
@@ -58,6 +77,10 @@ function BulkIntakePage() {
     setColMap(function(m) { var n = Object.assign({}, m); n[key] = val; return n; });
   };
 
+  // Validates the four required column mappings, remaps every parsed CSV row into
+  // the case-shaped payload the server expects (using the steward's column choices),
+  // and POSTs the whole batch in one request. A per-row failure is reported back in
+  // the response's `errors` array without failing the rest of the batch (server-side).
   var runImport = function() {
     if (!colMap.nameCol || !colMap.applicantCol || !colMap.latCol || !colMap.lonCol) {
       setErr('Site name, applicant, latitude, and longitude columns are all required.');
@@ -180,4 +203,5 @@ function BulkIntakePage() {
   );
 }
 
+// Exposed on window for app.jsx's router (no module/import system in this build).
 Object.assign(window, { BulkIntakePage });

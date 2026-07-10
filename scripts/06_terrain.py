@@ -119,6 +119,9 @@ def score_cells_tiled(grid, lat_tiles, lon_tiles, tile_dir):
             del tile_ds, filled, dz_dy, dz_dx
 
             for pos, gi in enumerate(in_tile):
+                # lat_1d runs north->south (descending), so searchsorted needs
+                # negated arrays to treat it as ascending; extracts the pixel
+                # rows/cols whose centers fall inside this cell's bbox.
                 minx, miny, maxx, maxy = grid.iloc[gi].geometry.bounds
                 r0 = max(0, int(np.searchsorted(-lat_1d, -maxy)))
                 r1 = min(slope.shape[0], int(np.searchsorted(-lat_1d, -miny)) + 1)

@@ -38,6 +38,9 @@ FED_LANDS_URL = ("https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/"
 TIGER_URL = ("https://tigerweb.geo.census.gov/arcgis/rest/services/"
              "TIGERweb/AIANNHA/MapServer/3/query")
 
+# BLM land is deliberately excluded — much of it is multiple-use and leasable
+# (grazing, mining, ROW), unlike NPS/FWS/DoD/USFS which are effectively closed
+# to development. Including BLM would over-gate large swaths of the west.
 AGENCIES = ("'National Park Service','Fish and Wildlife Service',"
             "'Department of Defense','Forest Service'")
 

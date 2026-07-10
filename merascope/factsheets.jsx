@@ -1,4 +1,12 @@
 /* ── Fact sheets: print-styled US Letter previews ── */
+// Home page of the public/press ("Reporter") surface at #/factsheets. Renders a
+// per-state, letter-sized, print-ready "fact sheet" (composite grade, category
+// rankings, physical medians) computed client-side from the same grid cache the
+// Explorer map uses — no separate fact-sheet backend, no separate scoring path.
+// Also hosts the "All-state rankings" leaderboard (RankingsPage) and the two
+// screen-only methodology/breakdown panels shown below the printable area.
+// See CONTEXT.md "Report card system" / "Indicator breakdown & methodology panels"
+// for the grading algorithm this file's components consume from explorer.jsx.
 
 // Human-readable date derived from the pipeline version string (vYYYY.MM.DD) so
 // the printed sheet's date can never drift from the data it was built with.
@@ -9,6 +17,12 @@ function versionDate(v) {
   return months[+m[2] - 1] + ' ' + (+m[3]) + ', ' + m[1];
 }
 
+// Common print-styled wrapper for every "sheet" in this file (state fact sheets;
+// company/site sheets would use it too if built). Draws the branded header
+// (wordmark + pipeline version/date), the title block, the children content area,
+// and a fixed footer with the methodology summary, source list, Same Score
+// Promise, and a permalink — all styled for US Letter printing via the `.sheet`
+// CSS class (see window.print() call in FactSheetsPage).
 function SheetShell({ title, kicker, children, seed, code }) {
   const M = window.MERA;
   const permalink = 'merascope.com/#/factsheets/' + (code || '');
@@ -37,10 +51,16 @@ function SheetShell({ title, kicker, children, seed, code }) {
   );
 }
 
+// Small uppercase section-header label used inside a sheet (e.g. "Grid",
+// "Category findings", "Physical profile").
 function SheetH({ children }) {
   return <div style={{ fontSize: 11, letterSpacing: '.1em', textTransform: 'uppercase', fontWeight: 750, color: 'var(--slate)', borderBottom: '1px solid var(--line)', paddingBottom: 4, marginBottom: 9 }}>{children}</div>;
 }
 
+// Renders one state's fact sheet: composite grade, per-category grades/ranks,
+// grid stats, and physical-profile medians. All numbers are computed client-side
+// from the grid cache the Explorer map already loaded — this component doesn't
+// hit the server, it hits window.computeStateGrades/getStateFeatures (explorer.jsx).
 function FactSheetDynamic({ stateCode, onRawFeats, onGradeData }) {
   const [gradeData, setGradeData] = React.useState(null);
   const [rawFeats, setRawFeats] = React.useState([]);
@@ -50,6 +70,10 @@ function FactSheetDynamic({ stateCode, onRawFeats, onGradeData }) {
     if (!stateCode) return;
     let attempts = 0;
 
+    // Retry-poll pattern: the grid cache may still be loading (esp. on a cold
+    // navigation straight to a fact-sheet URL, before the Explorer has ever run),
+    // so keep retrying computeStateGrades every 500ms for up to ~10s (20 attempts)
+    // before giving up and showing the "could not load" fallback below.
     function tryCompute() {
       if (window.computeStateGrades && window.getStateFeatures) {
         const result = window.computeStateGrades(stateCode);
@@ -93,6 +117,10 @@ function FactSheetDynamic({ stateCode, onRawFeats, onGradeData }) {
   const n = grades[0] ? grades[0].n : 48;
 
   /* Raw physical stats from GeoJSON features */
+  // These are unscored, unnormalized medians/maxes (precip, aquifer depth,
+  // ksat, seismic PGA, tx distance) pulled straight from the grid cell
+  // properties — distinct from the 0-1 normalized scores used for grading.
+  // Gives readers a physical sanity check alongside the abstract grade.
   const props = rawFeats.map(f => f.properties);
   const med = col => {
     const vals = props.map(p => p[col]).filter(v => v != null && !isNaN(v)).sort((a, b) => a - b);
@@ -196,6 +224,10 @@ function FactSheetDynamic({ stateCode, onRawFeats, onGradeData }) {
   );
 }
 
+// Reference table for GradeMethodologyPanel: the 12-band letter-grade scale is
+// rank-percentile based (not score-threshold based) — a state earns A+ by
+// landing in the top ~8% of the 48 states on a category, not by crossing a
+// fixed score. With 48 states each band covers roughly 4 states.
 const _GRADE_SCALE = [
   { g: 'A+', pct: '0-8%',   desc: 'Top 4 states' },
   { g: 'A',  pct: '8-17%',  desc: 'Top 8 states' },
@@ -211,6 +243,8 @@ const _GRADE_SCALE = [
   { g: 'D-', pct: '92-100%', desc: 'Bottom 4 states' },
 ];
 
+// Reference table for GradeMethodologyPanel: maps each of the 5 grading
+// categories to the underlying indicator(s) it's an average of.
 const _GRADE_CAT_DETAIL = [
   { k: 'Water Durability',       inds: 'Water availability, Aquifer depth, Waterway sensitivity' },
   { k: 'Grid Access',            inds: 'Transmission proximity' },
@@ -219,6 +253,9 @@ const _GRADE_CAT_DETAIL = [
   { k: 'Contamination Distance', inds: 'Contamination distance' },
 ];
 
+// Collapsible "How grades are calculated" explainer shown above every fact
+// sheet and the rankings leaderboard. Purely presentational — renders the
+// static _GRADE_CAT_DETAIL / _GRADE_SCALE reference tables, no data fetching.
 function GradeMethodologyPanel() {
   const [open, setOpen] = React.useState(false);
   return (
@@ -268,10 +305,16 @@ function GradeMethodologyPanel() {
   );
 }
 
+// Screen-only (excluded from print) panel showing every indicator's state mean
+// score on the national 0-1 scale, sorted strongest to weakest, with a
+// confidence chip (H/M/L) per indicator. Gives a reader more granularity than
+// the 5-category grades above without requiring them to open the Explorer.
 function IndicatorBreakdownPanel({ rawFeats }) {
   if (!rawFeats || !rawFeats.length) return null;
   const M = window.MERA;
   const props = rawFeats.map(f => f.properties);
+  // Average each indicator's nationally-normalized column (nat_col) across all
+  // cells in the state, then sort descending so the strongest indicators lead.
   const rows = M.INDICATORS.map(ind => {
     const vals = props.map(p => p[ind.nat_col]).filter(v => v != null && !isNaN(v));
     if (!vals.length) return null;
@@ -317,6 +360,9 @@ function IndicatorBreakdownPanel({ rawFeats }) {
   );
 }
 
+// Collapsible per-indicator source/method/update-frequency/confidence table.
+// Purely presentational, driven off M.INDICATORS (data.js) — the same
+// indicator metadata that also backs the Methodology page (misc.jsx).
 function DataSourcesPanel() {
   const [open, setOpen] = React.useState(false);
   const M = window.MERA;
@@ -358,6 +404,8 @@ function DataSourcesPanel() {
   );
 }
 
+// Triggers a browser download of a CSV built from an array of already-joined
+// CSV line strings (each element is one full line, header included).
 function _downloadCsv(filename, rows) {
   const a = document.createElement('a');
   a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(rows.join('\n'));
@@ -365,12 +413,16 @@ function _downloadCsv(filename, rows) {
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
 
+// Quotes and escapes a single CSV field.
 function _csvCell(v) {
   return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
 }
 
 /* ── All-state rankings — the journalist's leaderboard ── */
 
+// Sortable all-48-state leaderboard (overall + per-category grade/rank),
+// with top-5/bottom-5 callout cards and CSV export. Route: #/factsheets/rankings,
+// rendered by FactSheetsPage when `which === 'rankings'`.
 function RankingsPage() {
   const [data, setData] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
@@ -378,6 +430,11 @@ function RankingsPage() {
 
   React.useEffect(() => {
     let attempts = 0;
+    // Same cold-cache retry-poll pattern as FactSheetDynamic, but calling
+    // computeAllStateGrades() ONCE for all 48 states in a single pass — never
+    // call the per-state computeStateGrades() in a loop here, that recomputes
+    // every state's category means from scratch each time (O(n^2) trap; see
+    // CONTEXT.md "computeAllStateGrades performance note").
     function tryCompute() {
       if (window.computeAllStateGrades) {
         const result = window.computeAllStateGrades();
@@ -409,6 +466,8 @@ function RankingsPage() {
     </div>
   );
 
+  // sort.k is either 'name', 'overall', or one of the 5 category names; sort.dir
+  // flips between ascending/descending when the same column header is clicked twice.
   const catIdx = data.cats.indexOf(sort.k);
   const rows = [...data.states].sort((a, b) => {
     let va, vb;
@@ -431,6 +490,8 @@ function RankingsPage() {
     _downloadCsv('merascope_state_rankings.csv', lines);
   };
 
+  // Clickable column-header cell; clicking the currently-active sort column
+  // flips direction, clicking a new column sorts ascending by default.
   const th = (k, label) => (
     <th key={k} style={{ cursor: 'pointer', whiteSpace: 'nowrap' }}
       onClick={() => setSort(s => ({ k, dir: s.k === k ? -s.dir : 1 }))}>
@@ -503,6 +564,10 @@ function RankingsPage() {
   );
 }
 
+// Main entry point for the whole file / #/factsheets route. Owns the state
+// selector, prev/next navigation, permalink copy, print/CSV export, and the
+// two methodology panels — then delegates the actual sheet rendering to
+// FactSheetDynamic (or hands off entirely to RankingsPage for the leaderboard).
 function FactSheetsPage({ which }) {
   const STATE_NAMES = window.STATE_NAMES || {};
   const initCode = which && which.length === 2 && STATE_NAMES[which.toUpperCase()] ? which.toUpperCase() : null;
@@ -598,4 +663,5 @@ function FactSheetsPage({ which }) {
   );
 }
 
+// Exposed on window for app.jsx's router (no module/import system in this build).
 Object.assign(window, { FactSheetsPage, RankingsPage });

@@ -1,3 +1,15 @@
+<!--
+  report.html — Server-rendered (Jinja2, no React) permit-justification report.
+  Rendered by server.py's report_case() (/report/<case_id>, real or demo case)
+  and report_explorer() (/report, no case — ad hoc lat/lon lookup), both of
+  which build their template context via _build_report_context(). Printable
+  as a PDF via the on-page print button; this is the document a builder hands
+  to a permitting agency as supporting evidence.
+
+  Indicator count: shows 22 scored indicators (server.py's _REPORT_INDICATORS)
+  plus protected_score handled separately as a hard gate below, not a
+  scorecard row — matching the pipeline's 23-indicator total.
+-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -217,6 +229,16 @@
         {% if state_code %}{{ state_code }}{% endif %}
         {% if stage %} &middot; Stage: <strong>{{ stage }}</strong>{% endif %}
       </div>
+      <!-- This "Balanced weights" line is static text describing the Balanced
+           preset (tx 40 / water 35 / community 25) used ONLY when composite
+           falls back to that calculation (explorer lookups / cases with no
+           score yet, see server.py's _build_report_context composite==0
+           branch). A real case may have been scored with different weights
+           (steward custom template, community survey weights, etc) — those
+           actual weights, if present, render dynamically further down in
+           "Scoring weights at submission". This line does not update to
+           match them, so a real case's composite may not actually equal
+           40/35/25 despite what this sentence says. -->
       <div class="note">Composite score computed with Balanced weights: Transmission 40%, Water Availability 35%, Community Burden 25%. Score of 0.50 = national median. 22 indicators scored across {{ zcta or 'ZCTA' }} geography.</div>
     </div>
   </div>

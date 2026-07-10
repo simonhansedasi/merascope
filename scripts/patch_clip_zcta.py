@@ -2,7 +2,17 @@
 """
 patch_clip_zcta.py — Clip existing ZCTA grid_scores.geojson to state boundaries.
 
-Fixes cross-border polygon bleed without re-running the full ZCTA pipeline.
+Fixes cross-border polygon bleed: build_zcta.py deliberately keeps ZCTAs via
+an 'intersects' (not 'within') join so boundary-crossing ZIPs aren't dropped,
+but that means each state's ZCTA polygons can extend visibly past its border
+when rendered. This clips those polygons down to the state boundary.
+
+CAUTION — this clip has a side effect: it can drop border ZCTAs entirely when
+clipping degenerates their geometry (see patch_restore_zcta_geom.py, which
+runs AFTER this to put the original unclipped polygons back while keeping the
+score values this step computed). Chain order: this -> patch_restore_zcta_geom.py
+-> patch_simplify_zcta.py (per that script's own docstring).
+
 Reads data/{STATE}/raw/state.geojson for the clip boundary.
 
 Usage:

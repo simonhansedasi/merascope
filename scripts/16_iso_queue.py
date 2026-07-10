@@ -5,6 +5,11 @@ Adds to grid_scores.geojson:
   iso_queue_mw        — total planned/proposed capacity (MW) queued in the state (EIA-860M)
   grid_capacity_score — normalized score (0-1, higher = less queue pressure = better)
 
+Note: this is a state-level indicator, not cell-level — every cell in a state gets
+the identical iso_queue_mw / grid_capacity_score value (EIA-860M doesn't report
+queue position at finer-than-state granularity), unlike most other indicators
+which vary per grid cell.
+
 Method: EIA Form 860M (Monthly Electric Generator Report) contains a 'Planned' sheet
 with proposed/under-construction generators. The ratio (planned_mw / operating_mw)
 per state is a proxy for interconnection queue pressure: states with more planned
@@ -35,7 +40,10 @@ from config import get_state, get_paths
 warnings.filterwarnings("ignore")
 CRS = "EPSG:4326"
 
-# EIA Form 860M — scrape current URL from landing page once
+# EIA Form 860M — scrape current URL from landing page once. The fallback is a
+# dated URL that WILL go stale (EIA renames the file every month); it only
+# matters if _get_latest_860m_url()'s regex scrape of the landing page fails,
+# so bump the month/year here if both start failing.
 EIA860M_INDEX = "https://www.eia.gov/electricity/data/eia860m/"
 EIA860M_FALLBACK = ("https://www.eia.gov/electricity/data/eia860m/xls/"
                     "april_generator2026.xlsx")

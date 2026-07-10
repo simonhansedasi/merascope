@@ -221,6 +221,10 @@ def fetch_precip(state_gdf, raw):
     return df
 
 
+# Fallback-only IDW (used when PRISM_TIF is missing, see fetch_precip() below) —
+# a plain O(n*m) brute-force distance loop rather than the cKDTree-based idw_k()
+# used elsewhere in the pipeline (03/05/08/09/10/patch_raws.py). Fine here since
+# it only ever runs over one state's ~7x11 sample points, not full grid scale.
 def idw(src_lats, src_lons, src_vals, tgt_lats, tgt_lons, power=2):
     results = []
     for lat, lon in zip(tgt_lats, tgt_lons):
@@ -265,6 +269,9 @@ def main():
     print(f"  tx_score: {grid['tx_score'].min():.3f} - {grid['tx_score'].max():.3f}")
 
     print("Precipitation / water availability (water_score)...", flush=True)
+    # Precip source priority: PRISM raster (preferred, no network) -> cached
+    # precip_coarse.csv (from prefetch_precip.py / prefetch_precip_noaa.py,
+    # see those files) -> live Open-Meteo fetch as a last resort inline below.
     if PRISM_TIF.exists():
         precip_vals = sample_prism_precip(grid)
     else:

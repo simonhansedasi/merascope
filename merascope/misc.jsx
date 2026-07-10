@@ -1,6 +1,14 @@
-/* ── Pricing, Login, Methodology ── */
+/* ── Pricing, Login, Methodology, Evidence ── */
+// Grab-bag file of four largely-unrelated top-level pages that don't belong to
+// any one persona's own file: PricingPage (public), LoginPage (public entry
+// point into all three personas), MethodologyPage (public, the deep-dive
+// explainer for the whole scoring system), and EvidencePage (steward-only,
+// nested inside a case file). Each section below is its own self-contained
+// piece — read the header comment above each to see which is which.
 
 /* ── pricing: two workspaces, each with its own schematic ── */
+// One row in the pricing table (one tier of one workspace). Reusable across
+// both the Builder and Steward columns in PricingPage below.
 function TierRow({ name, price, per, blurb, cta, kind, href, onCta }) {
   return (
     <div style={{ display: 'flex', gap: 14, alignItems: 'center', padding: '13px 0', borderBottom: '1px solid var(--line-soft)' }}>
@@ -82,6 +90,10 @@ function LeadModal({ lead, onClose }) {
   );
 }
 
+// Public pricing page (#/pricing). Two side-by-side workspaces (Builder,
+// Steward), each a stack of TierRows, plus a "free and stays free" band for
+// the Public Explorer and a performance-participation callout. Any non-link
+// CTA opens LeadModal via `ask(workspace, tier, cta)` instead of navigating away.
 function PricingPage() {
   const [lead, setLead] = React.useState(null);
   const ask = function(workspace, tier, cta) { return function() { setLead({ workspace: workspace, tier: tier, cta: cta }); }; };
@@ -156,12 +168,18 @@ function PricingPage() {
 }
 
 /* ── login / auth ── */
+// Options shown in the "which door did you come in through?" role picker for
+// brand-new accounts on LoginPage below.
 const NEW_ROLES = [
   { id: 'builder', name: 'Builder', desc: 'Developers, operators, capital' },
   { id: 'steward', name: 'Steward', desc: 'Agencies, counties, commissions, tribal governments' },
   { id: 'reporter', name: 'Reporter', desc: 'Verified press — read-only scores & fact sheets' }
 ];
 
+// Public login/signup page (#/login). Left column: magic-link email form (POSTs
+// to /api/auth/request, no password), demo SSO shortcuts that set the `role`
+// state directly, and a new-account role picker. Right column (desktop only):
+// a static WAMap with weights animated to sell "the product is the decoration."
 function LoginPage() {
   const M = window.MERA;
   const { setRole } = React.useContext(AuthCtx);
@@ -171,6 +189,10 @@ function LoginPage() {
   const [err, setErr] = React.useState(null);
   const [newRole, setNewRole] = React.useState('builder');
   const [w, setW] = React.useState({ ...M.DEFAULT_WEIGHTS });
+  // Purely decorative: every 2.8s, flip the "community burden" weight between
+  // 25% and 45% (renormalizing the rest via normalizeWeights) so the demo map
+  // on the right visibly reshuffles, illustrating that weights are adjustable.
+  // Respects prefers-reduced-motion by skipping the interval entirely.
   React.useEffect(function() {
     if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     var flip = false;
@@ -259,6 +281,9 @@ function LoginPage() {
 }
 
 /* ── methodology ── */
+// Table data for the "Geographies" section of MethodologyPage: which spatial
+// resolutions the product can roll scores up to, and which pricing tier
+// unlocks each one. [label, category, tier, use-case] tuples.
 const GEOGRAPHIES = [
   ['0.15° grid (~14 km)', 'Base layer', 'Public — free', 'The shared reference frame everyone argues from'],
   ['County', 'Administrative', 'Group', 'Permitting posture, hearings, moratorium maps'],
@@ -272,6 +297,13 @@ const GEOGRAPHIES = [
   ['State legislative district', 'Political', 'Agency', 'Bill drafting, moratorium studies, fiscal notes']
 ];
 
+// The full 22-indicator methodology catalog: name, score column, default
+// weight, source dataset, scoring formula, and long-form rationale prose for
+// every indicator in the model (including the `gate: true` hard gates —
+// flood, protected land, air quality — which zero out a cell rather than
+// scoring it continuously). Declared at MODULE scope (not inside a component)
+// so both MethodologyPage and EvidencePage below can share the same array
+// instead of each maintaining their own copy (see CONTEXT.md).
 const INDS = [
     { n: 'Transmission proximity', col: 'tx_score', wt: '40%',
       src: 'OSM (ODbL) power lines >=230 kV; EIA Form 860 2023 substations',
@@ -370,6 +402,12 @@ const INDS = [
       why: 'States with a high ratio of planned and proposed capacity to existing operating capacity face the longest interconnection queues. Each new large load application joins a queue behind every proposed generator — interconnection studies for load are bundled with generator studies and proceed at the same pace. A state where planned capacity is already two to three times the operating base signals multi-year queue congestion and elevated probability of project withdrawal or restudy due to upstream changes. This is a state-level indicator: all cells within a state receive the same score, making it useful for state comparison rather than within-state cell ranking.' },
 ];
 
+// Public deep-dive methodology page (#/methodology). One long scrolling page
+// with a sticky left nav (NAV_LINKS + scrollTo) jumping between ~10 sections
+// (pipeline, grid, indicators, hard gates, normalization, IDW interpolation,
+// composite score, sources, geographies, reproducibility). Each section below
+// is already labeled by its own <h3> heading and `id="m-*"` anchor, so inline
+// comments here are kept light per the "don't over-comment" guidance.
 function MethodologyPage() {
   const M = window.MERA;
   const [specsOpen, setSpecsOpen] = React.useState(false);
@@ -382,6 +420,7 @@ function MethodologyPage() {
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  // Sticky-nav entries; ids must match the section anchors rendered further down.
   const NAV_LINKS = [
     { id: 'm-pipeline', label: 'Pipeline' },
     { id: 'm-grid', label: 'Scoring grid' },
@@ -395,6 +434,7 @@ function MethodologyPage() {
     { id: 'm-repro', label: 'Reproducibility' },
   ];
 
+  // Steps shown in the horizontal pipeline diagram at the top of the page.
   const PIPELINE_STEPS = [
     { label: 'Fetch', sub: '20+ public sources' },
     { label: 'Interpolate', sub: 'IDW k=8, p=2' },
@@ -403,6 +443,9 @@ function MethodologyPage() {
     { label: 'Composite', sub: 'weighted sum 0-1' },
   ];
 
+  // Data-source index table (collapsible, `sourcesOpen`): [dataset, publisher,
+  // access method, indicator(s) it feeds]. Separate from INDS's per-indicator
+  // `src` field — this view groups by dataset rather than by indicator.
   const SOURCES = [
     ['OSM power lines (voltage >= 230,000 V)', 'OpenStreetMap contributors (ODbL)', 'Overpass API', 'tx_score'],
     ['EIA Form 860 Annual (2024) — plant locations + capacity', 'US Energy Information Administration', 'eia.gov bulk download', 'tx_score, substation_score'],
@@ -663,10 +706,18 @@ function MethodologyPage() {
   );
 }
 
+// Per-case evidence record (#/steward/case/:id/evidence and equivalents): lists
+// each contested/uncontested finding on the case, joins it against the shared
+// module-level INDS catalog (by f.k === ind.n) to show its source/formula, and
+// lets a lead steward (isLead) commission an independent study for a contested
+// finding via /api/studies. Not one of the three top-level persona surfaces —
+// it's nested inside a case file, reached from CaseFilePage (steward.jsx).
 function EvidencePage({ caseId }) {
   const M = window.MERA;
   const C = caseId && M.CASE_DETAIL_MAP && M.CASE_DETAIL_MAP[caseId];
   const { role, readOnly } = React.useContext(AuthCtx);
+  // Only a signed-in steward with write access (not a read-only/demo steward)
+  // can commission studies; co-parties and read-only viewers get the display-only view.
   const isLead = role === 'steward' && !readOnly;
   const [toast, setToast] = React.useState(null);
   const [studies, setStudies] = React.useState(function() { return C && C.studies ? C.studies : []; });
@@ -674,6 +725,8 @@ function EvidencePage({ caseId }) {
   const [formNote, setFormNote] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
 
+  // Static demo fixtures (M.CASE_DETAIL_MAP) already carry their studies inline;
+  // real/server-backed cases fetch them separately.
   React.useEffect(function() {
     if (!caseId || (C && C.studies)) return;
     fetch('/api/studies?case_id=' + caseId).then(function(r) { return r.json(); }).then(setStudies).catch(function() {});
@@ -687,6 +740,9 @@ function EvidencePage({ caseId }) {
   const contestedFindings = C && C.findings ? C.findings.filter(function(f) { return f.contested; }) : [];
   const allFindings = C && C.findings ? C.findings : [];
 
+  // Submits a new commissioned study: default due date is 180 days out, name
+  // is auto-derived from the indicator, and the new study is prepended to the
+  // local list optimistically once the server confirms creation.
   const handleCommission = function(e) {
     e.preventDefault();
     if (!selectedIndicator) return;
@@ -847,4 +903,5 @@ function EvidencePage({ caseId }) {
   );
 }
 
+// Exposed on window for app.jsx's router (no module/import system in this build).
 Object.assign(window, { PricingPage, LoginPage, MethodologyPage, EvidencePage });

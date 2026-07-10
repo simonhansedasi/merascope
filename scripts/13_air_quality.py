@@ -2,7 +2,10 @@
 13_air_quality.py — EPA NAAQS non-attainment status.
 
 Adds to grid_scores.geojson:
-  naaqs_nonattainment  — 1 if cell's county is in attainment, 0 if non-attainment
+  naaqs_nonattainment  — 1 if cell centroid is in attainment, 0 if non-attainment
+                        (point-in-polygon against the EPA boundary directly, not
+                        aggregated by county despite non-attainment areas often
+                        being defined/reported at county granularity)
   air_quality_score    — same as naaqs_nonattainment (float for consistency)
 
 Source: EPA Green Book GIS non-attainment area shapefile (downloaded once to data/shared/)

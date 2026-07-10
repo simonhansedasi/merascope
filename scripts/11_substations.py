@@ -8,6 +8,14 @@ Adds to grid_scores.geojson:
 
 Source: HIFLD Electric Substations (national, downloaded once to data/shared/)
 
+NOTE on naming: HIFLD's substation dataset proved unreliable, so this actually
+fetches EIA Form 860 power-plant locations and uses each plant's nameplate
+capacity (MW) as a proxy for grid-connection strength — a bigger plant implies
+a higher-voltage interconnection. The output columns keep the original
+substation_voltage_kv / voltage_kv naming for schema compatibility with the
+rest of the pipeline, but the values are actually MW capacity, not kV. See
+capacity_weight() below for the MW->weight mapping actually used.
+
 Usage:
   python 11_substations.py WA
 """

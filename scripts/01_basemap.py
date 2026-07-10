@@ -86,6 +86,9 @@ out center;
 
 def fetch_osm_transmission(bbox):
     west, south, east, north = bbox
+    # voltage regex matches any 6-digit value (100000-999999 V), i.e. >=100kV —
+    # OSM stores voltage as a bare volt string, sometimes multi-value ("115000;230000"),
+    # hence the parse_v() split-on-";" fallback in plot_basemap() below.
     query = f"""
 [out:json][timeout:150][maxsize:134217728];
 (
@@ -135,8 +138,11 @@ def fetch_eia860(abbr, raw):
                                  usecols=["Plant Code", "Energy Source 1", "Nameplate Capacity (MW)", "Status"])
     plants.columns = plants.columns.str.strip()
     gens.columns = gens.columns.str.strip()
-    gens = gens[gens["Status"].isin(["OP", "OA", "OS"])]
+    gens = gens[gens["Status"].isin(["OP", "OA", "OS"])]  # operating / out-of-service (temp) / other-standby — excludes retired/planned
     gens["Nameplate Capacity (MW)"] = pd.to_numeric(gens["Nameplate Capacity (MW)"], errors="coerce")
+    # a plant can have multiple generator rows (one per unit) at different fuel
+    # types; capacity sums across units, fuel takes the modal (most common) type
+    # as the plant's dominant fuel for map coloring.
     agg = (gens.groupby("Plant Code")
            .agg(capacity_mw=("Nameplate Capacity (MW)", "sum"),
                 fuel=("Energy Source 1", lambda x: x.mode().iloc[0] if len(x) else ""))
