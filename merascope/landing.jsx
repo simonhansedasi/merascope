@@ -62,7 +62,7 @@ function EngineVisual() {
         <Arrow />
 
         <div style={{ padding: '20px 20px', borderRight: '1px solid var(--line-soft)' }}>
-          <div className="eyebrow" style={{ marginBottom: 12 }}>23 indicators · 0-1 normalized</div>
+          <div className="eyebrow" style={{ marginBottom: 12 }}>22 indicators · 0-1 normalized</div>
           {INDS.map(ind => (
             <div key={ind.label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
               <span style={{ width: 132, color: 'var(--slate)', fontSize: 12, flexShrink: 0 }}>{ind.label}</span>
