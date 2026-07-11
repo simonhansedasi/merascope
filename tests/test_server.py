@@ -214,6 +214,28 @@ class TestBuilderSubmit:
         r2 = post_json(client, '/api/builder/submit', {**FULL_INQUIRY, 'site': 'Other Ridge'})
         assert r1.get_json()['case_id'] != r2.get_json()['case_id']
 
+    def test_site_type_defaults_to_datacenter(self, client):
+        # FULL_INQUIRY carries no site_type — builder_submit() must fall back to
+        # DEFAULT_SITE_TYPE rather than leaving the column null.
+        r = post_json(client, '/api/builder/submit', FULL_INQUIRY)
+        case_id = r.get_json()['case_id']
+        row = client.get('/api/builder/case/' + case_id).get_json()
+        assert row['site_type'] == 'datacenter'
+
+    def test_site_type_bess_persisted(self, client):
+        r = post_json(client, '/api/builder/submit', {**FULL_INQUIRY, 'site_type': 'bess'})
+        case_id = r.get_json()['case_id']
+        row = client.get('/api/builder/case/' + case_id).get_json()
+        assert row['site_type'] == 'bess'
+
+    def test_invalid_site_type_falls_back_to_default(self, client):
+        # A stale/malicious client payload naming an unknown vertical must not
+        # persist garbage into the site_type column.
+        r = post_json(client, '/api/builder/submit', {**FULL_INQUIRY, 'site_type': 'nonsense'})
+        case_id = r.get_json()['case_id']
+        row = client.get('/api/builder/case/' + case_id).get_json()
+        assert row['site_type'] == 'datacenter'
+
 
 # ---------------------------------------------------------------------------
 # GET /api/builder/case/<case_id>
@@ -990,11 +1012,13 @@ def _steward_delete(client, url):
 
 class TestStewardPresets:
 
-    def test_returns_five_presets(self, client):
+    def test_returns_six_presets(self, client):
+        # 5 original + the BESS-only 'interconnection_priority' preset added
+        # alongside _SITE_TYPES (see PRESET_TEMPLATES in server.py).
         r = client.get('/api/steward/presets')
         assert r.status_code == 200
         data = r.get_json()
-        assert len(data) == 5
+        assert len(data) == 6
 
     def test_preset_has_required_fields(self, client):
         data = client.get('/api/steward/presets').get_json()
@@ -1008,6 +1032,33 @@ class TestStewardPresets:
         for p in data:
             total = sum(p['weights'].values())
             assert abs(total - 100) < 1e-6, f"{p['name']} weights sum to {total}"
+
+    def test_site_type_filter(self, client):
+        # bess-only presets (e.g. interconnection_priority) should disappear when
+        # filtering to datacenter, and vice versa; unfiltered stays backward compatible.
+        all_presets = client.get('/api/steward/presets').get_json()
+        bess = client.get('/api/steward/presets?site_type=bess').get_json()
+        dc = client.get('/api/steward/presets?site_type=datacenter').get_json()
+        assert len(bess) < len(all_presets)
+        assert any(p['id'] == 'interconnection_priority' for p in bess)
+        assert all(p['id'] != 'interconnection_priority' for p in dc)
+
+
+class TestSiteTypes:
+
+    def test_site_types_route(self, client):
+        r = client.get('/api/site-types')
+        assert r.status_code == 200
+        data = r.get_json()
+        ids = {d['id'] for d in data}
+        assert ids == {'datacenter', 'bess'}
+        for d in data:
+            assert 'label' in d and 'weights' in d
+
+    def test_bess_weights_sum_to_100(self, client):
+        data = client.get('/api/site-types').get_json()
+        bess = next(d for d in data if d['id'] == 'bess')
+        assert abs(sum(bess['weights'].values()) - 100) < 1e-6
 
 
 class TestStewardTemplates:
@@ -1051,6 +1102,30 @@ class TestStewardTemplates:
         _steward_delete(client, '/api/steward/templates/' + str(tmpl_id))
         rows = _steward_get(client, '/api/steward/templates').get_json()
         assert not any(t['id'] == tmpl_id for t in rows)
+
+    def test_site_type_defaults_to_datacenter(self, client):
+        weights = {k: 0 for k in srv._IND_KEYS}
+        r = _steward_post(client, '/api/steward/templates',
+                          {'name': 'No Vertical Given', 'weights': weights, 'min_score': 0.4})
+        tmpl_id = r.get_json()['id']
+        rows = _steward_get(client, '/api/steward/templates').get_json()
+        match = next(t for t in rows if t['id'] == tmpl_id)
+        assert match['site_type'] == 'datacenter'
+
+    def test_site_type_bess_create_and_update(self, client):
+        weights = {k: 0 for k in srv._IND_KEYS}
+        r = _steward_post(client, '/api/steward/templates',
+                          {'name': 'BESS Focus', 'weights': weights, 'min_score': 0.4, 'site_type': 'bess'})
+        tmpl_id = r.get_json()['id']
+        rows = _steward_get(client, '/api/steward/templates').get_json()
+        match = next(t for t in rows if t['id'] == tmpl_id)
+        assert match['site_type'] == 'bess'
+        # Updating back to datacenter should persist too.
+        patch = _steward_patch(client, '/api/steward/templates/' + str(tmpl_id), {'site_type': 'datacenter'})
+        assert patch.get_json()['ok'] is True
+        rows = _steward_get(client, '/api/steward/templates').get_json()
+        match = next(t for t in rows if t['id'] == tmpl_id)
+        assert match['site_type'] == 'datacenter'
 
 
 class TestStewardZones:
@@ -1356,6 +1431,30 @@ class TestReportRoutes:
         r = client.get('/report')
         assert r.status_code == 200
 
+    def test_explorer_report_accepts_site_type_param(self, client):
+        # Route-level smoke test — the site_type_label copy in report.html
+        # only renders inside the gate-fail banner (no real ZCTA grid data is
+        # loaded in this test environment, so gates trivially pass here);
+        # site_type resolution correctness itself is covered directly by
+        # TestBuildReportContext above. This just confirms the route accepts
+        # a bess site_type without erroring.
+        r = client.get('/report?state=WA&lat=47.5&lon=-120.3&name=Test+Site&site_type=bess')
+        assert r.status_code == 200
+
+    def test_explorer_report_invalid_site_type_falls_back(self, client):
+        r = client.get('/report?state=WA&lat=47.5&lon=-120.3&name=Test+Site&site_type=nonsense')
+        assert r.status_code == 200
+
+    def test_real_case_report_bess_renders_ok(self, client):
+        # End-to-end smoke test: submit a case under bess, confirm the report
+        # route renders successfully (200, HTML) for a non-default site_type.
+        login(client, email='bess-builder@example.com', role='builder')
+        case_id = post_json(client, '/api/builder/submit',
+                            {**FULL_INQUIRY, 'site_type': 'bess'}).get_json()['case_id']
+        r = client.get('/report/' + case_id)
+        assert r.status_code == 200
+        assert 'text/html' in r.content_type
+
 
 # ---------------------------------------------------------------------------
 # _build_report_context  (pure-function unit tests, no DB required)
@@ -1477,6 +1576,35 @@ class TestBuildReportContext:
         flood = next(g for g in ctx['gates'] if 'flood' in g['label'].lower())
         assert flood['pass'] is False
         assert ctx['all_gates_pass'] is False
+
+    def test_site_type_defaults_to_datacenter_when_absent(self):
+        # _DUMMY_CASE has no 'site_type' key at all — older cases/routes.
+        ctx = self._ctx()
+        assert ctx['site_type'] == 'datacenter'
+        assert ctx['site_type_label'] == 'Data Center'
+
+    def test_site_type_bess_label(self):
+        case = {**_DUMMY_CASE, 'site_type': 'bess'}
+        ctx = self._ctx(case_row=case)
+        assert ctx['site_type'] == 'bess'
+        assert ctx['site_type_label'] == 'Battery Storage / Renewables'
+
+    def test_fallback_composite_uses_site_type_weights(self):
+        # A case with no saved score (score=0/None) must compute its fallback
+        # composite from THAT site_type's weight vector, not always Balanced —
+        # so a BESS case's fallback score changes when site_type flips.
+        case_dc   = {**_DUMMY_CASE, 'score': 0, 'site_type': 'datacenter'}
+        case_bess = {**_DUMMY_CASE, 'score': 0, 'site_type': 'bess'}
+        ctx_dc   = self._ctx(case_row=case_dc)
+        ctx_bess = self._ctx(case_row=case_bess)
+        assert ctx_dc['composite'] != ctx_bess['composite']
+        # Sanity check against a hand-computed BESS composite using the same
+        # _FULL_PROPS fixture and the BESS weight vector from server.py.
+        bess_weights = srv._weights_for_site_type('bess')
+        nat_cols = {ind['k']: ind['nat_col'] for ind in srv._REPORT_INDICATORS}
+        total_w = sum(bess_weights.values())
+        expected = sum(_FULL_PROPS.get(nat_cols[k], 0) * w for k, w in bess_weights.items() if w) / total_w
+        assert abs(ctx_bess['composite'] - expected) < 1e-9
 
     def test_composite_from_case_row_score(self):
         ctx = self._ctx(case_row={**_DUMMY_CASE, 'score': 0.712})

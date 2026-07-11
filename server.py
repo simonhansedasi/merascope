@@ -675,6 +675,14 @@ def init_db():
         # public demo docket leaks every visitor's contact info to every other visitor.
         db.execute("ALTER TABLE demo_cases ADD COLUMN IF NOT EXISTS session TEXT")
 
+        # site_type (see _SITE_TYPES / data.js SITE_TYPES) tags which vertical a
+        # template/case is for. Defaults to 'datacenter' on every table so rows
+        # that predate this migration (and any payload that omits the field)
+        # keep behaving exactly as they did when datacenter was the only vertical.
+        db.execute("ALTER TABLE steward_templates ADD COLUMN IF NOT EXISTS site_type TEXT NOT NULL DEFAULT 'datacenter'")
+        db.execute("ALTER TABLE cases ADD COLUMN IF NOT EXISTS site_type TEXT NOT NULL DEFAULT 'datacenter'")
+        db.execute("ALTER TABLE demo_cases ADD COLUMN IF NOT EXISTS site_type TEXT NOT NULL DEFAULT 'datacenter'")
+
 
 # ── event log ─────────────────────────────────────────────────────────────────
 
@@ -1474,6 +1482,10 @@ def builder_submit():
     imported    = 1 if data.get('imported') else 0
     raw_weights = data.get('weights') or {}
     weights_json = json.dumps({k: float(v) for k, v in raw_weights.items()}) if raw_weights else None
+    # Which vertical this submission was built under (see _SITE_TYPES) —
+    # defaults to 'datacenter' for any payload that omits it, same fallback
+    # _weights_for_site_type uses.
+    site_type   = data.get('site_type') if data.get('site_type') in _SITE_TYPES else DEFAULT_SITE_TYPE
     user        = _session_user()
 
     # Anonymous caller: park the submission in demo_cases (short TTL, never
@@ -1485,10 +1497,10 @@ def builder_submit():
             db.execute(
                 '''INSERT INTO demo_cases
                    (case_id, site, applicant, score, stage, state_code, lat, lon,
-                    contact_name, contact_email, lead_agency, notes, weights_json, session)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                    contact_name, contact_email, lead_agency, notes, weights_json, session, site_type)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
                 (demo_id, site, applicant, score, stage, state_code, lat, lon,
-                 contact_name, contact_email, lead_agency, notes, weights_json, demo_session)
+                 contact_name, contact_email, lead_agency, notes, weights_json, demo_session, site_type)
             )
         return jsonify({'ok': True, 'case_id': demo_id, 'is_demo': True})
 
@@ -1501,12 +1513,12 @@ def builder_submit():
                (case_id, site, applicant, score, stage,
                 cell_fid, state_code, lat, lon,
                 contact_name, contact_email, lead_agency, notes,
-                external_permit_id, imported, owner_email, weights_json)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                external_permit_id, imported, owner_email, weights_json, site_type)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
             (case_id, site, applicant, score, stage,
              cell_fid, state_code, lat, lon,
              contact_name, contact_email, lead_agency, notes,
-             external_permit_id, imported, owner_email, weights_json)
+             external_permit_id, imported, owner_email, weights_json, site_type)
         )
     return jsonify({'ok': True, 'case_id': case_id})
 
@@ -2240,6 +2252,10 @@ def _zero_weights():
     return {k: 0 for k in _IND_KEYS}
 
 # Built-in weight-template presets offered to every steward out of the box.
+# 'site_types' tags which verticals (see _SITE_TYPES below) each preset makes
+# sense for — /api/steward/presets can filter on it via ?site_type=. Presets
+# built around a datacenter-only indicator (e.g. grid_complete's fiber weight)
+# are tagged datacenter-only rather than both.
 PRESET_TEMPLATES = [
     {
         'id': 'balanced',
@@ -2247,6 +2263,7 @@ PRESET_TEMPLATES = [
         'description': 'Merascope defaults. Equal weighting across the three primary pillars — transmission, water, and community burden. Good starting point for state-level screening.',
         'weights': {**_zero_weights(), 'transmission': 40, 'water': 35, 'community': 25},
         'min_score': 0.40,
+        'site_types': ['datacenter', 'bess'],
     },
     {
         'id': 'grid_complete',
@@ -2254,6 +2271,7 @@ PRESET_TEMPLATES = [
         'description': 'Full grid infrastructure stack. Weights transmission proximity, substation access, ISO interconnection queue headroom, and fiber density equally alongside water. Suited for developers prioritizing shovel-ready grid connection.',
         'weights': {**_zero_weights(), 'transmission': 25, 'substation': 20, 'grid_capacity': 20, 'fiber': 15, 'water': 15, 'community': 5},
         'min_score': 0.40,
+        'site_types': ['datacenter'],  # bakes in fiber, not relevant to BESS
     },
     {
         'id': 'water_durability',
@@ -2261,6 +2279,7 @@ PRESET_TEMPLATES = [
         'description': 'Long-term water security. Weights surface availability and WRI Aqueduct chronic stress index together. Suited for drought-stressed or water-rights-constrained jurisdictions.',
         'weights': {**_zero_weights(), 'water': 45, 'water_stress': 25, 'transmission': 20, 'community': 10},
         'min_score': 0.50,
+        'site_types': ['datacenter', 'bess'],
     },
     {
         'id': 'contamination_screen',
@@ -2268,6 +2287,7 @@ PRESET_TEMPLATES = [
         'description': 'Strict environmental due diligence. Screens for TRI facility proximity, Superfund NPL distance, RCRA corrective action sites, and NAAQS air quality attainment alongside community burden. Designed for jurisdictions requiring Phase I/II ESA screening at the planning stage.',
         'weights': {**_zero_weights(), 'contamination': 20, 'superfund': 20, 'rcra': 20, 'air_quality': 15, 'community': 15, 'water': 10},
         'min_score': 0.50,
+        'site_types': ['datacenter', 'bess'],
     },
     {
         'id': 'ej_forward',
@@ -2275,8 +2295,64 @@ PRESET_TEMPLATES = [
         'description': 'Community health-first screening. Combines EJ burden, NAAQS attainment, and contamination distance. Designed for jurisdictions with cumulative-impact mandates or health-based siting ordinances. Highest minimum score.',
         'weights': {**_zero_weights(), 'community': 30, 'air_quality': 20, 'contamination': 15, 'superfund': 10, 'rcra': 10, 'water': 10, 'transmission': 5},
         'min_score': 0.55,
+        'site_types': ['datacenter', 'bess'],
+    },
+    {
+        'id': 'interconnection_priority',
+        'name': 'Interconnection Priority',
+        'description': 'BESS/renewables-first screening. Weights transmission proximity, substation access, and ISO interconnection queue headroom above flood/community factors. Suited for battery storage or generation developers prioritizing a fast, low-cost grid connection over the water/community factors that matter more for large-load datacenter siting.',
+        'weights': {**_zero_weights(), 'transmission': 25, 'substation': 20, 'grid_capacity': 20, 'flood': 10, 'community': 25},
+        'min_score': 0.40,
+        'site_types': ['bess'],
     },
 ]
+
+# Look up the 'balanced' preset's weights by id (not list index) so this stays
+# correct if PRESET_TEMPLATES' order ever changes.
+_BALANCED_WEIGHTS = next(p['weights'] for p in PRESET_TEMPLATES if p['id'] == 'balanced')
+
+DEFAULT_SITE_TYPE = 'datacenter'
+
+# Default weight vector + copy per site vertical. Used to seed Explorer/Builder
+# starting weights (WeightDock's site-type selector) and as the report's
+# composite-score fallback (_build_report_context) when no case-level weights
+# were saved. Mirrored in merascope/data.js as SITE_TYPES — keep both in sync
+# (site_type keys, weights, label copy) whenever either changes.
+_SITE_TYPES = {
+    'datacenter': {
+        'label': 'Data Center',
+        'description': "Large-load digital infrastructure siting — Merascope's original vertical. Weights match the Balanced preset.",
+        'weights': _BALANCED_WEIGHTS,
+    },
+    'bess': {
+        'label': 'Battery Storage / Renewables',
+        'description': 'Battery energy storage (and future solar/wind) siting. Weighted toward grid interconnection readiness — transmission, substation, and ISO interconnection queue headroom — over the water/community factors that matter more for large-load datacenter siting.',
+        # First-cut vector (transmission 25 / substation 20 / grid_capacity 20 /
+        # flood 10 / seismic 10 / slope 10 / community 5), not yet validated
+        # against real WA BESS/EFSEC permitting criteria. Sanity-check with the
+        # advisor/outreach contacts before this ships as a literal default used
+        # in a real BESS case, not just an Explorer default.
+        'weights': {**_zero_weights(), 'transmission': 25, 'substation': 20, 'grid_capacity': 20,
+                    'flood': 10, 'seismic': 10, 'slope': 10, 'community': 5},
+    },
+}
+
+
+def _weights_for_site_type(site_type):
+    """Default weight vector for a site_type key. Server-side mirror of
+    data.js's weightsForSiteType() — falls back to DEFAULT_SITE_TYPE for an
+    unknown/missing key so a stale client payload can't crash report
+    generation or the Explorer's initial weights state."""
+    st = _SITE_TYPES.get(site_type) or _SITE_TYPES[DEFAULT_SITE_TYPE]
+    return st['weights']
+
+
+@app.route('/api/site-types')
+def get_site_types():
+    """Public site-type list (id/label/description/weights) — no auth
+    required, same pattern as /api/steward/presets below. Lets the frontend
+    hydrate SITE_TYPES from server truth with a local fallback mirror."""
+    return jsonify([{'id': k, **v} for k, v in _SITE_TYPES.items()])
 
 
 # ── boundary GeoJSON cache + point-in-polygon ─────────────────────────────────
@@ -2405,8 +2481,14 @@ def require_steward(f):
 @app.route('/api/steward/presets')
 def get_steward_presets():
     """The built-in weight-template presets (no auth required — these are
-    static and public, unlike a steward's own saved templates below)."""
-    return jsonify(PRESET_TEMPLATES)
+    static and public, unlike a steward's own saved templates below).
+    Optional ?site_type= filters to presets tagged for that vertical; the
+    param defaults to unfiltered (returns all presets) specifically so
+    existing callers that don't pass it keep working unchanged."""
+    site_type = request.args.get('site_type')
+    if not site_type:
+        return jsonify(PRESET_TEMPLATES)
+    return jsonify([p for p in PRESET_TEMPLATES if site_type in p['site_types']])
 
 
 # ── steward templates CRUD ────────────────────────────────────────────────────
@@ -2439,19 +2521,22 @@ def create_steward_template():
     not supplied defaults to 0 (via _zero_weights) and unknown keys are
     silently dropped, so a stale/malformed frontend payload can't inject
     arbitrary columns into the stored JSON."""
-    data    = request.get_json(silent=True) or {}
-    name    = (data.get('name') or '').strip()
-    weights = data.get('weights') or {}
-    min_sc  = float(data.get('min_score', 0.40))
+    data      = request.get_json(silent=True) or {}
+    name      = (data.get('name') or '').strip()
+    weights   = data.get('weights') or {}
+    min_sc    = float(data.get('min_score', 0.40))
+    # Defaults to 'datacenter' — falls back like _weights_for_site_type does,
+    # so an unrecognized key from a stale client can't get silently stored.
+    site_type = data.get('site_type') if data.get('site_type') in _SITE_TYPES else DEFAULT_SITE_TYPE
     if not name:
         return jsonify({'ok': False, 'err': 'name required'}), 400
     # Fill any missing indicator keys with 0
     full_w = {**_zero_weights(), **{k: float(v) for k, v in weights.items() if k in _IND_KEYS}}
     with get_db() as db:
         cur = db.execute(
-            '''INSERT INTO steward_templates (agency_key, name, weights_json, min_score)
-               VALUES (?,?,?,?) RETURNING id''',
-            (g.agency_key, name, json.dumps(full_w), min_sc)
+            '''INSERT INTO steward_templates (agency_key, name, weights_json, min_score, site_type)
+               VALUES (?,?,?,?,?) RETURNING id''',
+            (g.agency_key, name, json.dumps(full_w), min_sc, site_type)
         )
         new_id = cur.lastrowid
     return jsonify({'ok': True, 'id': new_id})
@@ -2472,9 +2557,10 @@ def update_steward_template(tmpl_id):
         ).fetchone()
         if not row:
             return jsonify({'ok': False, 'err': 'not found'}), 404
-        name    = (data.get('name') or row['name']).strip()
-        min_sc  = float(data.get('min_score', row['min_score']))
-        locked  = int(data['locked']) if 'locked' in data else row['locked']
+        name      = (data.get('name') or row['name']).strip()
+        min_sc    = float(data.get('min_score', row['min_score']))
+        locked    = int(data['locked']) if 'locked' in data else row['locked']
+        site_type = data['site_type'] if data.get('site_type') in _SITE_TYPES else row['site_type']
         if 'weights' in data:
             existing = json.loads(row['weights_json'])
             full_w   = {**existing, **{k: float(v) for k, v in data['weights'].items() if k in _IND_KEYS}}
@@ -2487,8 +2573,11 @@ def update_steward_template(tmpl_id):
         if abs(min_sc - row['min_score']) > 0.001:    parts.append('min score → ' + str(round(min_sc, 2)))
         if locked != row['locked']:                   parts.append('locked' if locked else 'unlocked')
         if w_json != row['weights_json']:             parts.append('weights updated')
+        if site_type != row['site_type']:              parts.append('site type → ' + site_type)
         summary = ', '.join(parts) or 'updated'
-        # snapshot current state before overwriting
+        # snapshot current state before overwriting (site_type isn't part of
+        # template_history's schema — it's a low-frequency, non-scoring field,
+        # so only weights/min_score/locked are versioned, same as before)
         db.execute(
             '''INSERT INTO template_history
                (template_id, agency_key, changed_by, weights_json, min_score, locked, summary)
@@ -2498,9 +2587,9 @@ def update_steward_template(tmpl_id):
         )
         db.execute(
             '''UPDATE steward_templates
-               SET name=?, weights_json=?, min_score=?, locked=?, updated_at=NOW()
+               SET name=?, weights_json=?, min_score=?, locked=?, site_type=?, updated_at=NOW()
                WHERE id=? AND agency_key=?''',
-            (name, w_json, min_sc, locked, tmpl_id, g.agency_key)
+            (name, w_json, min_sc, locked, site_type, tmpl_id, g.agency_key)
         )
     return jsonify({'ok': True})
 
@@ -2932,12 +3021,21 @@ def _build_report_context(case_row, props):
         {'label': 'FEMA flood zone (SFHA)',          'pass': flood_pass,
          'note': 'flood_score = 0 — site intersects Special Flood Hazard Area'},
     ]
+    # Which vertical this case/report is for (see _SITE_TYPES) — defaults to
+    # datacenter for older cases and the pre-site_type Explorer route.
+    site_type = (case_row or {}).get('site_type') or DEFAULT_SITE_TYPE
     composite = float((case_row or {}).get('score') or 0)
     if composite == 0 and props:
-        # Explorer route: compute Balanced preset (tx 40 / water 35 / community 25)
-        balanced = {'tx_score_nat': 40, 'water_score_nat': 35, 'ej_score_nat': 25}
-        total_w  = 100.0
-        composite = sum(float(props.get(col, 0) or 0) * w for col, w in balanced.items()) / total_w
+        # Explorer route (or any case with no saved score): compute the
+        # composite using the site_type's default weight vector, rather than
+        # a hardcoded Balanced-preset calc, so a BESS case's fallback report
+        # actually reflects BESS weights instead of always reading as
+        # datacenter's. _IND_KEYS weight keys -> ZCTA nat_col via _REPORT_INDICATORS.
+        weights  = _weights_for_site_type(site_type)
+        nat_cols = {ind['k']: ind['nat_col'] for ind in _REPORT_INDICATORS}
+        total_w  = sum(weights.values()) or 100.0
+        composite = sum(float(props.get(nat_cols[k], 0) or 0) * w
+                        for k, w in weights.items() if w) / total_w
     return {
         'site_name':     (case_row or {}).get('site') or 'Unnamed site',
         'applicant':     (case_row or {}).get('applicant') or '',
@@ -2948,6 +3046,8 @@ def _build_report_context(case_row, props):
         'stage':         (case_row or {}).get('stage') or '',
         'anchor':        (case_row or {}).get('anchor'),
         'weights':       (case_row or {}).get('weights'),
+        'site_type':       site_type,
+        'site_type_label': _SITE_TYPES.get(site_type, _SITE_TYPES[DEFAULT_SITE_TYPE])['label'],
         'inds':          inds_sorted,
         'strengths':     strengths,
         'challenges':    challenges,
@@ -2997,13 +3097,14 @@ def report_case(case_id):
 @app.route('/report')
 def report_explorer():
     """Explorer report — no case required. Query params: state, lat, lon, name."""
-    state = (request.args.get('state') or '').upper()
-    lat   = request.args.get('lat')
-    lon   = request.args.get('lon')
-    name  = request.args.get('name') or 'Unnamed site'
+    state     = (request.args.get('state') or '').upper()
+    lat       = request.args.get('lat')
+    lon       = request.args.get('lon')
+    name      = request.args.get('name') or 'Unnamed site'
+    site_type = request.args.get('site_type') if request.args.get('site_type') in _SITE_TYPES else DEFAULT_SITE_TYPE
     props = _load_zcta_feature(state, lat, lon) or {}
     fake  = {'site': name, 'applicant': '', 'state_code': state,
-             'score': 0, 'stage': '', 'anchor': None, 'weights': None}
+             'score': 0, 'stage': '', 'anchor': None, 'weights': None, 'site_type': site_type}
     ctx = _build_report_context(fake, props)
     ctx.update({'case_id': None, 'is_demo': False})
     return render_template('report.html', **ctx)

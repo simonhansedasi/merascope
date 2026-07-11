@@ -124,19 +124,21 @@ var COMP_INDS = [
 ];
 
 /* One card in the Workspace grid, representing a single ZCTA cell the builder saved from the Explorer.
-   Computes both the national (`*_nat`) and in-state composite scores at DEFAULT_WEIGHTS (the workspace
-   view does not use the user's tuned Explorer weights — those only apply on submission, see
-   BuilderCaseView.handleCellSelect), shows the state rank if one was attached when the cell was saved,
-   flags the two hard gates (protected land / flood zone), and lazily reverse-geocodes the cell's
-   centroid to a human-readable municipality name for display (falls back to raw lat/lon). */
+   Computes both the national (`*_nat`) and in-state composite scores at the active site_type's default
+   weights (see M.weightsForSiteType — the workspace view does not use the user's tuned Explorer weights,
+   those only apply on submission, see BuilderCaseView.handleCellSelect), shows the state rank if one was
+   attached when the cell was saved, flags the two hard gates (protected land / flood zone), and lazily
+   reverse-geocodes the cell's centroid to a human-readable municipality name for display (falls back to
+   raw lat/lon). */
 function SavedCellCard({ cell, inCompare, canAdd, onToggle, onRemove }) {
   const M = window.MERA;
   const { ramp } = React.useContext(MeraCtx);
   const p = cell.properties;
   const label = window.cellLabel ? window.cellLabel(p) : (p._state || '');
   const pi = window.propsToInd;
-  const natScore  = (pi && M) ? M.composite(pi(p, true),  M.DEFAULT_WEIGHTS) : null;
-  const stateScore = (pi && M) ? M.composite(pi(p, false), M.DEFAULT_WEIGHTS) : null;
+  const _dw = M ? M.weightsForSiteType(window.getCurrentSiteType()) : null;
+  const natScore  = (pi && M) ? M.composite(pi(p, true),  _dw) : null;
+  const stateScore = (pi && M) ? M.composite(pi(p, false), _dw) : null;
   // Hard gates: protected_frac defaults to 1 (fully protected) and flood_score defaults to 0 (fails)
   // when the property is missing, so an incomplete record reads as non-viable rather than silently passing.
   const viable = (p.protected_frac || 1) <= 0.25 && (p.flood_score || 0) > 0;
@@ -232,11 +234,13 @@ function ComparisonPanel({ cells }) {
   const labels = cells.map(function(c) {
     return window.cellLabel ? window.cellLabel(c.properties) : (c.properties._state || '');
   });
+  // Same active-site_type default weights as SavedCellCard above, not raw M.DEFAULT_WEIGHTS.
+  const _dw = M ? M.weightsForSiteType(window.getCurrentSiteType()) : null;
   const natComposites = cells.map(function(c) {
-    return (pi && M) ? M.composite(pi(c.properties, true), M.DEFAULT_WEIGHTS) : null;
+    return (pi && M) ? M.composite(pi(c.properties, true), _dw) : null;
   });
   const stateComposites = cells.map(function(c) {
-    return (pi && M) ? M.composite(pi(c.properties, false), M.DEFAULT_WEIGHTS) : null;
+    return (pi && M) ? M.composite(pi(c.properties, false), _dw) : null;
   });
   // Per-cell gate status. Only `protected` and `flood` are true hard gates (they block a portfolio
   // PASS elsewhere); `terrain` is computed here for completeness but is a scoring penalty, not a gate,
@@ -660,7 +664,12 @@ function BuilderCaseView({ id, query }) {
       payload.lon = parseFloat(impForm.lon);
     }
     payload.session_id = window.MERA_SESSION || '';
-    payload.weights    = window.getCurrentWeights ? window.getCurrentWeights() : ((window.MERA && window.MERA.DEFAULT_WEIGHTS) ? Object.assign({}, window.MERA.DEFAULT_WEIGHTS) : {});
+    // Falls back to the active site_type's default weights (not always datacenter) if no tuned
+    // Explorer weights exist yet in localStorage.
+    payload.weights    = window.getCurrentWeights ? window.getCurrentWeights() : ((window.MERA && window.MERA.weightsForSiteType) ? window.MERA.weightsForSiteType(window.getCurrentSiteType()) : {});
+    // Which vertical this case is for (see server.py's _SITE_TYPES / builder_submit()) —
+    // persisted so the case file and permit report use the right fallback weights/copy later.
+    payload.site_type  = window.getCurrentSiteType ? window.getCurrentSiteType() : 'datacenter';
     fetch('/api/builder/submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -713,17 +722,18 @@ function BuilderCaseView({ id, query }) {
   };
 
   /* Step 1 of the submission form: selecting a saved cell card. Unlike SavedCellCard's workspace-grid
-     display (always DEFAULT_WEIGHTS), the score shown/submitted here uses the builder's actual current
-     Explorer weight configuration (getCurrentWeights(), persisted in localStorage) so the submitted
-     score matches what the builder was looking at when they decided to file — this also drives the
-     "Custom weights" vs "Platform defaults" chip shown later on the case file. */
+     display (always the active site_type's default weights), the score shown/submitted here uses the
+     builder's actual current Explorer weight configuration (getCurrentWeights(), persisted in
+     localStorage) so the submitted score matches what the builder was looking at when they decided to
+     file — this also drives the "Custom weights" vs "Platform defaults" chip shown later on the case
+     file. Falls back to the site_type default (not always datacenter) if no tuned weights exist yet. */
   const handleCellSelect = function(fid) {
     var cell = savedCells.find(function(c) { return c.fid === fid; }) || null;
     setSelCell(cell);
     if (cell) {
       var label = (window.cellLabel && window.cellLabel(cell.properties)) || (cell.properties._state || '');
       var pi = window.propsToInd;
-      var w  = window.getCurrentWeights ? window.getCurrentWeights() : M.DEFAULT_WEIGHTS;
+      var w  = window.getCurrentWeights ? window.getCurrentWeights() : M.weightsForSiteType(window.getCurrentSiteType());
       var nat = (pi && M) ? M.composite(pi(cell.properties, true), w) : null;
       setField('siteName', label);
       if (nat != null) setField('score', nat.toFixed(3));
@@ -757,7 +767,12 @@ function BuilderCaseView({ id, query }) {
       payload.state_code = selCell.properties._state || '';
     }
     payload.session_id = window.MERA_SESSION || '';
-    payload.weights    = window.getCurrentWeights ? window.getCurrentWeights() : ((window.MERA && window.MERA.DEFAULT_WEIGHTS) ? Object.assign({}, window.MERA.DEFAULT_WEIGHTS) : {});
+    // Falls back to the active site_type's default weights (not always datacenter) if no tuned
+    // Explorer weights exist yet in localStorage.
+    payload.weights    = window.getCurrentWeights ? window.getCurrentWeights() : ((window.MERA && window.MERA.weightsForSiteType) ? window.MERA.weightsForSiteType(window.getCurrentSiteType()) : {});
+    // Which vertical this case is for (see server.py's _SITE_TYPES / builder_submit()) —
+    // persisted so the case file and permit report use the right fallback weights/copy later.
+    payload.site_type  = window.getCurrentSiteType ? window.getCurrentSiteType() : 'datacenter';
     fetch('/api/builder/submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1010,10 +1025,13 @@ function BuilderCaseView({ id, query }) {
               evidentiary record: the Same Score Promise only holds if everyone can see what weights
               were used. */}
           {dynCase.weights && (() => {
-            var dw = (M && M.DEFAULT_WEIGHTS) ? M.DEFAULT_WEIGHTS : {};
+            // Compared against THIS case's own site_type (dynCase.site_type), not the viewer's current
+            // Explorer session — a steward reviewing a BESS case should see it flagged against BESS
+            // defaults, regardless of what vertical their own browser is currently set to.
+            var dw = M ? M.weightsForSiteType(dynCase.site_type) : {};
             var activeW = dynCase.weights;
             var nonZero = Object.entries(activeW).filter(function(e){ return e[1] > 0; });
-            // isDefault: true only if every DEFAULT_WEIGHTS key matches exactly (missing keys treated as 0).
+            // isDefault: true only if every default-vector key matches exactly (missing keys treated as 0).
             var isDefault = Object.keys(dw).every(function(k){ return (activeW[k] || 0) === (dw[k] || 0); });
             var totalW = nonZero.reduce(function(s, e){ return s + e[1]; }, 0);
             return (
@@ -1255,7 +1273,8 @@ function BuilderCaseView({ id, query }) {
                     {savedCells.map(function(c) {
                       var label = (window.cellLabel && window.cellLabel(c.properties)) || (c.properties._state || 'Cell ' + c.fid);
                       var pi = window.propsToInd;
-                      var w  = window.getCurrentWeights ? window.getCurrentWeights() : M.DEFAULT_WEIGHTS;
+                      // Same live-weights-with-site_type-default-fallback pattern as handleCellSelect above.
+                      var w  = window.getCurrentWeights ? window.getCurrentWeights() : M.weightsForSiteType(window.getCurrentSiteType());
                       var nat = (pi && M) ? M.composite(pi(c.properties, true), w) : null;
                       var isSelected = selCell && selCell.fid === c.fid;
                       return (

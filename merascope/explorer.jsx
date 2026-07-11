@@ -670,11 +670,19 @@ function ExplorerPage({ query }) {
         return w;
       }
     }
-    return { ...M.DEFAULT_WEIGHTS };
+    // Site-type-aware default (see M.weightsForSiteType / data.js SITE_TYPES)
+    // rather than always M.DEFAULT_WEIGHTS — a BESS session starts on the
+    // BESS vector, a datacenter session on the datacenter/Balanced vector.
+    return { ...M.weightsForSiteType(window.getCurrentSiteType()) };
   }, []);
   const [weights, setWeights] = React.useState(initial);
   /* persist tuned weights so a submitted inquiry carries them (data.js shim) */
   React.useEffect(() => { if (window.setCurrentWeights) window.setCurrentWeights(weights); }, [weights]);
+  // Active vertical (datacenter / bess) for this Explorer session — persisted
+  // via window.setCurrentSiteType/getCurrentSiteType (data.js), same
+  // localStorage-backed pattern as weights above.
+  const [siteType, setSiteType] = React.useState(window.getCurrentSiteType());
+  React.useEffect(() => { if (window.setCurrentSiteType) window.setCurrentSiteType(siteType); }, [siteType]);
   const [selectedState, setSelectedState] = React.useState(null);
   const [gradeData, setGradeData] = React.useState(null);
   const [selectedCells, setSelectedCells] = React.useState(new Set());
@@ -742,9 +750,14 @@ function ExplorerPage({ query }) {
     tryCompute();
   }, [selectedState, weights]);
 
+  // Page title copy per active vertical — keyed by site_type, same convention as
+  // factsheets.jsx's title map. Extend this object (not a conditional) when a
+  // third vertical (solar/wind) is added later.
+  const EXPLORER_TITLE = { datacenter: 'U.S. data center suitability', bess: 'U.S. battery storage & renewables siting' };
+
   return (
     <div style={{ maxWidth: 1240, margin: '0 auto', padding: '26px 24px 60px' }} data-screen-label="Public Explorer">
-      <PageHead eyebrow="Public Explorer — free, no login" title="U.S. data center suitability"
+      <PageHead eyebrow="Public Explorer — free, no login" title={EXPLORER_TITLE[siteType] || EXPLORER_TITLE[M.DEFAULT_SITE_TYPE]}
         sub={<span>ZIP code suitability across the contiguous 48 states · scores update live as you weight the indicators.</span>}
         right={<PromiseBadge />} />
       <div className="explorer-layout" style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
@@ -810,7 +823,7 @@ function ExplorerPage({ query }) {
               gradeData={gradeData} />
           )}
         </div>
-        <WeightPanel weights={weights} setWeights={setWeights} minScore={minScore} setMinScore={setMinScore} dock={isMobile} />
+        <WeightPanel weights={weights} setWeights={setWeights} minScore={minScore} setMinScore={setMinScore} dock={isMobile} siteType={siteType} onSiteTypeChange={setSiteType} />
       </div>
     </div>
   );
