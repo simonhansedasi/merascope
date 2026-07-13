@@ -264,7 +264,7 @@
   </table>
   {% if not all_gates_pass %}
   <div class="gate-fail-banner">
-    One or more hard gates failed. This site is ineligible for standard data center permitting under Merascope criteria and is excluded from portfolio screening results.
+    One or more hard gates failed. This site is ineligible for standard {{ site_type_label|lower }} permitting under Merascope criteria and is excluded from portfolio screening results.
   </div>
   {% endif %}
 

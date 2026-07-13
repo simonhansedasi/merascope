@@ -138,7 +138,8 @@ function SiteProfile({ id }) {
                 <div className="microcopy" style={{ marginTop: 3 }}>composite · default weights</div>
               </div>
             </div>
-            <WAMap weights={window.MERA.DEFAULT_WEIGHTS} markers={false} highlight={site} pins={[site]} />
+            {/* Active site_type's default weights (see M.weightsForSiteType), not always datacenter. */}
+            <WAMap weights={window.MERA.weightsForSiteType(window.getCurrentSiteType())} markers={false} highlight={site} pins={[site]} />
           </div>
           <div className="card" style={{ marginTop: 14, padding: '0 16px 18px' }}>
             <div className="tabs" style={{ margin: '0 -16px 16px', padding: '0 16px' }}>
@@ -591,10 +592,11 @@ function screenPortfolioRows(rows, colMap, threshold) {
     }
     var feat = match.feature;
     var p    = feat.properties;
-    // Always scored at DEFAULT_WEIGHTS (national scale) — portfolio screening is a bulk/objective
-    // pass, not tied to any one user's tuned Explorer weights.
-    var natComp   = (pi && M) ? M.composite(pi(p, true),  M.DEFAULT_WEIGHTS) : null;
-    var stateComp = (pi && M) ? M.composite(pi(p, false), M.DEFAULT_WEIGHTS) : null;
+    // Always scored at the active site_type's default weights (national scale) — portfolio screening
+    // is a bulk/objective pass, not tied to any one user's tuned Explorer weights. See M.weightsForSiteType.
+    var _dw = M ? M.weightsForSiteType(window.getCurrentSiteType()) : null;
+    var natComp   = (pi && M) ? M.composite(pi(p, true),  _dw) : null;
+    var stateComp = (pi && M) ? M.composite(pi(p, false), _dw) : null;
     // Same "missing property fails safe" defaults as SavedCellCard's viability check.
     var flat  = p.flat_frac      != null ? p.flat_frac      : 0;
     var prot  = p.protected_frac != null ? p.protected_frac : 1;

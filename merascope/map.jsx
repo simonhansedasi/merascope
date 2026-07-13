@@ -832,11 +832,14 @@ function MapLegend() {
 // lives in the parent (ExplorerPage) and is passed down/up via
 // weights/setWeights, so dragging a slider here immediately triggers a
 // map recolor via the effects in WAMap above.
-function WeightPanel({ weights, setWeights, minScore = 0, setMinScore = null, dock = false }) {
+function WeightPanel({ weights, setWeights, minScore = 0, setMinScore = null, dock = false, siteType = null, onSiteTypeChange = null }) {
   const M = window.MERA;
   const [collapsed, setCollapsed] = React.useState(false);
   const [shareUrl, setShareUrl] = React.useState(null);
-  const isDefault = M.INDICATORS.every(m => Math.abs(weights[m.k] - m.def) < 0.5);
+  // Compared against the active site_type's weight vector (m.def only holds
+  // for the datacenter vertical, since it's how DEFAULT_WEIGHTS is built).
+  const _siteWeights = M.weightsForSiteType(window.getCurrentSiteType());
+  const isDefault = M.INDICATORS.every(m => Math.abs(weights[m.k] - (_siteWeights[m.k] || 0)) < 0.5);
   const totalW = M.INDICATORS.reduce((s, m) => s + (weights[m.k] || 0), 0) || 1;
 
   // Encodes the current weights as a comma-joined list (in INDICATORS
@@ -860,6 +863,25 @@ function WeightPanel({ weights, setWeights, minScore = 0, setMinScore = null, do
       {!collapsed && (
         <div style={{ padding: '12px 15px 14px' }}>
           <p className="microcopy" style={{ margin: '0 0 8px' }}>22 indicators. Defaults weight transmission, water, and community burden at 40 / 35 / 25; the other 19 start at zero. Percentages show each indicator's share of the total. The map recolors as you drag.</p>
+          {/* Site-type (vertical) selector — only rendered when a parent passes
+              onSiteTypeChange (currently just ExplorerPage). Switching resets
+              weights to that vertical's default vector (see M.SITE_TYPES /
+              server.py's _SITE_TYPES, which this list is hydrated from). */}
+          {onSiteTypeChange && (
+            <div style={{ marginBottom: 11 }}>
+              <label className="microcopy" style={{ display: 'block', marginBottom: 3 }}>Site type</label>
+              <select className="select-xs" value={siteType || M.DEFAULT_SITE_TYPE} style={{ width: '100%', fontSize: 12.5, padding: '5px 7px', border: '1px solid var(--line)', borderRadius: 6, background: 'var(--sand)', color: 'var(--ink)' }}
+                onChange={e => {
+                  const key = e.target.value;
+                  onSiteTypeChange(key);
+                  setWeights({ ...M.weightsForSiteType(key) });
+                }}>
+                {Object.keys(M.SITE_TYPES).map(k => (
+                  <option key={k} value={k}>{M.SITE_TYPES[k].label}</option>
+                ))}
+              </select>
+            </div>
+          )}
           {/* One-click named weight presets (distinct from the steward-
               defined "weight templates" in steward-templates.jsx — these
               are hardcoded here, not stored server-side). Any indicator not
@@ -871,7 +893,10 @@ function WeightPanel({ weights, setWeights, minScore = 0, setMinScore = null, do
               ['Steward lens', { water: 40, community: 25, waterway: 15, contamination: 10, transmission: 10 }],
               ['Net benefit',  { geothermal: 25, water: 25, transmission: 20, community: 15, flatness: 15 }]].map(([name, o]) => (
               <button key={name} className="btn btn-quiet btn-xs" onClick={() => {
-                if (!o) { setWeights({ ...M.DEFAULT_WEIGHTS }); return; }
+                // "Default" resets to the active site_type's weight vector (see
+                // M.weightsForSiteType / data.js SITE_TYPES), not always the
+                // datacenter vector — a BESS session resets to BESS defaults.
+                if (!o) { setWeights({ ...M.weightsForSiteType(window.getCurrentSiteType()) }); return; }
                 const w = {}; M.INDICATORS.forEach(m => { w[m.k] = o[m.k] || 0; });
                 setWeights(w);
               }}>{name}</button>
@@ -910,7 +935,7 @@ function WeightPanel({ weights, setWeights, minScore = 0, setMinScore = null, do
             </div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
-            <button className="btn btn-quiet btn-xs" disabled={isDefault} style={{ opacity: isDefault ? 0.45 : 1 }} onClick={() => { setWeights({ ...M.DEFAULT_WEIGHTS }); setShareUrl(null); }}>Reset to defaults</button>
+            <button className="btn btn-quiet btn-xs" disabled={isDefault} style={{ opacity: isDefault ? 0.45 : 1 }} onClick={() => { setWeights({ ...M.weightsForSiteType(window.getCurrentSiteType()) }); setShareUrl(null); }}>Reset to defaults</button>
             <button className="btn btn-ghost btn-xs" onClick={share}>Share these weights</button>
           </div>
           {shareUrl && (
@@ -1027,9 +1052,10 @@ function findZip(zip) {
 }
 
 // Ranks a single composite score against every other cell in the same
-// state, always under M.DEFAULT_WEIGHTS — NOT the user's current slider
-// weights — so this answers "how does this score compare under the
-// platform's default weighting," independent of whatever the Builder has
+// state, always under the active site_type's default weights (see
+// M.weightsForSiteType) — NOT the user's current slider weights — so this
+// answers "how does this score compare under the platform's default
+// weighting for this vertical," independent of whatever the Builder has
 // dragged the sliders to. Scores are sorted descending (best first), and
 // rank is 1-based (1 = best cell in the state).
 function computeCellRank(composite, stateCode) {
@@ -1037,7 +1063,7 @@ function computeCellRank(composite, stateCode) {
   const M = window.MERA;
   const stateFeats = _gridCache.features.filter(f => f.properties._state === stateCode);
   if (!stateFeats.length) return null;
-  const scores = stateFeats.map(f => M.composite(propsToInd(f.properties, false), M.DEFAULT_WEIGHTS)).sort((a, b) => b - a);
+  const scores = stateFeats.map(f => M.composite(propsToInd(f.properties, false), M.weightsForSiteType(window.getCurrentSiteType()))).sort((a, b) => b - a);
   const rank = scores.findIndex(s => s <= composite) + 1;
   return { rank: rank > 0 ? rank : scores.length, total: scores.length };
 }

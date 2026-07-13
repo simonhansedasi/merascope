@@ -502,6 +502,55 @@ window.getCurrentWeights = function() {
   // window.setCurrentWeights/getCurrentWeights (top of file) persist any tuned overrides.
   var DEFAULT_WEIGHTS = {};
   INDICATORS.forEach(function (m) { DEFAULT_WEIGHTS[m.k] = m.def; });
+
+  // ── site verticals (datacenter / bess) ──────────────────────────────────
+  // Mirrors server.py's _SITE_TYPES (~line 2321) — same keys, same weights,
+  // same label copy. Keep both in sync whenever either changes; there is no
+  // automated check for this today (see the plan's hand-sync note).
+  var DEFAULT_SITE_TYPE = 'datacenter';
+  var SITE_TYPES = {
+    datacenter: {
+      label: 'Data Center',
+      description: "Large-load digital infrastructure siting — Merascope's original vertical. Weights match the Balanced preset.",
+      weights: DEFAULT_WEIGHTS
+    },
+    bess: {
+      label: 'Battery Storage / Renewables',
+      description: 'Battery energy storage (and future solar/wind) siting. Weighted toward grid interconnection readiness — transmission, substation, and ISO interconnection queue headroom — over the water/community factors that matter more for large-load datacenter siting.',
+      // First-cut vector (transmission 25 / substation 20 / grid_capacity 20 /
+      // flood 10 / seismic 10 / slope 10 / community 5), NOT yet validated
+      // against real WA BESS/EFSEC permitting criteria — same caveat as the
+      // server-side copy of this vector. All other indicators default to 0.
+      weights: (function () {
+        var w = {};
+        INDICATORS.forEach(function (m) { w[m.k] = 0; });
+        w.transmission = 25; w.substation = 20; w.grid_capacity = 20;
+        w.flood = 10; w.seismic = 10; w.slope = 10; w.community = 5;
+        return w;
+      })()
+    }
+  };
+  // Default weight vector for a site_type key — server-side mirror is
+  // _weights_for_site_type() in server.py. Falls back to DEFAULT_SITE_TYPE
+  // for an unknown/missing key so a stale localStorage value can't break
+  // the Explorer's initial weights state.
+  function weightsForSiteType(key) {
+    var st = SITE_TYPES[key] || SITE_TYPES[DEFAULT_SITE_TYPE];
+    return Object.assign({}, st.weights);
+  }
+  // Persists the Explorer/Builder's active vertical across the same
+  // localStorage-backed pattern as setCurrentWeights/getCurrentWeights above.
+  window.setCurrentSiteType = function (key) {
+    try { localStorage.setItem('mera_site_type_v1', key); } catch (e) {}
+  };
+  window.getCurrentSiteType = function () {
+    try {
+      var v = localStorage.getItem('mera_site_type_v1');
+      if (v && SITE_TYPES[v]) return v;
+    } catch (e) {}
+    return DEFAULT_SITE_TYPE;
+  };
+
   // THE core scoring function, used everywhere a composite suitability score is shown
   // (Explorer map, Builder site cards, Steward report cards, permit report). Weighted
   // average of per-indicator scores (0-1), normalized by total weight so it stays in
@@ -1232,6 +1281,7 @@ window.getCurrentWeights = function() {
     GRID: { cells: cells, cols: cols, rows: rows, lonMin: lonMin, latMax: latMax, D: D },
     cellAt: cellAt, nearestCluster: nearestCluster,
     INDICATORS: INDICATORS, DEFAULT_WEIGHTS: DEFAULT_WEIGHTS, composite: composite,
+    SITE_TYPES: SITE_TYPES, DEFAULT_SITE_TYPE: DEFAULT_SITE_TYPE, weightsForSiteType: weightsForSiteType,
     CLUSTERS: CLUSTERS, RECOMMENDED: RECOMMENDED, GATE_COUNTS: GATE_COUNTS, STATES: STATES,
     SITES: SITES, ALERTS: ALERTS, WATCHED: WATCHED, PORTFOLIO: PORTFOLIO,
     STAGES: STAGES, CASES: CASES, PARTY_NAMES: PARTY_NAMES, CASE_DETAIL: CASE_DETAIL, CASE_DETAIL_MAP: CASE_DETAIL_MAP,

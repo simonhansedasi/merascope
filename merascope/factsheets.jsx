@@ -139,8 +139,15 @@ function FactSheetDynamic({ stateCode, onRawFeats, onGradeData }) {
   const medTxDist = med('tx_dist_m');
   const hasRaw = props.length > 0;
 
+  // Title copy per active vertical — keyed by site_type, same convention as
+  // explorer.jsx's EXPLORER_TITLE map (that one is state, this one reads the
+  // localStorage-persisted current site_type directly since this component
+  // has no siteType prop threaded to it).
+  const POSTURE_LABEL = { datacenter: 'data center siting posture', bess: 'battery storage & renewables siting posture' };
+  const postureLabel = POSTURE_LABEL[window.getCurrentSiteType()] || POSTURE_LABEL[M.DEFAULT_SITE_TYPE];
+
   return (
-    <SheetShell kicker="State fact sheet" title={`${stateName} — data center siting posture`} code={stateCode} seed={stateCode.charCodeAt(0) + stateCode.charCodeAt(1)}>
+    <SheetShell kicker="State fact sheet" title={`${stateName} — ${postureLabel}`} code={stateCode} seed={stateCode.charCodeAt(0) + stateCode.charCodeAt(1)}>
       <div style={{ display: 'grid', gridTemplateColumns: '185px 1fr', gap: 22 }}>
 
         {/* Left: grade block + category ranking list + grid stats */}
@@ -612,12 +619,16 @@ function FactSheetsPage({ which }) {
   };
 
   const stateName = selectedState ? (STATE_NAMES[selectedState] || selectedState) : null;
+  // Same POSTURE_LABEL convention as StateFactSheet's title above — keyed by
+  // the current site_type, extend (don't branch) when a third vertical ships.
+  const POSTURE_LABEL = { datacenter: 'data center siting posture', bess: 'battery storage & renewables siting posture' };
+  const postureLabel = POSTURE_LABEL[window.getCurrentSiteType()] || POSTURE_LABEL[window.MERA.DEFAULT_SITE_TYPE];
 
   return (
     <div data-screen-label={stateName ? 'Fact sheet — ' + stateName : 'Fact sheets'}>
       <div style={{ maxWidth: 980, margin: '0 auto', padding: '30px 24px 0' }}>
         <PageHead eyebrow="Fact sheets — print-grade, version-stamped"
-          title={stateName ? stateName + ' — data center siting posture' : 'State fact sheets'}
+          title={stateName ? stateName + ' — ' + postureLabel : 'State fact sheets'}
           sub="15-indicator profile, national rankings, physical measurements. Select a state to load its fact sheet."
           right={selectedState
             ? (
