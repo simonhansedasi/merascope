@@ -1,8 +1,8 @@
 # Merascope
 
-National data center site suitability intelligence and permitting coordination platform.
+National site suitability intelligence and permitting coordination platform for large-load infrastructure — data centers and, as of 2026-07-11, battery energy storage (BESS).
 GIS-MCDA across ZIP code tabulation areas (ZCTAs), 23 scored indicators (16 core + 7 supplemental),
-scored at both state and national scale with cross-state `*_nat` normalization.
+scored at both state and national scale with cross-state `*_nat` normalization. See "Site verticals" below for how the same indicators reweight per site type.
 
 Built for three audiences:
 - **Builders** (developers evaluating sites) — Explorer map, workspace, portfolio screening
@@ -104,6 +104,17 @@ All 48 states carry the full raw column set in their ZCTA files.
 All 48 contiguous states complete (AK/HI excluded) as of 2026-06-23.
 
 All 48 contiguous states carry the full 66-column ZCTA dataset (23 scores × 2 normalization windows + raw physical columns).
+
+## Site verticals (added 2026-07-11)
+
+Merascope scores two site types off the same 23 indicators, just reweighted — no new data ingestion. `_SITE_TYPES` (`server.py`) is the source of truth; `SITE_TYPES` in `data.js` mirrors it for the frontend (keys/weights/label copy must be kept in sync by hand — no automated check yet).
+
+- **`datacenter`** (default) — Merascope's original vertical. Weights match the Balanced preset.
+- **`bess`** ("Battery Storage / Renewables") — weighted toward grid interconnection readiness (transmission 25 / substation 20 / grid_capacity 20 / flood 10 / seismic 10 / slope 10 / community 5, rest zero) over the water/community factors that matter more for large-load datacenter siting. **First-cut vector, not yet validated against real WA BESS/EFSEC permitting criteria** — sanity-check with advisors before treating it as authoritative on a real case.
+
+`GET /api/site-types` returns the public id/label/description/weights list, no auth required. A `site_type` column (`ALTER TABLE ... DEFAULT 'datacenter'`, idempotent) lives on `cases`, `demo_cases`, and `steward_templates`; `_weights_for_site_type()` / `weightsForSiteType()` fall back to `datacenter` for an unknown or missing key so a stale client payload can't crash report generation or the Explorer's initial weights. Site type is chosen via a `<select>` in the Explorer/Builder weight panel; the frontend selection persists client-side only (`localStorage mera_site_type_v1` via `window.getCurrentSiteType()`/`setCurrentSiteType()`) — it is not yet an account-level steward default. `/api/steward/presets?site_type=` filters the 5 preset weight templates to the ones tagged relevant for that vertical (`PRESET_TEMPLATES[].site_types`).
+
+**Known gaps:** `bulk_import()` (steward CSV intake) doesn't thread `site_type` through imported cases — it defaults via the DB column only. Solar/wind as additional verticals were scoped as an extension point but not built (would need a third entry in `_SITE_TYPES`/`SITE_TYPES` plus the `normalize_zcta_national.py` INDICATORS list — an easy-to-miss third hand-sync spot alongside the two above).
 
 ## Product surfaces
 
