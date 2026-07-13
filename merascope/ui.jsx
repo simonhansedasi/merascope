@@ -392,7 +392,8 @@ function TourOverlay({ tourStep, onStart, onNext, onBack, onSkip }) {
   if (tourStep === 0) {
     return (
       <div style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-        <div style={{ background: 'var(--sand)', borderRadius: 14, padding: '32px 36px', maxWidth: 480, width: '100%', boxShadow: '0 12px 60px rgba(0,0,0,0.6)', border: '1px solid var(--line)', textAlign: 'center' }}>
+        <div style={{ position: 'relative', background: 'var(--sand)', borderRadius: 14, padding: '32px 36px', maxWidth: 480, width: '100%', boxShadow: '0 12px 60px rgba(0,0,0,0.6)', border: '1px solid var(--line)', textAlign: 'center' }}>
+          <button onClick={onSkip} aria-label="Dismiss" style={{ position: 'absolute', top: 12, right: 12, width: 28, height: 28, borderRadius: '50%', border: 'none', background: 'transparent', color: 'var(--slate)', fontSize: 18, lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>&#215;</button>
           <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'var(--mist)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
             <Icon name="rings" size={26} color="var(--basalt)" />
           </div>
