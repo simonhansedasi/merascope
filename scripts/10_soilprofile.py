@@ -15,8 +15,8 @@ Method:
       ksat_score  = 1 - clip(log1p(wmean_ksat) / log1p(100), 0, 1)  fast recharge = high risk
       clay_score  = clip(wmean_clay / 35.0, 0, 1)       deep clay = aquitard = low risk
   - Composite: 0.40 * caco3 + 0.35 * ksat + 0.25 * clay
-  - IDW interpolation (k=8, power=2) from mukey representative points to grid centroids
-  - Reuses soil_coords.csv from 09_soil.py for representative polygon coordinates
+  - Exact per-cell mukey lookup, reused from 09_soil.py's soil_cell_mukeys.csv cache
+    (point-in-polygon via SDA, not IDW — see 09_soil.py for why)
 
 Rationale: Tom's observation — soil column flags (lime, fast permeability, no clay barrier)
 determine whether a datacenter spill reaches groundwater. High score = clean column.
@@ -40,7 +40,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import requests
-from scipy.spatial import cKDTree
 
 sys.path.insert(0, str(Path(__file__).parent))
 from config import get_state, get_paths
@@ -52,8 +51,6 @@ WHITE   = "white"
 
 SDM_URL  = "https://SDMDataAccess.sc.egov.usda.gov/Tabular/SDMTabularService/post.rest"
 SDM_HDR  = {"Content-Type": "application/json"}
-IDW_K    = 8
-IDW_POWER = 2
 
 # Contamination pathway thresholds
 CACO3_THRESHOLD = 15.0   # % — above this, lime mobilization risk is high
@@ -224,23 +221,6 @@ def score_mukeys(df_agg):
     return df_agg
 
 
-# ── IDW ────────────────────────────────────────────────────────────────────────
-
-def idw_k(src_pts, src_vals, tgt_pts, k=8, power=2):
-    k = min(k, len(src_pts))
-    tree = cKDTree(src_pts)
-    dists, idxs = tree.query(tgt_pts, k=k)
-    if k == 1:
-        dists = dists[:, np.newaxis]
-        idxs  = idxs[:, np.newaxis]
-    exact = dists[:, 0] == 0
-    weights = 1.0 / np.where(dists == 0, 1e-10, dists) ** power
-    weights /= weights.sum(axis=1, keepdims=True)
-    interp = (weights * src_vals[idxs]).sum(axis=1)
-    interp[exact] = src_vals[idxs[exact, 0]]
-    return interp
-
-
 # ── Plot ───────────────────────────────────────────────────────────────────────
 
 def plot_profile(cfg, state, grid, processed):
@@ -299,7 +279,7 @@ def main():
     cfg = get_state(args.state)
     root, raw, processed, grid_path = get_paths(cfg["abbr"])
     cache_horizons = raw / "soil_profile_horizons.csv"
-    cache_coords   = raw / "soil_coords.csv"
+    cache_cell_mukeys = raw / "soil_cell_mukeys.csv"
 
     print(f"\n=== 10_soilprofile: {cfg['name']} ({cfg['abbr']}) ===")
 
@@ -320,39 +300,35 @@ def main():
     df_agg = aggregate_per_mukey(df_horizons)
     df_agg = score_mukeys(df_agg)
 
-    # Step 3: Merge with representative polygon coordinates
-    if not cache_coords.exists():
-        print("  WARNING: soil_coords.csv not found — run 09_soil.py first")
+    # Step 3: exact per-cell mukey, reused from 09_soil.py's point-in-polygon cache
+    if not cache_cell_mukeys.exists():
+        print("  WARNING: soil_cell_mukeys.csv not found — run 09_soil.py first")
         print("  soil_profile_score set to 0.5 (neutral)")
         grid["soil_profile_score"] = 0.5
         grid.to_file(grid_path, driver="GeoJSON")
         return
 
-    df_coords = pd.read_csv(cache_coords, dtype={"mukey": str})
-    df = df_agg.merge(df_coords, on="mukey", how="inner")
-    print(f"  {len(df)} mukeys with score + location (of {len(df_agg)} scored)")
+    df_cellmukey = pd.read_csv(cache_cell_mukeys, dtype={"mukey": str})
+    cell_lookup = dict(zip(df_cellmukey["key"], df_cellmukey["mukey"]))
 
-    if len(df) < 10:
-        print("  Too few matched mukeys — check soil_coords.csv alignment")
+    centroids = grid.geometry.centroid
+    keys = [f"{lon:.6f},{lat:.6f}" for lon, lat in zip(centroids.x, centroids.y)]
+    cell_mukeys = pd.Series([cell_lookup.get(k) for k in keys])
+
+    agg_by_mukey = df_agg.set_index("mukey")
+    matched = cell_mukeys.isin(agg_by_mukey.index)
+    print(f"  {matched.sum()}/{len(grid)} cells matched to a scored mukey (of {len(df_agg)} mukeys scored)")
+
+    if matched.sum() < 10:
+        print("  Too few matched mukeys — check soil_cell_mukeys.csv alignment")
         grid["soil_profile_score"] = 0.5
         grid.to_file(grid_path, driver="GeoJSON")
         return
 
-    # Step 4: IDW to grid centroids
-    print("  IDW interpolation to grid centroids...")
-    centroids = grid.geometry.centroid
-    tgt_pts  = np.column_stack([centroids.x, centroids.y])
-    src_pts  = df[["lon", "lat"]].values
-    src_vals = df["soil_profile_score"].values
-
-    interp = idw_k(src_pts, src_vals, tgt_pts, k=IDW_K, power=IDW_POWER)
-    grid["soil_profile_score"] = np.clip(interp, 0, 1).round(4)
-
-    # Also IDW the K-sat sub-score for the plot
-    ksat_interp = idw_k(src_pts, df["ksat_score"].values, tgt_pts, k=IDW_K, power=IDW_POWER)
-    grid["ksat_score"] = np.clip(ksat_interp, 0, 1).round(4)
-    ksat_raw_interp = idw_k(src_pts, df["wmean_ksat"].values, tgt_pts, k=IDW_K, power=IDW_POWER)
-    grid["ksat_mean_ums"] = ksat_raw_interp.round(4)
+    ksat_median = agg_by_mukey["wmean_ksat"].median()
+    grid["soil_profile_score"] = cell_mukeys.map(agg_by_mukey["soil_profile_score"]).fillna(0.5).clip(0, 1).round(4).values
+    grid["ksat_score"] = cell_mukeys.map(agg_by_mukey["ksat_score"]).fillna(0.5).clip(0, 1).round(4).values
+    grid["ksat_mean_ums"] = cell_mukeys.map(agg_by_mukey["wmean_ksat"]).fillna(ksat_median).round(4).values
 
     print(f"  Final grid range: {grid.soil_profile_score.min():.3f} - "
           f"{grid.soil_profile_score.max():.3f}  "

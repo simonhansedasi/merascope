@@ -5,17 +5,22 @@ Adds to grid_scores.geojson:
   soil_score — 0-1 (high = low permeability = low spill percolation risk to groundwater)
 
 Method:
-  - Fetches mukey → hydgrpdcd mapping via SDM tabular REST service
-    (mapunit ⋈ muaggatt ⋈ legend; filter areasymbol LIKE '{STATE}%')
-  - Fetches one representative mupolygon location per mukey (SELECT * by mupolygonkey)
-  - Parses first coordinate from WKT geographic column (col6)
+  - Per grid cell centroid, exact point-in-polygon mukey lookup via SDA's
+    SDA_Get_Mukey_from_intersection_with_WktWgs84() spatial function (one call per
+    cell, cached + resumable in soil_cell_mukeys.csv; downloading full SSURGO polygon
+    boundaries isn't viable — a single state can have 500K+ polygon instances)
+  - Batch-fetches hydgrpdcd for the resulting mukeys via muaggatt
   - Maps hydrologic group to numeric score:
       A → 0.00  (high permeability, highest contamination risk)
       B → 0.33
       C → 0.67
       D → 1.00  (low permeability, lowest contamination risk)
       A/D, B/D, C/D → split-class midpoints
-  - IDW interpolation (k=8, power=2) from mukey representative points to grid centroids
+  - Cells with no resolvable mukey (e.g. water) or unmapped hydgrpdcd → neutral 0.5
+
+Previously used IDW from one representative point per mukey, which blended scores
+across real soil-class boundaries (same class of bug fixed in water_score via
+patch_water_score.py) — this replaces that with an exact per-cell class lookup.
 
 Rationale: high-permeability soils (Group A) allow surface spills to reach groundwater
 quickly; low-permeability soils (Group D) reduce that pathway.
@@ -25,10 +30,10 @@ Usage:
 """
 
 import argparse
-import re
 import sys
 import time
 import warnings
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import geopandas as gpd
@@ -36,7 +41,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import requests
-from scipy.spatial import cKDTree
 
 sys.path.insert(0, str(Path(__file__).parent))
 from config import get_state, get_paths
@@ -46,11 +50,10 @@ CRS    = "EPSG:4326"
 DARK_BG = "#1a1a2e"
 WHITE  = "white"
 
-SDM_URL   = "https://SDMDataAccess.sc.egov.usda.gov/Tabular/SDMTabularService/post.rest"
-SDM_HDR   = {"Content-Type": "application/json"}
-BATCH     = 100     # mupolygonkeys per API call
-IDW_K     = 8
-IDW_POWER = 2
+SDM_URL    = "https://SDMDataAccess.sc.egov.usda.gov/Tabular/SDMTabularService/post.rest"
+SDM_HDR    = {"Content-Type": "application/json"}
+BATCH      = 100     # mukeys per hydgrpdcd batch call
+SDA_WORKERS = 8       # concurrent point-in-polygon lookups (~0.5s/call; be polite to a gov API)
 
 # Hydrologic group → soil_score (high = low permeability = low contamination risk)
 HYDGRP_SCORE = {
@@ -83,90 +86,84 @@ def sdm_query(q, timeout=120, retries=4):
                 raise
 
 
-def fetch_mukey_hydgrp(state_abbr, cache_path):
-    """Get all mukeys + hydgrpdcd + one representative mupolygonkey per mukey."""
+def cell_key(lon, lat):
+    return f"{lon:.6f},{lat:.6f}"
+
+
+def sda_mukey_at_point(lon, lat, retries=3, timeout=30):
+    """Exact point-in-polygon mukey lookup via SDA's canned spatial function."""
+    q = f"SELECT * FROM SDA_Get_Mukey_from_intersection_with_WktWgs84('point({lon} {lat})')"
+    for attempt in range(retries):
+        try:
+            r = requests.post(SDM_URL, headers=SDM_HDR, json={"query": q, "FORMAT": "JSON"}, timeout=timeout)
+            r.raise_for_status()
+            rows = r.json().get("Table") or []
+            return rows[0][0] if rows else None
+        except Exception as e:
+            if attempt < retries - 1:
+                time.sleep(2 ** attempt)
+            else:
+                print(f"    point ({lon:.4f},{lat:.4f}) failed after {retries} tries: {e}")
+                return None
+
+
+def fetch_cell_mukeys(lons, lats, cache_path, workers=SDA_WORKERS):
+    """Per-cell point-in-polygon mukey lookup, cached + resumable by rounded lon/lat."""
+    keys = [cell_key(lon, lat) for lon, lat in zip(lons, lats)]
+
+    cached = {}
     if cache_path.exists():
-        df = pd.read_csv(cache_path)
-        print(f"  Loaded {len(df)} mukeys from cache")
+        df = pd.read_csv(cache_path, dtype={"mukey": str})
+        cached = dict(zip(df["key"], df["mukey"]))
+        print(f"  Loaded {len(cached)} cell->mukey pairs from cache")
+
+    todo = [(i, lon, lat) for i, (lon, lat) in enumerate(zip(lons, lats)) if keys[i] not in cached]
+    print(f"  {len(todo)} of {len(keys)} cells need point-in-polygon lookup...")
+
+    def save():
+        pd.DataFrame({"key": list(cached.keys()), "mukey": list(cached.values())}).to_csv(cache_path, index=False)
+
+    if todo:
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            futures = {ex.submit(sda_mukey_at_point, lon, lat): keys[i] for i, lon, lat in todo}
+            done = 0
+            for fut in as_completed(futures):
+                cached[futures[fut]] = fut.result()
+                done += 1
+                if done % 50 == 0:
+                    print(f"    {done}/{len(todo)} resolved", end="\r")
+                    save()
+        print()
+        save()
+
+    return np.array([cached.get(k) for k in keys])
+
+
+def fetch_hydgrp(mukeys, cache_path):
+    """Batch-fetch hydgrpdcd for a set of mukeys."""
+    if cache_path.exists():
+        df = pd.read_csv(cache_path, dtype={"mukey": str})
+        print(f"  Loaded {len(df)} mukey->hydgrp pairs from cache")
         return df
 
-    abbr = state_abbr.upper()
-    print(f"  Querying SDM for {abbr} mukey-hydgrp-polykey...")
-    q = f"""SELECT mapunit.mukey, muaggatt.hydgrpdcd, MIN(mupolygon.mupolygonkey) AS poly_id
-FROM mupolygon
-INNER JOIN mapunit ON mupolygon.mukey=mapunit.mukey
-INNER JOIN legend ON mapunit.lkey=legend.lkey
-INNER JOIN muaggatt ON mapunit.mukey=muaggatt.mukey
-WHERE legend.areasymbol LIKE '{abbr}%' AND muaggatt.hydgrpdcd IS NOT NULL
-GROUP BY mapunit.mukey, muaggatt.hydgrpdcd"""
+    mukeys = sorted(set(mukeys))
+    n_batches = (len(mukeys) + BATCH - 1) // BATCH
+    print(f"  Fetching hydgrpdcd for {len(mukeys)} mukeys in {n_batches} batches...")
+    rows = []
+    for i in range(n_batches):
+        batch = mukeys[i*BATCH:(i+1)*BATCH]
+        ids_str = ",".join(batch)
+        q = f"SELECT mukey, hydgrpdcd FROM muaggatt WHERE mukey IN ({ids_str})"
+        try:
+            rows.extend(sdm_query(q, timeout=60))
+        except Exception as e:
+            print(f"\n    batch {i+1}/{n_batches} failed: {e}")
+        time.sleep(0.05)
 
-    rows = sdm_query(q, timeout=120)
-    print(f"  Got {len(rows)} mukeys with hydgrpdcd")
-
-    df = pd.DataFrame(rows, columns=["mukey", "hydgrpdcd", "poly_id"])
+    df = pd.DataFrame(rows, columns=["mukey", "hydgrpdcd"])
     df.to_csv(cache_path, index=False)
     print(f"  Cached to {cache_path.name}")
     return df
-
-
-def fetch_poly_coords(df_mukeys, cache_path):
-    """Batch-fetch one mupolygon WKT per mukey; parse first lon/lat from geographic WKT."""
-    if cache_path.exists():
-        df = pd.read_csv(cache_path)
-        print(f"  Loaded {len(df)} polygon coords from cache")
-        return df
-
-    poly_ids = df_mukeys["poly_id"].astype(int).tolist()
-    n_batches = (len(poly_ids) + BATCH - 1) // BATCH
-    print(f"  Fetching polygon coords ({len(poly_ids)} polys in {n_batches} batches)...")
-
-    records = []
-    for i in range(n_batches):
-        batch = poly_ids[i*BATCH:(i+1)*BATCH]
-        ids_str = ",".join(str(p) for p in batch)
-        q = f"SELECT * FROM mupolygon WHERE mupolygonkey IN ({ids_str})"
-        try:
-            rows = sdm_query(q, timeout=60)
-        except Exception as e:
-            print(f"\n    Batch {i+1}/{n_batches} failed: {e}")
-            time.sleep(2)
-            continue
-
-        for row in rows:
-            # col4=mukey, col6=WKT geographic (lon lat)
-            mukey = row[4]
-            wkt   = row[6] if len(row) > 6 else ""
-            m = re.search(r"([-\d.]+)\s+([-\d.]+)", wkt)
-            if not m:
-                continue
-            lon, lat = float(m.group(1)), float(m.group(2))
-            records.append({"mukey": mukey, "lon": lon, "lat": lat})
-
-        print(f"    Batch {i+1}/{n_batches}: {len(rows)} rows (total: {len(records)})", end="\r")
-        time.sleep(0.05)
-
-    print()
-    df = pd.DataFrame(records)
-    df.to_csv(cache_path, index=False)
-    print(f"  Cached {len(df)} poly coords to {cache_path.name}")
-    return df
-
-
-# ── IDW ────────────────────────────────────────────────────────────────────────
-
-def idw_k(src_pts, src_vals, tgt_pts, k=8, power=2):
-    k = min(k, len(src_pts))
-    tree = cKDTree(src_pts)
-    dists, idxs = tree.query(tgt_pts, k=k)
-    if k == 1:
-        dists = dists[:, np.newaxis]
-        idxs  = idxs[:, np.newaxis]
-    exact = dists[:, 0] == 0
-    weights = 1.0 / np.where(dists == 0, 1e-10, dists) ** power
-    weights /= weights.sum(axis=1, keepdims=True)
-    interp = (weights * src_vals[idxs]).sum(axis=1)
-    interp[exact] = src_vals[idxs[exact, 0]]
-    return interp
 
 
 # ── Plot ───────────────────────────────────────────────────────────────────────
@@ -203,44 +200,32 @@ def main():
 
     cfg = get_state(args.state)
     root, raw, processed, grid_path = get_paths(cfg["abbr"])
-    cache_mukey = raw / "soil_mukeys.csv"
-    cache_coords = raw / "soil_coords.csv"
+    cache_cell_mukeys = raw / "soil_cell_mukeys.csv"
+    cache_hydgrp = raw / "soil_mukeys.csv"
     print(f"\n=== 09_soil: {cfg['name']} ({cfg['abbr']}) ===")
 
     grid  = gpd.read_file(grid_path)
     state = gpd.read_file(raw / "state.geojson")
     print(f"Grid: {len(grid)} cells")
 
-    # Step 1: mukey → hydgrpdcd + poly_id
-    df_mukeys = fetch_mukey_hydgrp(cfg["abbr"], cache_mukey)
-
-    # Step 2: poly_id → first lon/lat
-    df_coords = fetch_poly_coords(df_mukeys, cache_coords)
-
-    # Merge and score
-    df = df_mukeys.merge(df_coords, on="mukey", how="inner")
-    df["score"] = df["hydgrpdcd"].map(HYDGRP_SCORE).fillna(0.5)
-    # Average score for mukeys that appear multiple times
-    df = df.groupby("mukey").agg(score=("score", "mean"), lon=("lon", "mean"), lat=("lat", "mean")).reset_index()
-
-    print(f"  {len(df)} mukeys with location + score")
-    print(f"  Hydgrpdcd distribution:\n{df_mukeys.hydgrpdcd.value_counts().to_string()}")
-
-    if len(df) == 0:
-        print("  No soil data — soil_score set to 0.5 (neutral)")
-        grid["soil_score"] = 0.5
-        grid.to_file(grid_path, driver="GeoJSON")
-        return
-
-    # IDW to grid centroids
-    print("  IDW interpolation to grid centroids...")
     centroids = grid.geometry.centroid
-    tgt_pts = np.column_stack([centroids.x, centroids.y])
-    src_pts = df[["lon", "lat"]].values
-    src_vals = df["score"].values
+    lons, lats = centroids.x.values, centroids.y.values
 
-    soil_interp = idw_k(src_pts, src_vals, tgt_pts, k=IDW_K, power=IDW_POWER)
-    grid["soil_score"] = np.clip(soil_interp, 0, 1).round(4)
+    # Step 1: exact mukey per grid cell (point-in-polygon)
+    print("  Point-in-polygon mukey lookup...")
+    cell_mukeys = fetch_cell_mukeys(lons, lats, cache_cell_mukeys)
+    found = pd.notna(cell_mukeys)
+    print(f"  {found.sum()}/{len(cell_mukeys)} cells resolved to a mukey")
+
+    # Step 2: hydgrpdcd for those mukeys
+    df_hydgrp = fetch_hydgrp(cell_mukeys[found].tolist(), cache_hydgrp)
+    hydgrp_by_mukey = dict(zip(df_hydgrp["mukey"], df_hydgrp["hydgrpdcd"]))
+
+    hydgrps = [hydgrp_by_mukey.get(m) if pd.notna(m) else None for m in cell_mukeys]
+    print(f"  Hydgrpdcd distribution:\n{pd.Series(hydgrps).dropna().value_counts().to_string()}")
+
+    scores = pd.Series(hydgrps).map(HYDGRP_SCORE)
+    grid["soil_score"] = scores.fillna(0.5).clip(0, 1).round(4).values
     print(f"  soil_score range: {grid.soil_score.min():.3f} - {grid.soil_score.max():.3f}")
     print(f"  mean: {grid.soil_score.mean():.3f}")
 
