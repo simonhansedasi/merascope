@@ -27,6 +27,9 @@ quickly; low-permeability soils (Group D) reduce that pathway.
 
 Usage:
   python 09_soil.py WA
+
+  With ZCTA subdir:
+  DC_SUBDIR=zcta python scripts/09_soil.py WA
 """
 
 import argparse
@@ -114,8 +117,10 @@ def fetch_cell_mukeys(lons, lats, cache_path, workers=SDA_WORKERS):
     cached = {}
     if cache_path.exists():
         df = pd.read_csv(cache_path, dtype={"mukey": str})
-        cached = dict(zip(df["key"], df["mukey"]))
-        print(f"  Loaded {len(cached)} cell->mukey pairs from cache")
+        # Only trust resolved rows — a prior failed lookup (e.g. SDA's nightly
+        # maintenance window) must retry, not be treated as a permanent "no mukey".
+        cached = {k: v for k, v in zip(df["key"], df["mukey"]) if pd.notna(v)}
+        print(f"  Loaded {len(cached)} resolved cell->mukey pairs from cache")
 
     todo = [(i, lon, lat) for i, (lon, lat) in enumerate(zip(lons, lats)) if keys[i] not in cached]
     print(f"  {len(todo)} of {len(keys)} cells need point-in-polygon lookup...")
@@ -128,7 +133,9 @@ def fetch_cell_mukeys(lons, lats, cache_path, workers=SDA_WORKERS):
             futures = {ex.submit(sda_mukey_at_point, lon, lat): keys[i] for i, lon, lat in todo}
             done = 0
             for fut in as_completed(futures):
-                cached[futures[fut]] = fut.result()
+                mukey = fut.result()
+                if mukey is not None:
+                    cached[futures[fut]] = mukey
                 done += 1
                 if done % 50 == 0:
                     print(f"    {done}/{len(todo)} resolved", end="\r")
