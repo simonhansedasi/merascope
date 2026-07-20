@@ -285,9 +285,8 @@ function LoginPage() {
 // resolutions the product can roll scores up to, and which pricing tier
 // unlocks each one. [label, category, tier, use-case] tuples.
 const GEOGRAPHIES = [
-  ['0.15° grid (~14 km)', 'Base layer', 'Public — free', 'The shared reference frame everyone argues from'],
+  ['ZCTA', 'Base layer', 'Public — free', 'The shared reference frame everyone argues from'],
   ['County', 'Administrative', 'Group', 'Permitting posture, hearings, moratorium maps'],
-  ['ZCTA', 'Postal', 'Group', 'Community-burden context, listing search'],
   ['Census tract / block group', 'Statistical', 'Group', 'EJ analysis at evidence-grade resolution'],
   ['Utility / PUD service territory', 'Operational', 'Group', 'Rate cases, large-load tariff exposure'],
   ['Parcel', 'Cadastral', 'Enterprise', 'Listings, dossiers, site control'],
@@ -518,7 +517,7 @@ function MethodologyPage() {
           <div id="m-grid" style={{ scrollMarginTop: 72 }}>
             <h3 style={{ fontSize: 17, marginBottom: 8 }}>The scoring grid</h3>
             <p style={{ fontSize: 14.5, lineHeight: 1.65, marginBottom: 22 }}>
-              The base unit is a <b>0.15&#176; x 0.15&#176; fishnet cell</b> &#8212; approximately 14 km per edge at mid-latitudes (~133 km&#178;). Cell centroids are clipped to 2022 Census TIGER state boundaries. The pipeline runs per-state; all 48 contiguous US states are complete. Scores attach to the centroid and are not area-averaged within the cell. Each cell in each state is assigned a row in a GeoJSON with score columns and raw physical-value columns (for national renormalization).
+              The base unit is a <b>ZCTA</b> (Census ZIP Code Tabulation Area) &#8212; the real postal-boundary polygon, not a fixed-size grid cell, so extent varies from under a square kilometer in dense cities to hundreds in rural areas. Boundaries come from the Census Bureau's 500k ZCTA cartographic file, clipped to state. The pipeline runs per-state; all 48 contiguous US states are complete. Scores attach to the full ZCTA polygon, not a centroid sample. Each ZCTA in each state is assigned a row in a GeoJSON with score columns and raw physical-value columns (for national renormalization).
             </p>
           </div>
 

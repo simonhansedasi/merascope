@@ -188,7 +188,7 @@ data/{STATE}/
         tribal_tiger.geojson      — TIGER AIANNH tribal areas
         well_depths.csv           — USGS NWIS depth-to-water cache
         soil_mukeys.csv           — SSURGO mukey-hydgrpdcd cache
-        soil_coords.csv           — SSURGO representative polygon coords
+        soil_cell_mukeys.csv      — per-cell mukey cache (point-in-polygon lookup; keyed by lon,lat; shared by 09 and 10; replaces soil_coords.csv as of 2026-07-20)
         soil_profile_horizons.csv — SSURGO chorizon 0-150cm cache
     processed/
         basemap.png
@@ -373,16 +373,28 @@ post-2025 API returns 400 errors above ~45k row offset — handled with a gracef
 
 Queries SSURGO via the Soil Data Access REST API to get hydrologic soil group
 (`hydgrpdcd`) per map unit. Score mapping: A=0.00, B=0.33, C=0.67, D=1.00 (high score
-= tight drainage = low infiltration risk). IDW from one representative mupolygon
-coordinate per mukey to cell centroids.
+= tight drainage = low infiltration risk). **Fixed 2026-07-20:** exact per-cell mukey
+via SDA's point-in-polygon spatial function `SDA_Get_Mukey_from_intersection_with_WktWgs84`
+— one call per grid-cell centroid, cached/resumable in `raw/soil_cell_mukeys.csv`.
+Previously IDW'd from one representative mupolygon coordinate per mukey, which blended
+scores across real hydrologic-group boundaries. `SDA_WORKERS = 8` concurrent lookups;
+~0.5s/call means a full 48-state run takes ~30-45 min. Do not batch multiple points into
+one MULTIPOINT call — verified live that it silently reorders results with no way to
+match a mukey back to the point that produced it.
 
 SDM maintenance window: **12:30-12:45 AM CST (6:30-6:45 AM UTC)**. If steps 09 or 10
-fail with empty JSON, wait 15 minutes and retry.
+fail with empty JSON, wait 15 minutes and retry. The per-cell cache must not record a
+failed lookup as resolved — it needs to look like "not yet attempted" so it retries on
+the next run, or every cell touched during the outage gets permanently stuck at the
+neutral 0.5 fallback (this happened to 802 WA cells on 2026-07-20; fixed in the cache
+loader, see CONTEXT.md).
 
 ### Step 10 — Soil profile
 
 Queries SSURGO `chorizon` table for all horizons with top depth < 150 cm per map unit.
-Requires `raw/soil_coords.csv` from step 09. Computes three indicators:
+Requires `raw/soil_cell_mukeys.csv` from step 09 (per-cell mukey lookup, not the old
+`soil_coords.csv`) — a plain dict lookup, no IDW, no additional network calls. Computes
+three indicators:
 
 | Indicator | Column | Direction |
 |---|---|---|
@@ -504,8 +516,13 @@ WARNING: empty or non-JSON response from SDM
 ```
 
 The Soil Data Access service runs maintenance at **12:30-12:45 AM CST**. Wait 15 minutes
-and retry. The raw cache files (soil_mukeys.csv, soil_coords.csv,
-soil_profile_horizons.csv) are written only on success, so re-running the step is safe.
+and retry. The batch-fetch cache files (soil_mukeys.csv, soil_profile_horizons.csv) are
+written only on success, so re-running the step is safe. `soil_cell_mukeys.csv` (the
+per-cell point-in-polygon cache, as of 2026-07-20) is also safe to resume from — as long
+as `09_soil.py` is at or after the 2026-07-20 fix, which treats a failed lookup as
+unresolved rather than caching it as permanently done. An older copy of the script would
+silently poison every cell touched during the outage window; if in doubt, `git pull`
+before rerunning a state that hit this.
 
 ---
 

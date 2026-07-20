@@ -427,7 +427,7 @@ function BuilderSearch() {
           <div style={{ fontSize: 52, lineHeight: 1 }}>&#9711;</div>
           <h3 style={{ fontSize: 18, marginTop: 12 }}>No saved sites yet.</h3>
           <p className="microcopy" style={{ maxWidth: 360, margin: '8px auto 20px', fontSize: 13.5, lineHeight: 1.6 }}>
-            Open the Explorer, click any fishnet tile to inspect its scores, then hit "Save to workspace."
+            Open the Explorer, click any tile to inspect its scores, then hit "Save to workspace."
           </p>
           <a className="btn btn-primary" href="#/explorer">Open the Explorer</a>
         </div>

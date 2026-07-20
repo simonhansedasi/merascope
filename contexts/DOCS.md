@@ -259,7 +259,7 @@ Score = `q_interp / max_q_interp` after capping at p95 to suppress outliers. Hig
 
 ### `09_soil.py` — Soil Permeability Score
 
-**Purpose:** Maps SSURGO hydrologic soil group (A/B/C/D) to a contamination permeability risk score via IDW from map-unit representative polygon locations.
+**Purpose:** Maps SSURGO hydrologic soil group (A/B/C/D) to a contamination permeability risk score via an exact per-cell mukey lookup.
 
 **Data source:** SSURGO Soil Data Mart (SDM) tabular REST API at `SDMDataAccess.sc.egov.usda.gov`.
 
@@ -270,13 +270,17 @@ Score = `q_interp / max_q_interp` after capping at p95 to suppress outliers. Hig
 - D (low permeability, slow infiltration) → 1.00
 - A/D, B/D, C/D (split-class dual drainage) → midpoints
 
-`sdm_query(q, timeout, retries)` — posts SQL to the SDM tabular service as JSON, returns `Table` array. 4-attempt exponential-backoff retry.
+**Method (fixed 2026-07-20):** exact point-in-polygon mukey lookup per grid cell, not IDW. Previously used `fetch_mukey_hydgrp` (state-areasymbol-filtered mukey list) + `fetch_poly_coords` (regex-parsed first WKT coordinate of one representative mupolygon per mukey) + IDW to cell centroids — this blended scores across real hydrologic-group boundaries. Downloading full SSURGO polygon boundaries for a true local spatial join isn't viable (a single state can have 500K+ polygon instances).
 
-`fetch_mukey_hydgrp(state_abbr, cache_path)` — queries `mapunit JOIN muaggatt JOIN legend JOIN mupolygon` to get one representative `mupolygonkey` per map unit, along with `hydgrpdcd`. Cached as `soil_mukeys.csv`.
+`sdm_query(q, timeout, retries)` — posts SQL to the SDM tabular service as JSON, returns `Table` array. 4-attempt exponential-backoff retry. Used for the batch hydgrpdcd fetch.
 
-`fetch_poly_coords(df_mukeys, cache_path)` — fetches full mupolygon WKT records in batches of 100. Parses the first lon/lat coordinate pair from WKT column 6 via regex. Cached as `soil_coords.csv`.
+`sda_mukey_at_point(lon, lat, retries, timeout)` — one call to SDA's canned spatial function `SDA_Get_Mukey_from_intersection_with_WktWgs84('point(lon lat)')`, returns the exact mukey containing that point. Batching multiple points into one MULTIPOINT call was tested and rejected — it silently returns mukeys sorted by value with no point-to-result correlation, not in input order.
 
-IDW from map unit representative points to grid centroids. Merged scores averaged per mukey when a mukey appears multiple times.
+`fetch_cell_mukeys(lons, lats, cache_path, workers=SDA_WORKERS)` — runs `sda_mukey_at_point` for every grid-cell centroid via a `ThreadPoolExecutor` (`SDA_WORKERS = 8`, ~0.5s/call → ~30-45 min for a 48-state run). Cached/resumable in `soil_cell_mukeys.csv`, keyed by `f"{lon:.6f},{lat:.6f}"`. The cache loader only trusts non-null rows — a failed lookup (e.g. hit during SDA's nightly maintenance window) looks like "not yet attempted" and retries on the next run, rather than being permanently treated as resolved.
+
+`fetch_hydgrp(mukeys, cache_path)` — batch-fetches `hydgrpdcd` from `muaggatt` for just the mukeys that were actually resolved (no more state-areasymbol prefiltering). Cached as `soil_mukeys.csv`.
+
+Cells with no resolvable mukey (open water, no SSURGO coverage) or an unmapped hydgrpdcd code fall back to the neutral 0.5 score.
 
 ---
 
@@ -295,7 +299,7 @@ IDW from map unit representative points to grid centroids. Merged scores average
 
 `score_mukeys(df_agg)` — applies the three sub-score formulas and computes the weighted composite. Also writes intermediate sub-score columns (`caco3_score`, `ksat_score`, `clay_score`).
 
-Reuses `soil_coords.csv` from script 09 for representative polygon locations (step 09 must run first). IDW to grid centroids for both `soil_profile_score` and `ksat_score` (plotted separately). Also writes `ksat_mean_ums` as a raw column.
+**Fixed 2026-07-20:** reuses `soil_cell_mukeys.csv` from script 09 (step 09 must run first) — the same exact per-cell mukey mapping, looked up directly against the per-mukey aggregated scores computed in this script. A plain dict lookup, no IDW, no additional network calls. Previously reused `soil_coords.csv` (one representative point per mukey) and IDW'd both `soil_profile_score` and `ksat_score` to grid centroids, same interpolation-across-boundaries problem as script 09. Also writes `ksat_mean_ums` as a raw column (unmatched cells fall back to the dataset median, not IDW).
 
 ---
 

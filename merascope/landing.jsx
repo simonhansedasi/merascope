@@ -80,7 +80,7 @@ function EngineVisual() {
         <div style={{ padding: '20px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, textAlign: 'center' }}>
           <div className="eyebrow">Composite score</div>
           <div className="score-serif" style={{ fontSize: 52, lineHeight: 1, color: M.rampColor(composite, 'field') }}>{composite.toFixed(3)}</div>
-          <div className="microcopy">per 0.15 degree cell</div>
+          <div className="microcopy">per ZCTA</div>
           <div style={{ height: 1, background: 'var(--line-soft)', width: '75%' }}></div>
           <div style={{ fontSize: 12, color: 'var(--evergreen)', fontWeight: 650, lineHeight: 1.45 }}>◈ Same number<br />for every user</div>
           <div className="microcopy" style={{ fontSize: 11 }}>Builder · Regulator · Press · Public</div>

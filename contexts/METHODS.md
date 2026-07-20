@@ -101,7 +101,7 @@ Hard gates (terrain flatness, protected lands) are applied at the fishnet tier; 
 ### 13. Soil Drainage Class (`soil_score`)
 
 **Source:** USDA NRCS Soil Survey Geographic Database (SSURGO), accessed via the Soil Data Access REST API (Soil Survey Staff, NRCS, USDA).
-**Method:** Mukey → hydrologic soil group (hydgrpdcd) from `muaggatt` table. Score mapping: A = 0.00, B = 0.33, C = 0.67, D = 1.00 (split classes interpolated). One representative mupolygon coordinate per mukey via `MIN(mupolygonkey)`. IDW to cell centroids.
+**Method (fixed 2026-07-20):** Exact per-grid-cell mukey via SDA's point-in-polygon spatial function `SDA_Get_Mukey_from_intersection_with_WktWgs84`, one call per cell centroid — not interpolated. Score mapping: A = 0.00, B = 0.33, C = 0.67, D = 1.00 (split classes interpolated). Previously used IDW from one representative mupolygon coordinate per mukey (`MIN(mupolygonkey)`), which blended scores across real hydrologic-group boundaries — the same class of artifact PRISM fixed for water_score. Downloading full SSURGO polygon boundaries for a true local spatial join isn't viable (a single state can have 500K+ polygon instances), so the per-cell point-in-polygon call against SDA directly is the practical exact method.
 **Rationale:** USDA hydrologic groups A–D directly describe surface-to-groundwater infiltration rate. Group A soils (sands) allow rapid spill percolation; Group D soils (clays) retard it substantially.
 
 ---
@@ -221,7 +221,9 @@ One response per IP address; ZIP code entry cross-referenced against study area 
 
 ## Interpolation
 
-All indicator IDW uses the formulation from Shepard (1968):
+Applies to transmission distance, seismic, contamination, waterway, geothermal, and aquifer depth. **Not** `soil_score`/`soil_profile_score`/`ksat_score` (exact per-cell point-in-polygon lookup, fixed 2026-07-20 — see "Soil Drainage Class" above) or `water_score` (direct PRISM raster sampling, fixed 2026-06-14).
+
+All remaining indicator IDW uses the formulation from Shepard (1968):
 
 ```
 z(x) = Σ wᵢ(x) zᵢ / Σ wᵢ(x),   wᵢ(x) = 1 / d(x, xᵢ)^p
