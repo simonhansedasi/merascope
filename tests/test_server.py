@@ -2050,3 +2050,32 @@ class TestNearbyCases:
         leaked = {'contact_email', 'owner_email', 'notes', 'contact_name'}
         assert not (leaked & set(d[0].keys())), \
             'nearby leaked PII fields: {}'.format(leaked & set(d[0].keys()))
+
+
+# ---------------------------------------------------------------------------
+# GET /findings/pnw-water-stress (+ .json) — no DB involved, so this uses a
+# plain test client rather than the `client` fixture above. Schema updated
+# 2026-08-06 (third pass) along with analysis_pnw_water_stress.py -- reads
+# Aqueduct watershed polygons directly now, no more ZCTA fields -- see that
+# script's module docstring for the full history.
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def plain_client():
+    srv.app.config['TESTING'] = True
+    with srv.app.test_client() as c:
+        yield c
+
+
+class TestPnwWaterStressFinding:
+    def test_json_matches_compact_gap(self, plain_client):
+        d = plain_client.get('/findings/pnw-water-stress.json').get_json()
+        assert d['checks'] == {'compact_gap_holds': True}
+        assert d['compact_share'] > 5 * d['pnw_share']
+
+    def test_html_renders_the_json_numbers(self, plain_client):
+        j = plain_client.get('/findings/pnw-water-stress.json').get_json()
+        html = plain_client.get('/findings/pnw-water-stress').get_data(as_text=True)
+        umatilla = next(r for r in j['extreme_watersheds'] if r['state'] == 'OR')
+        assert '{:.3f}'.format(umatilla['bws']) in html
+        assert '/findings/pnw-water-stress.json' in html

@@ -278,7 +278,7 @@ In local dev, omit `S3_ENDPOINT` (falls back to disk) and omit SMTP vars (magic 
 ## Testing and deploy
 
 ```bash
-# Full suite (293 tests). The DB-backed tests need Postgres via TEST_DATABASE_URL;
+# Full suite (313 tests, verified 2026-07-29). The DB-backed tests need Postgres via TEST_DATABASE_URL;
 # they skip cleanly if it is unset.
 TEST_DATABASE_URL=postgresql://merascope:merascope@localhost/merascope_test \
   /home/simonhans/anaconda3/envs/merascope/bin/python3 -m pytest tests/ -q
@@ -399,15 +399,19 @@ merascope/
     patch_raws.py         — retrofit raw physical columns on completed states
   data/                   — generated GeoJSON + CSVs (gitignored; sync with sync_data_hetzner.sh)
   vendor/                 — React, Leaflet, fonts (gitignored; built by fetch_vendor.sh)
-  tests/                  — pytest suite (293 total: pipeline/static/config + server tests)
+  tests/                  — pytest suite (313 total: 213 server, 37 indicators, 24 gates, 21 static, 18 config)
 ```
 
-Full developer docs live in `~/coding/contexts/merascope/` (symlinked to repo root):
-- `CONTEXT.md` — architecture, server schema, API routes, known limitations
-- `CLAUDE.md` — dev environment, gotchas, deploy instructions
+Reference docs in this repo under `contexts/`:
 - `DOCS.md` — comprehensive technical reference
 - `METHODS.md` — indicator methodology with citations
 - `PIPELINE_GUIDE.md` — running and troubleshooting the pipeline
+
+`LEARNING_GUIDE.md` (repo root, added 2026-07-29) — deep-dive learner's guide to the whole stack: what each technology is, where it lives in this code, why it was built that way, and the traps. Written as a reference sheet rather than a spec; includes a staged learning plan and a known-weak-points list.
+
+Project docs live in `~/coding/contexts/merascope/` (canonical location — this repo has no root symlinks for them):
+- `CONTEXT.md` — architecture, server schema, API routes, known limitations
+- `CLAUDE.md` — dev environment, gotchas, deploy instructions
 
 ## Data sources
 

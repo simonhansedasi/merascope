@@ -3094,6 +3094,66 @@ def report_case(case_id):
     return render_template('report.html', **ctx)
 
 
+def _pnw_water_stress_data():
+    """Runs the same compute() the CLI script is sourced from — one function
+    backs both, so the web page can never quote a different number than the
+    reproducible script does. Rewritten 2026-08-06 (third pass) to read
+    Aqueduct's own watershed polygons directly instead of ZCTA data — see
+    analysis_pnw_water_stress.py's module docstring for the full history.
+    No more compact_rows/pnw_rows split or fill-confidence merge needed:
+    per_state already covers all 9 states in one list, and there's no ZCTA
+    join/fill step left to carry a confidence caveat about."""
+    import importlib.util
+    path = os.path.join(ROOT, 'scripts', 'analysis_pnw_water_stress.py')
+    spec = importlib.util.spec_from_file_location('analysis_pnw_water_stress', path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.compute()
+
+
+@app.route('/findings/pnw-water-stress')
+def finding_pnw_water_stress():
+    data = _pnw_water_stress_data()
+    data['generated_at'] = datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')
+    return render_template('finding_pnw_water_stress.html', **data)
+
+
+@app.route('/findings/pnw-water-stress.json')
+def finding_pnw_water_stress_json():
+    data = _pnw_water_stress_data()
+    data['generated_at'] = datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')
+    data['source'] = 'scripts/analysis_pnw_water_stress.py, reading data/shared/{pnw,compact}_watersheds.geojson + national_watershed_stats.json (WRI Aqueduct 3.0 baseline water stress)'
+    return jsonify(data)
+
+
+def _wa_fire_risk_data():
+    """Same pattern as _pnw_water_stress_data() -- runs the standalone
+    analysis script fresh each request rather than caching, so the finding
+    page and the JSON API can never drift from what the reproducible script
+    computes. See analysis_wa_fire_risk.py's module docstring."""
+    import importlib.util
+    path = os.path.join(ROOT, 'scripts', 'analysis_wa_fire_risk.py')
+    spec = importlib.util.spec_from_file_location('analysis_wa_fire_risk', path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.compute()
+
+
+@app.route('/findings/wa-fire-risk')
+def finding_wa_fire_risk():
+    data = _wa_fire_risk_data()
+    data['generated_at'] = datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')
+    return render_template('finding_wa_fire_risk.html', **data)
+
+
+@app.route('/findings/wa-fire-risk.json')
+def finding_wa_fire_risk_json():
+    data = _wa_fire_risk_data()
+    data['generated_at'] = datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')
+    data['source'] = 'scripts/analysis_wa_fire_risk.py, reading data/shared/wa_fire_perimeters.geojson (MTBS) + whp_wa.npy (USFS Wildfire Hazard Potential 2020)'
+    return jsonify(data)
+
+
 @app.route('/report')
 def report_explorer():
     """Explorer report — no case required. Query params: state, lat, lon, name."""
