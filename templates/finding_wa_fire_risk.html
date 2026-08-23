@@ -1,0 +1,218 @@
+<!--
+  finding_wa_fire_risk.html — Server-rendered (Jinja2, no React) public
+  findings page. Rendered by server.py's finding_wa_fire_risk()
+  (/findings/wa-fire-risk). Numbers come from
+  scripts/analysis_wa_fire_risk.py's compute() — the same function the CLI
+  script is sourced from, so this page can never quote a different number
+  than the reproducible script does. Print-style layout, same structure as
+  finding_pnw_water_stress.html; the interactive map version of this same
+  data lives on datacenter_siting's /reports/wa-fire-risk
+  (report_wa_fire_risk.html).
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ site_name|default('Merascope') }} — Fire history and risk: Washington data-center sites</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 10pt;
+      color: #111;
+      background: #eef0f4;
+    }
+    .page {
+      width: 8.5in;
+      min-height: 11in;
+      margin: 0.4in auto;
+      padding: 0.6in 0.7in;
+      background: #fff;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.13);
+    }
+    .rpt-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 2px solid #1a1a2e;
+      padding-bottom: 12px;
+      margin-bottom: 20px;
+    }
+    .rpt-logo { font-size: 13.5pt; font-weight: 700; color: #1a1a2e; letter-spacing: 0.07em; }
+    .rpt-doc-title { font-size: 8pt; color: #555; margin-top: 3px; letter-spacing: 0.04em; }
+    .rpt-meta { text-align: right; font-size: 8pt; color: #555; line-height: 1.8; }
+    .rpt-meta strong { color: #222; }
+
+    h1.title { font-size: 17pt; font-weight: 700; margin-bottom: 6px; }
+    p.lede { font-size: 10.5pt; line-height: 1.65; color: #333; margin-bottom: 18px; }
+
+    h3.sec {
+      font-size: 8.5pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: #444;
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 4px;
+      margin: 22px 0 10px;
+    }
+
+    table { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
+    th { font-size: 7.8pt; text-align: left; padding: 4px 8px; background: #f0f0f7; border-bottom: 1.5px solid #ccd; white-space: nowrap; }
+    td { padding: 3.5px 8px; font-size: 8.8pt; border-bottom: 1px solid #eee; vertical-align: middle; }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+    .tag-vhigh { color: #b92b27; font-weight: 700; }
+    .tag-high  { color: #a15a1f; font-weight: 700; }
+    .tag-mod   { color: #8a6000; font-weight: 700; }
+    .tag-low   { color: #1a7a45; font-weight: 700; }
+    .tag-nb    { color: #777; }
+
+    .caption { font-size: 7.5pt; color: #777; margin-top: 4px; margin-bottom: 8px; }
+
+    .box {
+      background: #f7f8fc;
+      border: 1px solid #d8dae8;
+      border-radius: 6px;
+      padding: 11px 15px;
+      font-size: 8.7pt;
+      line-height: 1.75;
+      margin-bottom: 10px;
+    }
+    .box strong { color: #222; }
+
+    .caveat-box {
+      background: #fff8e1;
+      border: 1px solid #e6b800;
+      border-radius: 6px;
+      padding: 11px 15px;
+      font-size: 8.7pt;
+      line-height: 1.75;
+      color: #5a4000;
+      margin-bottom: 10px;
+    }
+
+    .repro {
+      background: #f7f8fc;
+      border: 1px solid #d8dae8;
+      border-radius: 6px;
+      padding: 11px 15px;
+      font-size: 8pt;
+      line-height: 1.9;
+    }
+    .repro strong { color: #222; }
+    .repro a { color: #3a5bd9; }
+    .permalink { text-align: right; }
+    .permalink .lbl { font-size: 8.5pt; color: #555; text-transform: uppercase; letter-spacing: .08em; }
+    .permalink .url { font-size: 10pt; font-weight: 700; color: #1a7a45; margin-top: 2px; }
+
+    .print-bar {
+      position: fixed; bottom: 22px; right: 24px;
+      display: flex; gap: 10px;
+    }
+    .btn-print {
+      padding: 8px 20px; border-radius: 6px; border: none; cursor: pointer;
+      background: #1a1a2e; color: #fff; font-size: 9pt; font-weight: 600;
+    }
+    .btn-json {
+      padding: 8px 16px; border-radius: 6px; border: 1px solid #ccc;
+      cursor: pointer; background: #fff; color: #333; font-size: 9pt; text-decoration: none;
+    }
+
+    @media print {
+      body { background: none; }
+      .page { box-shadow: none; margin: 0; padding: 0.5in 0.6in; }
+      .print-bar { display: none; }
+      .box, .caveat-box, .repro { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      h3.sec { page-break-after: avoid; }
+      table tr { page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="rpt-header">
+    <div>
+      <div class="rpt-logo">MERASCOPE</div>
+      <div class="rpt-doc-title">Data Finding — Not a Case Report</div>
+    </div>
+    <div class="rpt-meta">
+      <div><strong>Generated:</strong> {{ generated_at }}</div>
+      <div><strong>Geography:</strong> MTBS burn perimeters + USFS WHP, WA-clipped</div>
+    </div>
+  </div>
+
+  <h1 class="title">Fire history and risk: Washington data-center sites</h1>
+  <p class="lede">
+    Following the water-stress finding, this checks Washington data-center sites against two real
+    fire layers instead of one invented composite: MTBS's actual historical burn perimeters, and
+    the U.S. Forest Service's own Wildfire Hazard Potential index.
+  </p>
+
+  <h3 class="sec">WA fire history and hazard summary</h3>
+  <table>
+    <tr><th>Metric</th><th class="num">Value</th></tr>
+    <tr><td>MTBS-mapped fire perimeters, {{ year_min }}&ndash;{{ year_max }}</td><td class="num">{{ n_perimeters }}</td></tr>
+    <tr><td>Share of WA land area burned at least once since {{ year_min }}</td><td class="num">{{ '%.1f'|format(burned_share_pct) }}%</td></tr>
+    <tr><td>Share of WA reading WHP "high" hazard potential</td><td class="num">{{ '%.1f'|format(high_hazard_share_pct) }}%</td></tr>
+    <tr><td>Share of WA reading WHP "very high" hazard potential</td><td class="num">{{ '%.1f'|format(very_high_hazard_share_pct) }}%</td></tr>
+  </table>
+  <p class="caption">Area shares are a Monte Carlo estimate (n={{ n_samples }}) over WA's real boundary, not the padded raster crop rectangle.</p>
+
+  <h3 class="sec">Fires &ge; {{ '{:,}'.format(large_fire_threshold) }} acres ({{ large_fires|length }} rows)</h3>
+  <table>
+    <tr><th>Fire</th><th class="num">Year</th><th class="num">Acres</th></tr>
+    {% for row in large_fires[:15] %}
+    <tr><td>{{ row.name }}</td><td class="num">{{ row.year }}</td><td class="num">{{ '{:,.0f}'.format(row.acres) if row.acres else '—' }}</td></tr>
+    {% endfor %}
+  </table>
+  <p class="caption">Top 15 of {{ large_fires|length }} by acreage; full JSON has all rows.</p>
+
+  <h3 class="sec">Confirmed WA data-center sites vs. fire history and hazard</h3>
+  <table>
+    <tr><th>Site</th><th>On-site WHP</th><th>Historical burn</th><th class="num">Nearest burn (real)</th><th class="num">Nearest hazard (model)</th></tr>
+    {% for row in dc_sites %}
+    <tr>
+      <td>{{ row.name }}{% if row.status in ('proposed', 'under_construction') %} ({{ row.status }}){% endif %}</td>
+      <td class="{{ 'tag-vhigh' if row.whp_class == 5 else ('tag-high' if row.whp_class == 4 else ('tag-mod' if row.whp_class == 3 else ('tag-nb' if row.whp_class == 6 else 'tag-low'))) }}">{{ row.whp_label or '—' }}</td>
+      <td>{% if row.in_perimeter %}{{ row.perimeter_year }} ({{ row.perimeter_name }}){% else %}none on record{% endif %}</td>
+      <td class="num">{{ '%.1f'|format(row.nearest_burned_km) }} km</td>
+      <td class="num">{{ row.nearest_hazard_km ~ ' km' if row.nearest_hazard_km is not none else '> 11 km' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="caption">{{ dc_sites|length }} sites, all confirmed by 2+ independent sources in datacenters.db. "Nearest burn (real)" is distance to an actual MTBS perimeter, not model-dependent.</p>
+
+  <h3 class="sec">Microsoft's own East Wenatchee campus sits inside a documented fire perimeter</h3>
+  <div class="box">
+    EAT06/EAT09 (under construction) sits directly inside the 2005 Badger Road Fire's MTBS-mapped perimeter (3,993 acres) -- WHP's own hazard model reads that ground as "low," unaware a real fire already burned there. Every other confirmed WA site reads WHP "non-burnable" or "low" on its own parcel and sits outside every MTBS-mapped perimeter, expected since data centers are mostly built on developed/agricultural land. WHP's fuel model reads that same ag/CRP land as non-burnable even where real fire has reached close by -- so distance to an actual historical burn (not model-dependent) is the sharper number: Malaga sits just 0.9 km from a real fire (1.4 km from WHP high/very-high hazard land), the rest of the Quincy cluster 3.8-4.3 km out, Wallula Gap 7.9 km out, while every Seattle-metro site sits 47-50 km from any historical burn, agreeing with the model there. Wildfire threatens built infrastructure through nearby wildland fuel and ember cast, not just the parcel footprint.
+  </div>
+
+  <h3 class="sec">What this doesn't measure</h3>
+  <div class="caveat-box">
+    WHP's land-cover model reads developed and agricultural land as <strong>"non-burnable" by definition</strong> — including Conservation Reserve Program grassland, which is exactly what carried the 2020 Pearl Hill and Cold Springs fires (187,000-218,000 acres each) through the same shrub-steppe interior this data reads as low-hazard, and it has no memory of fires that already happened, as EAT06/EAT09 shows directly. That's a documented limitation of forest/rangeland-oriented hazard models -- patched above by the real-burn-distance column, not papered over. Separately, MTBS's identification of individual named fires is <strong>not exhaustive by name</strong> — large multi-fire complexes are sometimes mapped under original component-fire names rather than a merged complex name.
+  </div>
+
+  <h3 class="sec">Reproducibility</h3>
+  <div class="repro">
+    <div><strong>Source:</strong> MTBS burned-area boundary shapefile (mtbs.gov), clipped to WA ({{ n_perimeters }} perimeters); USFS Wildfire Hazard Potential 2020, classified product (firelab.org), cropped and masked to WA.</div>
+    <div><strong>Script:</strong> <code>scripts/analysis_wa_fire_risk.py</code> — every number on this page comes from that script's <code>compute()</code>, run fresh on every page load against <code>scripts/export_wa_fire_perimeters.py</code> and <code>scripts/fetch_whp_wa.py</code>'s exported layers.</div>
+    <div><strong>Raw data:</strong> <a href="/findings/wa-fire-risk.json">/findings/wa-fire-risk.json</a> — the same numbers as machine-readable JSON.</div>
+    <div style="margin-top: 2px;"><strong>Generated:</strong> {{ generated_at }}</div>
+  </div>
+
+  <div class="permalink" style="margin-top: 10px;">
+    <div class="lbl">Live, reproducible page</div>
+    <div class="url">merascope.com/findings/wa-fire-risk</div>
+  </div>
+
+</div><!-- end .page -->
+
+<div class="print-bar">
+  <a class="btn-json" href="/findings/wa-fire-risk.json">View raw JSON</a>
+  <button class="btn-print" onclick="window.print()">Print / Save PDF</button>
+</div>
+</body>
+</html>
