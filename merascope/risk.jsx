@@ -109,8 +109,8 @@ function TierLadder({ rows, mine }) {
       </div>
 
       <p style={{ fontSize: 12, color: 'var(--slate)', margin: '10px 0 0', lineHeight: 1.55 }}>
-        Each bar is one tier, holding the same number of ZIP codes; its height is how
-        often those ZIPs host a data center. The bars stay flat until the last few
+        Each bar is one <strong>exposure</strong> tier, holding the same number of ZIP
+        codes; its height is how often those ZIPs host a data center. The bars stay flat until the last few
         &mdash; exposure is concentrated in a small part of the country, so most ZIP
         codes sit low on this scale.
       </p>
@@ -174,9 +174,11 @@ function RiskResult({ data, rows }) {
           Active pipeline
         </h4>
         <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5 }}>
-          Tier <strong>{p.tier}</strong> of {p.n_tiers} for proposed and permitted
-          projects &mdash; {pct(p.observed)} of ZIPs scoring like this one currently have
-          something in the pipeline.{' '}
+          On a <em>separate</em> ranking for proposed and permitted projects, this ZIP
+          is tier <strong>{p.tier}</strong> of {p.n_tiers} &mdash; {pct(p.observed)} of ZIPs
+          scoring like this one have something in the pipeline. Pipeline tiers are their
+          own scale, so tier {p.tier} here is a different set of ZIPs than tier {p.tier}{' '}
+          above.{' '}
           <span style={{ color: 'var(--slate)' }}>
             This signal is much weaker than the one above (259 known projects nationally),
             so treat it as a hint, not a finding.
@@ -204,6 +206,38 @@ const GRID_BINS = [
   { max: 99,  color: '#cf4f3c', label: '8.0-10' },
 ];
 const gridColor = t => (GRID_BINS.find(b => t <= b.max) || GRID_BINS[4]).color;
+
+function TierTable({ title, blurb, rows, mine, valueHead }) {
+  if (!rows || !rows.length) return null;
+  return (
+    <div style={{ marginTop: 26 }}>
+      <h3 style={{ fontFamily: 'var(--serif)', marginBottom: 4 }}>{title}</h3>
+      <p style={{ color: 'var(--slate)', fontSize: 14, marginTop: 0 }}>{blurb}</p>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+        <thead>
+          <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--line)' }}>
+            <th style={{ padding: '8px 6px' }}>Tier</th>
+            <th style={{ padding: '8px 6px' }}>ZIP codes</th>
+            <th style={{ padding: '8px 6px' }}>{valueHead}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(r => (
+            <tr key={r.tier} style={{
+              borderBottom: '1px solid var(--line-soft)',
+              background: r.tier === mine ? 'var(--mist)' : 'transparent',
+              fontWeight: r.tier === mine ? 700 : 400,
+            }}>
+              <td style={{ padding: '7px 6px' }}>{r.tier}</td>
+              <td style={{ padding: '7px 6px', color: 'var(--slate)' }}>{r.n.toLocaleString()}</td>
+              <td style={{ padding: '7px 6px' }}>{pct(r.observed)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 function RiskMap({ focus }) {
   const boxRef = React.useRef(null);
@@ -364,6 +398,7 @@ function RiskPage({ query }) {
   }, [deepZip]);
 
   const rows = stats && stats.stats && stats.stats.exposure ? stats.stats.exposure.tiers : null;
+  const pipeRows = stats && stats.stats && stats.stats.pipeline ? stats.stats.pipeline.tiers : null;
 
   const search = e => {
     if (e) e.preventDefault();
@@ -410,33 +445,17 @@ function RiskPage({ query }) {
 
       {data && <RiskResult data={data} rows={rows} />}
 
-      {rows && (
-        <div style={{ marginTop: 36 }}>
-          <h3 style={{ fontFamily: 'var(--serif)' }}>How the tiers compare</h3>
-          <p style={{ color: 'var(--slate)', fontSize: 14, marginTop: 0 }}>
-            Every tier holds the same number of ZIP codes. The percentage is the share
-            of them that host a mapped data center today.
-          </p>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-            <thead>
-              <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--line)' }}>
-                <th style={{ padding: '8px 6px' }}>Tier</th>
-                <th style={{ padding: '8px 6px' }}>ZIP codes</th>
-                <th style={{ padding: '8px 6px' }}>Host a data center</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(r => (
-                <tr key={r.tier} style={{ borderBottom: '1px solid var(--line-soft)' }}>
-                  <td style={{ padding: '7px 6px' }}>{r.tier}</td>
-                  <td style={{ padding: '7px 6px', color: 'var(--slate)' }}>{r.n.toLocaleString()}</td>
-                  <td style={{ padding: '7px 6px' }}>{pct(r.observed)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <TierTable
+        title="Exposure tiers"
+        blurb="Ranked by how much a ZIP resembles places that already have data centers. Every tier holds the same number of ZIP codes."
+        rows={rows} mine={data && data.exposure.tier}
+        valueHead="Host a data center" />
+
+      <TierTable
+        title="Pipeline tiers"
+        blurb="A separate ranking, for proposed and permitted projects only. The same tier number here covers a different set of ZIP codes than above."
+        rows={pipeRows} mine={data && data.pipeline.tier}
+        valueHead="Have something proposed" />
 
       <RiskMap focus={data} />
 
