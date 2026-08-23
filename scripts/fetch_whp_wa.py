@@ -125,7 +125,7 @@ def crop_to_wa(tif_path, tfw_path):
     transform = {"origin_x": crop_ox, "origin_y": crop_oy, "pixel_x": px, "pixel_y": py, "crs": WHP_CRS}
     with open(os.path.join(SHARED, "whp_wa_transform.json"), "w") as f:
         json.dump(transform, f)
-    print(f"  Saved whp_wa.npy + whp_wa_transform.json")
+    print("  Saved whp_wa.npy + whp_wa_transform.json")
     return crop, transform
 
 
