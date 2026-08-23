@@ -2067,6 +2067,27 @@ def plain_client():
         yield c
 
 
+# These are integration tests over the real Aqueduct watershed exports, which live
+# in data/shared/ — gitignored along with the rest of the pipeline data volume, so
+# they are absent in CI. Committing them is not the fix: they are derived artifacts
+# and compact_watersheds.geojson alone is 6.7 MB. Skipping matches how this suite
+# already treats a missing PostgreSQL.
+#
+# The assertions here check that the FINDING still holds (the compact gap, the
+# rendered numbers), not just that the plumbing works, so a synthetic fixture would
+# not preserve their value — they need the real export. The meaningful gate is
+# deploy_hetzner.sh, which runs pytest locally where the data is present, before it
+# rsyncs anything.
+_SHARED = os.path.join(ROOT, 'data', 'shared')
+_FINDINGS_DATA = os.path.exists(os.path.join(_SHARED, 'pnw_watersheds.geojson'))
+needs_findings_data = pytest.mark.skipif(
+    not _FINDINGS_DATA,
+    reason='data/shared/ exports absent (gitignored) — run scripts/export_pnw_watersheds.py '
+           'or sync data/shared/ to run the findings tests',
+)
+
+
+@needs_findings_data
 class TestPnwWaterStressFinding:
     def test_json_matches_compact_gap(self, plain_client):
         d = plain_client.get('/findings/pnw-water-stress.json').get_json()
