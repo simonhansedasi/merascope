@@ -1,0 +1,249 @@
+<!--
+  finding_pnw_water_stress.html — Server-rendered (Jinja2, no React)
+  public findings page. Rendered by server.py's finding_pnw_water_stress()
+  (/findings/pnw-water-stress). Numbers come from
+  scripts/analysis_pnw_water_stress.py's compute() — the same function the
+  CLI script is sourced from, so this page can never quote a different
+  number than the reproducible script does.
+
+  Replaces finding_water_stress_corridor.html (2026-08-06): the old page
+  named an invented "Columbia corridor" and asserted an unverified "PNW is
+  the Colorado River's safe alternative" narrative. See
+  ~/coding/contexts/datacenter_siting/CONTEXT.md for the full account.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ site_name|default('Merascope') }} — Water-stress finding: Pacific Northwest vs. Colorado River Compact states</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 10pt;
+      color: #111;
+      background: #eef0f4;
+    }
+    .page {
+      width: 8.5in;
+      min-height: 11in;
+      margin: 0.4in auto;
+      padding: 0.6in 0.7in;
+      background: #fff;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.13);
+    }
+    .rpt-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 2px solid #1a1a2e;
+      padding-bottom: 12px;
+      margin-bottom: 20px;
+    }
+    .rpt-logo { font-size: 13.5pt; font-weight: 700; color: #1a1a2e; letter-spacing: 0.07em; }
+    .rpt-doc-title { font-size: 8pt; color: #555; margin-top: 3px; letter-spacing: 0.04em; }
+    .rpt-meta { text-align: right; font-size: 8pt; color: #555; line-height: 1.8; }
+    .rpt-meta strong { color: #222; }
+
+    h1.title { font-size: 17pt; font-weight: 700; margin-bottom: 6px; }
+    p.lede { font-size: 10.5pt; line-height: 1.65; color: #333; margin-bottom: 18px; }
+
+    h3.sec {
+      font-size: 8.5pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: #444;
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 4px;
+      margin: 22px 0 10px;
+    }
+
+    table { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
+    th { font-size: 7.8pt; text-align: left; padding: 4px 8px; background: #f0f0f7; border-bottom: 1.5px solid #ccd; white-space: nowrap; }
+    td { padding: 3.5px 8px; font-size: 8.8pt; border-bottom: 1px solid #eee; vertical-align: middle; }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+    .tag-extreme { color: #b92b27; font-weight: 700; }
+    .tag-high    { color: #8a6000; font-weight: 700; }
+    .tag-low     { color: #1a7a45; font-weight: 700; }
+
+    .caption { font-size: 7.5pt; color: #777; margin-top: 4px; margin-bottom: 8px; }
+
+    .box {
+      background: #f7f8fc;
+      border: 1px solid #d8dae8;
+      border-radius: 6px;
+      padding: 11px 15px;
+      font-size: 8.7pt;
+      line-height: 1.75;
+      margin-bottom: 10px;
+    }
+    .box strong { color: #222; }
+
+    .caveat-box {
+      background: #fff8e1;
+      border: 1px solid #e6b800;
+      border-radius: 6px;
+      padding: 11px 15px;
+      font-size: 8.7pt;
+      line-height: 1.75;
+      color: #5a4000;
+      margin-bottom: 10px;
+    }
+
+    .repro {
+      background: #f7f8fc;
+      border: 1px solid #d8dae8;
+      border-radius: 6px;
+      padding: 11px 15px;
+      font-size: 8pt;
+      line-height: 1.9;
+    }
+    .repro strong { color: #222; }
+    .repro a { color: #3a5bd9; }
+    .permalink { text-align: right; }
+    .permalink .lbl { font-size: 8.5pt; color: #555; text-transform: uppercase; letter-spacing: .08em; }
+    .permalink .url { font-size: 10pt; font-weight: 700; color: #1a7a45; margin-top: 2px; }
+
+    .print-bar {
+      position: fixed; bottom: 22px; right: 24px;
+      display: flex; gap: 10px;
+    }
+    .btn-print {
+      padding: 8px 20px; border-radius: 6px; border: none; cursor: pointer;
+      background: #1a1a2e; color: #fff; font-size: 9pt; font-weight: 600;
+    }
+    .btn-json {
+      padding: 8px 16px; border-radius: 6px; border: 1px solid #ccc;
+      cursor: pointer; background: #fff; color: #333; font-size: 9pt; text-decoration: none;
+    }
+
+    @media print {
+      body { background: none; }
+      .page { box-shadow: none; margin: 0; padding: 0.5in 0.6in; }
+      .print-bar { display: none; }
+      .box, .caveat-box, .repro { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      h3.sec { page-break-after: avoid; }
+      table tr { page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="rpt-header">
+    <div>
+      <div class="rpt-logo">MERASCOPE</div>
+      <div class="rpt-doc-title">Data Finding — Not a Case Report</div>
+    </div>
+    <div class="rpt-meta">
+      <div><strong>Generated:</strong> {{ generated_at }}</div>
+      <div><strong>Pipeline:</strong> v2026.08.06</div>
+      <div><strong>Geography:</strong> Aqueduct watershed polygons, state-clipped</div>
+    </div>
+  </div>
+
+  <h1 class="title">Water stress: Pacific Northwest vs. the Colorado River Compact states</h1>
+  <p class="lede">
+    A new federal plan for the Colorado River (July 31, 2026) forces deep water cuts on Arizona,
+    California, and Nevada. This checks what the water-stress data actually says about
+    Washington and Oregon by comparison, using the real WRI Aqueduct watershed polygons.
+  </p>
+
+  <h3 class="sec">Area-weighted share at extremely high baseline water stress (Aqueduct bws &ge; 4)</h3>
+  <table>
+    <tr><th>Region</th><th class="num">Share of area</th><th class="num">n watersheds</th></tr>
+    <tr><td>National</td><td class="num">{{ '%.1f'|format(national_share) }}%</td><td class="num">{{ n_watersheds_national }}</td></tr>
+    <tr><td>7 Colorado River Compact states (AZ, CA, CO, NV, NM, UT, WY)</td><td class="num">{{ '%.1f'|format(compact_share) }}%</td>
+        <td class="num">{{ n_watersheds_compact }}</td></tr>
+    <tr><td>Washington + Oregon</td><td class="num">{{ '%.1f'|format(pnw_share) }}%</td>
+        <td class="num">{{ n_watersheds_pnw }}</td></tr>
+  </table>
+  <p class="caption">Aqueduct's "extremely high" category is a withdrawal-to-supply ratio above 80%. Shares are % of km2.</p>
+
+  <h3 class="sec">Per state</h3>
+  <table>
+    <tr><th>State</th><th class="num">Share extremely high</th><th class="num">n watersheds</th><th class="num">Area (km&sup2;)</th></tr>
+    {% for row in per_state %}
+    <tr><td>{{ row.state }}</td><td class="num">{{ '%.1f'|format(row.share) }}%</td><td class="num">{{ row.n }}</td>
+        <td class="num">{{ '{:,.0f}'.format(row.area_km2) }}</td></tr>
+    {% endfor %}
+  </table>
+
+  <h3 class="sec">The 6 distinct WA/OR watersheds at extremely high stress ({{ extreme_watersheds|length }} rows -- 2 basins straddle the state line)</h3>
+  <table>
+    <tr><th>Watershed</th><th>State</th><th class="num">bws</th><th class="num">Area (km&sup2;)</th></tr>
+    {% for row in extreme_watersheds %}
+    <tr><td>{{ row.aq30_id }}</td><td>{{ row.state }}</td><td class="num tag-extreme">{{ '%.3f'|format(row.bws) }}</td>
+        <td class="num">{{ '{:,.0f}'.format(row.area_km2) }}</td></tr>
+    {% endfor %}
+  </table>
+  <p class="caption">A repeated watershed ID across a WA row and an OR row means that basin straddles the state line. {{ '%.1f'|format(floor_share) }}% of all WA/OR land area sits at the literal floor (bws = 0.000).</p>
+
+  <h3 class="sec">Confirmed WA/OR data-center sites</h3>
+  <table>
+    <tr><th>Site</th><th>State</th><th>Watershed</th><th class="num">bws</th><th>Class</th></tr>
+    {% for row in dc_sites_pnw %}
+    <tr>
+      <td>{{ row.name }}{% if row.status in ('proposed', 'under_construction') %} ({{ row.status }}){% endif %}</td>
+      <td>{{ row.state }}</td><td>{{ row.watershed_id }}</td>
+      <td class="num">{{ '%.3f'|format(row.bws) }}</td>
+      <td class="{{ 'tag-extreme' if row.tag == 'extremely high' else ('tag-high' if row.tag == 'high' else 'tag-low') }}">{{ row.tag }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="caption">{{ dc_sites_pnw|length }} sites, all confirmed by 2+ independent sources in datacenters.db.</p>
+
+  <h3 class="sec">Confirmed Compact-state data-center sites</h3>
+  <table>
+    <tr><th>Site</th><th>State</th><th>Watershed</th><th class="num">bws</th><th>Class</th></tr>
+    {% for row in dc_sites_compact %}
+    <tr>
+      <td>{{ row.name }}{% if row.status in ('proposed', 'under_construction') %} ({{ row.status }}){% endif %}</td>
+      <td>{{ row.state }}</td><td>{{ row.watershed_id }}</td>
+      <td class="num">{{ '%.3f'|format(row.bws) }}</td>
+      <td class="{{ 'tag-extreme' if row.tag == 'extremely high' else ('tag-high' if row.tag == 'high' else 'tag-low') }}">{{ row.tag }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="caption">{{ dc_sites_compact|length }} sites, known-major-cluster coverage across the 7 Compact states, same confirmation bar.</p>
+
+  {% set extreme_compact = dc_sites_compact|selectattr('tag', 'equalto', 'extremely high')|list %}
+  <h3 class="sec">Clusters sit on stressed ground more than bare land area predicts</h3>
+  <div class="box">
+    {{ extreme_compact|length }} of {{ dc_sites_compact|length }} confirmed Compact-state sites ({{ '%.0f'|format(100.0 * extreme_compact|length / dc_sites_compact|length) }}%) sit in a watershed reading extremely high -- Chandler/Mesa AZ, all of Denver CO, Los Lunas NM, all of Cheyenne WY -- well above the {{ '%.1f'|format(compact_share) }}% area-weighted regional baseline. Not universal: Goodyear AZ, Silicon Valley CA, Las Vegas NV, and both Utah sites read low. The same in-state split found in WA/OR recurs here too: Chandler/Mesa reads extremely high while Goodyear, same Phoenix metro, reads low; the Tahoe-Reno cluster reads high while Las Vegas, same state, reads low.
+  </div>
+
+  <h3 class="sec">Independent corroboration</h3>
+  <div class="box">
+    Oregon designated the Walla Walla Basin a "Serious Water Management Problem Area" in 2017 after basalt-aquifer declines of 1-4 ft/year; Washington Ecology's parallel "Walla Walla 2050" initiative covers the same bi-state basin. Aqueduct is a global model with no knowledge of either designation and lands on the same footprint anyway.
+  </div>
+
+  <h3 class="sec">What this doesn't measure</h3>
+  <div class="caveat-box">
+    This is <strong>local withdrawal-to-supply ratio</strong>, not Colorado River allocation risk — Nevada and Utah both read low despite heavy Colorado River exposure, because Las Vegas draws ~90% of its water from Lake Mead while sitting in a Great Basin internal-drainage watershed. It's a <strong>long-run average</strong>, not current drought conditions. And it says <strong>nothing about water quality</strong>, which this page does not attempt to show.
+  </div>
+
+  <h3 class="sec">Reproducibility</h3>
+  <div class="repro">
+    <div><strong>Source:</strong> WRI Aqueduct 3.0 baseline water stress, read directly from Aqueduct's watershed polygons ({{ n_watersheds_pnw }} WA/OR + {{ n_watersheds_compact }} Compact-states polygons after per-state clipping, {{ n_watersheds_national }} national).</div>
+    <div><strong>Script:</strong> <code>scripts/analysis_pnw_water_stress.py</code> — every number on this page comes from that script's <code>compute()</code>, run fresh on every page load against <code>scripts/export_pnw_watersheds.py</code>'s exported layers.</div>
+    <div><strong>Raw data:</strong> <a href="/findings/pnw-water-stress.json">/findings/pnw-water-stress.json</a> — the same numbers as machine-readable JSON.</div>
+    <div style="margin-top: 2px;"><strong>Generated:</strong> {{ generated_at }}</div>
+  </div>
+
+  <div class="permalink" style="margin-top: 10px;">
+    <div class="lbl">Live, reproducible page</div>
+    <div class="url">merascope.com/findings/pnw-water-stress</div>
+  </div>
+
+</div><!-- end .page -->
+
+<div class="print-bar">
+  <a class="btn-json" href="/findings/pnw-water-stress.json">View raw JSON</a>
+  <button class="btn-print" onclick="window.print()">Print / Save PDF</button>
+</div>
+</body>
+</html>
