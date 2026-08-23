@@ -149,8 +149,15 @@ function App() {
   // Public guided-tour state machine (TOUR_STEPS, ui.jsx). tourStep === null means
   // no tour is running; tourStep is the index of the next step to apply. Starts
   // at step 0 automatically unless 'mera_tour_done' is already set.
+  // The public ZIP lookup (/risk) is reached by members of the public, often from
+  // a shared link, and the tour pitches a siting workflow they did not come for.
+  // Suppress it there without marking the tour done, so it still runs if they
+  // later move to the Explorer.
   const [tourStep, setTourStep] = React.useState(() => {
-    try { return localStorage.getItem('mera_tour_done') ? null : 0; } catch (e) { return null; }
+    try {
+      if ((location.hash || '').replace(/^#/, '').startsWith('/risk')) return null;
+      return localStorage.getItem('mera_tour_done') ? null : 0;
+    } catch (e) { return null; }
   });
   // IMPORTANT ordering gotcha (see CLAUDE.md "window._inTour TDZ gotcha"): this
   // effect's dependency array closes over `tourStep`, so it MUST be declared
@@ -253,6 +260,7 @@ function App() {
   else if (path.startsWith('/factsheets')) page = <FactSheetsPage which={path.split('/')[2]} />;
   else if (path.startsWith('/pricing')) page = <PricingPage />;
   else if (path.startsWith('/login')) page = <LoginPage />;
+  else if (path.startsWith('/risk')) page = <RiskPage query={route.query} />;
   else if (path.startsWith('/methodology')) page = <MethodologyPage />;
   else if (path.startsWith('/evidence')) page = <EvidencePage caseId={route.query.case} />;
   else page = <LandingPage />;

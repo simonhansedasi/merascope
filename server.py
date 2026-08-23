@@ -3170,6 +3170,133 @@ def report_explorer():
     return render_template('report.html', **ctx)
 
 
+# ── public risk lookup ─────────────────────────────────────────────────────────
+# The only unauthenticated, ungated surface in the product: anyone can look up a
+# ZIP and see how exposed it is to data-center siting. Precomputed by
+# scripts/18_risk_tiers.py; no model runs at request time.
+#
+# Deliberately NOT offered: any bulk listing or export. The whole top tier as a
+# downloadable national ranking would circulate stripped of the caveats that make
+# it honest, so lookups are one ZIP at a time and rate-limited.
+#
+# The per-ZCTA file lives in data/.risk/ — the leading dot means the catch-all
+# static route below refuses it (it rejects dot-segments at any depth), even
+# though '.json' is an allowlisted static extension.
+
+_RISK_DIR       = os.path.join(ROOT, 'data', '.risk')
+_risk_lock      = threading.Lock()
+_risk_cache     = {}
+_risk_rl_lock   = threading.Lock()
+_risk_rl_store  = {}
+_RISK_RL_WINDOW = 60
+_RISK_RL_LIMIT  = 30
+
+
+def _check_risk_rate(ip):
+    """Sliding-window per-IP cap for the public risk lookup. Same pattern as
+    _check_rate_limit; separate store so a burst here can't lock anyone out of
+    magic links. Note this is per-worker and in-memory (see README security
+    model) — it throttles casual scraping, not a distributed effort."""
+    now = time.time()
+    with _risk_rl_lock:
+        hits = [t for t in _risk_rl_store.get(ip, []) if now - t < _RISK_RL_WINDOW]
+        if len(hits) >= _RISK_RL_LIMIT:
+            return False
+        hits.append(now)
+        _risk_rl_store[ip] = hits
+    return True
+
+
+def _load_risk(name):
+    """Lazy-load and cache one of the precomputed risk files."""
+    with _risk_lock:
+        if name not in _risk_cache:
+            path = os.path.join(_RISK_DIR, name)
+            if not os.path.exists(path):
+                _risk_cache[name] = None
+            else:
+                with open(path) as fh:
+                    _risk_cache[name] = json.load(fh)
+        return _risk_cache[name]
+
+
+@app.route('/api/risk/tiers')
+def risk_tiers():
+    """Aggregate tier statistics — observed rate per tier, with intervals.
+
+    Safe to expose: it describes tiers, not ZIPs, and it is the context that keeps
+    a single lookup from being read as a probability."""
+    stats = _load_risk('tier_stats.json')
+    if stats is None:
+        return jsonify({'ok': False, 'err': 'risk data not built'}), 503
+    return jsonify({'ok': True, **stats})
+
+
+@app.route('/api/risk/grid')
+def risk_grid():
+    """Aggregated national map layer.
+
+    Deliberately coarse. A per-ZCTA layer would ship the entire ranking to the
+    browser, which is exactly the bulk export this product declines to offer, so
+    cells are 0.25 degrees (~28 km) and carry only a mean tier and counts."""
+    grid = _load_risk('grid.json')
+    if grid is None:
+        return jsonify({'ok': False, 'err': 'risk data not built'}), 503
+    resp = jsonify({'ok': True, **grid})
+    resp.headers['Cache-Control'] = 'public, max-age=86400'
+    return resp
+
+
+@app.route('/api/risk/<zipcode>')
+def risk_lookup(zipcode):
+    """Exposure tier for one ZIP code."""
+    if not _check_risk_rate(_client_ip()):
+        return jsonify({'ok': False, 'err': 'rate limit exceeded'}), 429
+
+    z = (zipcode or '').strip()
+    if not (len(z) == 5 and z.isdigit()):
+        return jsonify({'ok': False, 'err': 'invalid', 'msg': 'Enter a five-digit ZIP code.'}), 400
+
+    tiers = _load_risk('zcta_tiers.json')
+    stats = _load_risk('tier_stats.json')
+    if tiers is None or stats is None:
+        return jsonify({'ok': False, 'err': 'risk data not built'}), 503
+
+    rec = tiers.get(z)
+    if rec is None:
+        # A real ZIP with no ZCTA: PO-box-only and some non-residential ZIPs are
+        # never tabulated by the Census. Say so rather than returning a zero that
+        # would read as "no exposure".
+        return jsonify({
+            'ok': False, 'err': 'no_zcta', 'zip': z,
+            'msg': ('No Census tabulation area matches this ZIP. That usually means it is a '
+                    'PO-box or single-organization ZIP rather than a residential area, so '
+                    'there is nothing to score. Try a neighbouring ZIP.'),
+        }), 404
+
+    def tier_row(kind, t):
+        rows = stats['stats'][kind]['tiers']
+        row  = next((r for r in rows if r['tier'] == t), None)
+        return {
+            'tier': t, 'n_tiers': stats['n_tiers'],
+            'observed': row['observed'] if row else None,
+            'ci_lo': row['ci_lo'] if row else None,
+            'ci_hi': row['ci_hi'] if row else None,
+            'lowest_tier_observed': rows[0]['observed'] if rows else None,
+        }
+
+    return jsonify({
+        'ok': True, 'zip': z, 'state': rec.get('s'),
+        'exposure': tier_row('exposure', rec['e']),
+        'pipeline': tier_row('pipeline', rec['p']),
+        'factors': rec.get('f') or [],
+        'lat': rec.get('lat'), 'lon': rec.get('lon'),
+        'built_facilities': rec.get('n', 0),
+        'pipeline_facilities': rec.get('w', 0),
+        'sources': stats.get('sources', []),
+    })
+
+
 # ── static file serving ────────────────────────────────────────────────────────
 
 # Only front-end asset types are served by the catch-all route. Anything else

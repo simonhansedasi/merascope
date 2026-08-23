@@ -439,3 +439,57 @@ All publicly available.
 | EIA Form 860M Monthly (Planned sheet) | State-level interconnection queue pressure |
 | WRI Aqueduct Water Risk Atlas 3.0 | Baseline water stress by watershed |
 | PeeringDB /api/fac | Carrier hotel and colo facility proximity (fiber) |
+
+
+## Public ZIP exposure lookup (`/#/risk`)
+
+The only ungated surface in the product. `scripts/18_risk_tiers.py` precomputes a
+tier for every ZCTA; `server.py` looks the answer up. No model runs at request time.
+
+**It reports a tier and an observed rate, never a probability.** Even after the
+multi-source relabelling the model is not calibrated well enough to put a percentage
+next to a ZIP (the 0.2-0.3 band reads 0.238 predicted against 0.174 observed). What
+it states instead is the measured share of ZIPs in the same tier that host a
+facility, quoted against the lowest tier — the same statistic on both sides, so the
+claim does not depend on calibration. `tests/test_risk.py` guards the wording.
+
+Two tiers per ZIP: `exposure` (from `has_dc`, 254x top-vs-bottom) and `pipeline`
+(from `has_dc_forward`, only 21x on 259 known projects — presented as a hint, not a
+finding).
+
+### Security model for the public routes
+
+- **No bulk export.** There is deliberately no route returning many ZIPs at once.
+  The per-ZCTA file lives in `data/.risk/` — the leading dot means the catch-all
+  static route refuses it (it rejects dot-segments at any depth) even though
+  `.json` is an allowlisted extension. `tests/test_risk.py` asserts this.
+- **Rate limiting** is 30 lookups per IP per minute, via the same sliding-window
+  pattern as the magic-link limiter but with its own store. **This is per-worker and
+  in-memory** (the code review's deferred finding 6): it throttles casual scraping,
+  not a distributed effort. Moving it to a shared store is the fix when it matters.
+- **Unknown ZIPs explain themselves.** A ZIP with no ZCTA (PO-box or
+  single-organization) returns 404 with an explanation rather than a zero that would
+  read as "no exposure".
+
+### The map
+
+`/#/risk` includes a national exposure map (Leaflet, already vendored; CartoDB
+basemap; canvas renderer).
+
+**The exposure layer is aggregated to 0.25-degree (~28 km) cells carrying a mean
+tier and counts — never per-ZIP.** A per-ZCTA layer would ship the entire ranking to
+the browser, which is precisely the bulk export the product declines to offer, so the
+map shows where exposure clusters without handing anyone a ZIP-by-ZIP list.
+`tests/test_risk.py::test_map_layer_is_aggregated_not_per_zip` holds that line.
+Served from `/api/risk/grid` (9,707 cells, ~188 KB, cached 24 h).
+
+The second layer is the 2,302 real facilities from `facilities.geojson` — already
+public, already attributed, and the most verifiable thing on the page.
+
+Deep links work: `#/risk?zip=20147` looks the ZIP up on load and drops a pin.
+
+### Attribution
+
+`data/datacenters/facilities.geojson` is reachable over HTTP, and ODbL and CC BY
+both require attribution to travel with the data — so the notice is written into the
+GeoJSON itself as a top-level `attribution` member, and returned by `/api/risk/<zip>`.
