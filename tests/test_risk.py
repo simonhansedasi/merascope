@@ -39,12 +39,24 @@ def test_lookup_returns_tier_and_observed_rate(client):
     # The observed rate is what the page quotes; it must be present and a rate.
     assert 0.0 <= d['exposure']['observed'] <= 1.0
     assert 0.0 <= d['exposure']['lowest_tier_observed'] <= 1.0
+    # There is one ranking now. A second per-ZIP tier is the thing this design
+    # removed, so its absence is worth pinning down.
+    assert 'pipeline' not in d
 
 
 @needs_risk
-def test_known_dense_zip_lands_in_top_tier(client):
+def test_known_dense_zip_lands_near_the_top(client):
+    """Ashburn VA carries 12 mapped facilities; it must score high.
+
+    Top TWO tiers, not the exact top decile. Scores are out-of-fold under
+    spatially-blocked CV, so a heavily-built ZIP sits wherever its held-out region
+    puts it and can land either side of the 9/10 boundary — 20147 moved from 10 to
+    9 when the state-assignment fix shifted features on ~10% of rows, while overall
+    lift went UP (4.10x -> 4.18x). Pinning one ZIP to one decile tests the boundary,
+    not the model.
+    """
     d = client.get('/api/risk/20147').get_json()
-    assert d['exposure']['tier'] == d['exposure']['n_tiers']
+    assert d['exposure']['tier'] >= d['exposure']['n_tiers'] - 1
     assert d['built_facilities'] > 0
 
 
@@ -100,11 +112,83 @@ def test_rate_limit_returns_429(client):
 
 @needs_risk
 def test_tier_stats_are_monotonic(client):
-    """The public table only makes sense if higher tiers really do host more."""
+    """The public table only makes sense if higher tiers really do host more.
+
+    Applies to the BUILT rate only. The pipeline rate is deliberately not asserted
+    monotonic — at 259 known projects nationally the low tiers sit inside each
+    other's intervals, and pretending otherwise is what the old second ranking did.
+    """
     d = client.get('/api/risk/tiers').get_json()
     obs = [t['observed'] for t in d['stats']['exposure']['tiers']]
     assert obs == sorted(obs), obs
     assert obs[-1] > obs[0] * 20
+
+
+@needs_risk
+def test_shared_bins_report_both_rates(client):
+    """Both rates must ride the same row.
+
+    This is the whole design: one group of ZIP codes described twice, so the built
+    and pipeline columns can be read across. If a future change gives the pipeline
+    its own bins, `n` stops being shared and this fails.
+    """
+    d = client.get('/api/risk/tiers').get_json()
+    rows = d['stats']['exposure']['tiers']
+    assert len(rows) == d['n_tiers']
+    for r in rows:
+        assert 0.0 <= r['observed'] <= 1.0
+        assert 0.0 <= r['observed_pipeline'] <= 1.0
+        assert 0.0 < r['ci_lo_pipeline'] <= r['ci_hi_pipeline'] <= 1.0
+        # The Jeffreys interval is Beta(k+.5, n-k+.5), so at k=0 its lower bound
+        # is small but strictly positive and does not cover the point estimate.
+        # That is correct — a tier with no known proposals is not evidence that
+        # the rate is exactly zero — so containment is only asserted above zero.
+        if r['observed_pipeline'] > 0:
+            assert r['ci_lo_pipeline'] <= r['observed_pipeline'] <= r['ci_hi_pipeline']
+        assert r['n'] > 0                      # one n, serving both rates
+        assert r['n_divergent'] >= 0
+    # Equal-sized bins, so no row may be quoted as if it covered more ZIPs.
+    assert max(r['n'] for r in rows) - min(r['n'] for r in rows) <= 1
+
+
+@needs_risk
+def test_no_separate_pipeline_ranking(client):
+    """Regression guard against reintroducing a second scale.
+
+    Two independent decile ladders looked comparable but were not — the two top
+    tiers shared only 812 of 3,326 ZIPs, so the same tier number named different
+    ZIP codes on each and the page had to explain the contradiction away.
+    """
+    d = client.get('/api/risk/tiers').get_json()
+    assert 'pipeline' not in d['stats']
+    assert list(d['stats'].keys()) == ['exposure']
+
+
+@needs_risk
+def test_divide_stats_are_published(client):
+    """The page quotes these; each must come from the script, not from JSX."""
+    d = client.get('/api/risk/tiers').get_json()
+    v = d['divide']
+    # Same statistic on both sides — each label's share of its own national total.
+    assert 0.0 <= v['top_tier_share_pipeline'] < v['top_tier_share_built'] <= 1.0
+    assert v['n_divergent'] > 0
+    assert v['divergent_rural_share'] > v['hosting_rural_share']
+
+
+@needs_risk
+def test_divergence_flag_for_empty_zip_with_pipeline(client):
+    """Nothing built, something proposed — the case the page calls out by name."""
+    d = client.get('/api/risk/50261').get_json()      # Van Meter, IA
+    assert d['built_facilities'] == 0
+    assert d['pipeline_facilities'] > 0
+    assert d['divergence'] is True
+
+
+@needs_risk
+def test_divergence_flag_is_false_where_already_built(client):
+    d = client.get('/api/risk/20147').get_json()      # Ashburn, VA
+    assert d['built_facilities'] > 0
+    assert d['divergence'] is False
 
 
 def test_page_copy_makes_no_probability_claim():

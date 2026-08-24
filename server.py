@@ -3274,25 +3274,42 @@ def risk_lookup(zipcode):
                     'there is nothing to score. Try a neighbouring ZIP.'),
         }), 404
 
-    def tier_row(kind, t):
-        rows = stats['stats'][kind]['tiers']
-        row  = next((r for r in rows if r['tier'] == t), None)
+    def tier_row(t):
+        """One tier described twice — what is built there, and what is proposed
+        there. Both rates come off the SAME row, so the page can put them side by
+        side; that is the whole reason there is one binning and not two.
+
+        The pipeline fields are read with .get() on purpose. CI excludes data/
+        (deploy.yml), so code ships ahead of a regenerated data/.risk/ and this
+        runs against the older two-ranking JSON for a window. Missing fields must
+        degrade to a table without the pipeline column, never to a 500.
+        """
+        rows = stats['stats']['exposure']['tiers']
+        row  = next((r for r in rows if r['tier'] == t), None) or {}
         return {
             'tier': t, 'n_tiers': stats['n_tiers'],
-            'observed': row['observed'] if row else None,
-            'ci_lo': row['ci_lo'] if row else None,
-            'ci_hi': row['ci_hi'] if row else None,
-            'lowest_tier_observed': rows[0]['observed'] if rows else None,
+            'observed': row.get('observed'),
+            'ci_lo': row.get('ci_lo'),
+            'ci_hi': row.get('ci_hi'),
+            'lowest_tier_observed': rows[0].get('observed') if rows else None,
+            'observed_pipeline': row.get('observed_pipeline'),
+            'ci_lo_pipeline': row.get('ci_lo_pipeline'),
+            'ci_hi_pipeline': row.get('ci_hi_pipeline'),
+            'lowest_tier_observed_pipeline': rows[0].get('observed_pipeline') if rows else None,
         }
 
+    built, proposed = rec.get('n', 0), rec.get('w', 0)
     return jsonify({
         'ok': True, 'zip': z, 'state': rec.get('s'),
-        'exposure': tier_row('exposure', rec['e']),
-        'pipeline': tier_row('pipeline', rec['p']),
+        'exposure': tier_row(rec['e']),
         'factors': rec.get('f') or [],
         'lat': rec.get('lat'), 'lon': rec.get('lon'),
-        'built_facilities': rec.get('n', 0),
-        'pipeline_facilities': rec.get('w', 0),
+        'built_facilities': built,
+        'pipeline_facilities': proposed,
+        # Nothing here yet, something on the way. Observed counts, not a model
+        # output — the one case worth calling out by name on the page.
+        'divergence': built == 0 and proposed > 0,
+        'divide': stats.get('divide'),
         'sources': stats.get('sources', []),
     })
 

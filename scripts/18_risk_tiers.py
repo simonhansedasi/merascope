@@ -12,9 +12,32 @@ against 0.174 observed. What IS defensible is the OBSERVED share of ZCTAs in a t
 that host a facility, quoted against the lowest tier — the same statistic on both
 sides of the comparison, so no calibration dependency at all.
 
-Two tiers are written per ZCTA:
-  exposure  — from `has_dc`, facilities that exist now (strong: 254x top vs bottom)
-  pipeline  — from `has_dc_forward`, proposed/permitted only (weak: 21x, 259 positives)
+ONE binning, TWO rates. There used to be two rankings here — a second model fit on
+`has_dc_forward` with its own deciles — and it made the only interesting comparison
+impossible to state. Two ladders of ten equal bins LOOK comparable but are not: the
+two top tiers shared just 812 of 3,326 ZIPs, so "tier 9" named a different set of
+ZIP codes on each. Now ZCTAs are binned once, on the `has_dc` score, and each tier
+carries both observed rates measured on the SAME rows:
+
+  observed           — share of the tier's ZIPs hosting a facility now
+  observed_pipeline  — share of those same ZIPs with something proposed/permitted
+
+That is what lets the two be read across, and it is what surfaces the divide: the
+top decile holds 42.2% of all built facilities but only 25.9% of the pipeline.
+
+The forward model is deliberately not fit any more. It was weak (21x top-vs-bottom,
+against 168x for the built label) and its bottom half was not even monotonic — tier
+3 came in below tier 2, with tiers 1-5 all inside each other's intervals. As a rate
+on stable bins the same signal survives without the spurious ordering.
+
+Note `observed_pipeline` still RISES with the tier (0.06% -> 2.01%). Proposals are
+less CONCENTRATED than built stock, not rural in absolute terms; the defensible
+claim is relative, and the copy must keep it that way.
+
+Figures above are post-2026-08-24, after dcmodel.load_zctas stopped assigning
+border ZCTAs to an arbitrary state. Do not quote the bottom-tier ratio (168x) as
+if it were precise — tier 1 holds 3 positives out of 3,326, so it swings on one
+facility. The top-decile shares and the rural gap are the stable numbers.
 
 Output goes to data/.risk/. The leading dot matters: server.py's catch-all static
 route refuses any path with a dot-segment at any depth, so the per-ZCTA file cannot
@@ -110,16 +133,62 @@ def fit_out_of_fold(df, label, cols, blocks):
                              method="predict_proba")[:, 1], y
 
 
-def tier_stats(df, label, tier_col):
+def _rate(g, label):
+    """Observed share plus a Jeffreys interval. Returned as a triple so both
+    labels get the identical treatment — the whole point of shared bins is that
+    the two numbers in a row are the same statistic computed the same way."""
+    n, k = len(g), int(g[label].sum())
+    return (k / n,
+            float(beta.ppf(.025, k + .5, n - k + .5)),
+            float(beta.ppf(.975, k + .5, n - k + .5)))
+
+
+def tier_stats(df, tier_col, label, label_fwd):
+    """One row per tier, carrying BOTH rates over the same set of ZCTAs.
+
+    `n` is shared deliberately: it is one group of ZIPs described twice, which is
+    what makes the built and pipeline columns readable across a row.
+    """
     rows = []
     for t, g in df.groupby(tier_col):
-        n, k = len(g), int(g[label].sum())
+        obs, lo, hi = _rate(g, label)
+        pobs, plo, phi = _rate(g, label_fwd)
         rows.append({
-            "tier": int(t), "n": n, "observed": k / n,
-            "ci_lo": float(beta.ppf(.025, k + .5, n - k + .5)),
-            "ci_hi": float(beta.ppf(.975, k + .5, n - k + .5)),
+            "tier": int(t), "n": len(g),
+            "observed": obs, "ci_lo": lo, "ci_hi": hi,
+            "observed_pipeline": pobs, "ci_lo_pipeline": plo, "ci_hi_pipeline": phi,
+            # ZIPs with nothing built but something proposed — the divergence case,
+            # read off observed counts rather than off any model.
+            "n_divergent": int(((g["n_built"] == 0) & (g["n_forward"] > 0)).sum()),
         })
     return rows
+
+
+def divide_stats(df, tier_col, label, label_fwd, n_tiers):
+    """The national numbers the page quotes for the built-vs-coming divide.
+
+    Computed here rather than typed into JSX so every figure on the public page
+    has a script behind it.
+    """
+    top = df[tier_col] == n_tiers
+    div = (df["n_built"] == 0) & (df["n_forward"] > 0)
+    hosting = df["n_built"] > 0
+    rural = df["pop_exposure_score_nat"] > 0.9      # same threshold as notebook 04
+
+    def share(mask, of):
+        tot = int(df[of].sum())
+        return float(df.loc[mask, of].sum() / tot) if tot else None
+
+    return {
+        # What fraction of each label's national total sits in the top decile.
+        # Same statistic twice, so the gap between them is the finding.
+        "top_tier_share_built": share(top, label),
+        "top_tier_share_pipeline": share(top, label_fwd),
+        "n_divergent": int(div.sum()),
+        "divergent_rural_share": float(rural[div].mean()) if div.any() else None,
+        "hosting_rural_share": float(rural[hosting].mean()) if hosting.any() else None,
+        "rural_threshold": "pop_exposure_score_nat > 0.9",
+    }
 
 
 def compute_factors(df, label, cols, labels_map):
@@ -182,22 +251,35 @@ def main():
     labels_map = indicator_labels()
     print(f"  {len(df)} ZCTAs, {len(cols)} features, {len(labels_map)} indicator labels from data.js")
 
-    stats, tiers = {}, {}
-    for key, label in [("exposure", "has_dc"), ("pipeline", "has_dc_forward")]:
-        print(f"\nFitting {key} ({label}, {int(df[label].sum())} positives)...")
-        p, y = fit_out_of_fold(df, label, cols, blocks)
-        col = f"tier_{key}"
-        # rank before qcut: raw scores are heavily tied near zero, which makes
-        # qcut collapse the low tiers into one bin.
-        df[col] = pd.qcut(p.argsort().argsort(), N_TIERS, labels=False) + 1
-        st = tier_stats(df, label, col)
-        stats[key] = {
-            "label": label, "n_positives": int(y.sum()),
-            "base_rate": float(y.mean()), "tiers": st,
-        }
-        tiers[key] = df[col].to_numpy()
-        print(f"  tier 1 {100*st[0]['observed']:.2f}%  ->  tier {N_TIERS} {100*st[-1]['observed']:.2f}%"
-              f"   ({st[-1]['observed']/max(st[0]['observed'], 1e-9):.0f}x)")
+    LABEL, LABEL_FWD = "has_dc", "has_dc_forward"
+    print(f"\nFitting exposure ({LABEL}, {int(df[LABEL].sum())} positives)...")
+    p, y = fit_out_of_fold(df, LABEL, cols, blocks)
+    col = "tier_exposure"
+    # rank before qcut: raw scores are heavily tied near zero, which makes
+    # qcut collapse the low tiers into one bin.
+    df[col] = pd.qcut(p.argsort().argsort(), N_TIERS, labels=False) + 1
+
+    st = tier_stats(df, col, LABEL, LABEL_FWD)
+    divide = divide_stats(df, col, LABEL, LABEL_FWD, N_TIERS)
+    stats = {"exposure": {
+        "label": LABEL, "n_positives": int(y.sum()), "base_rate": float(y.mean()),
+        "label_pipeline": LABEL_FWD,
+        "pipeline_positives": int(df[LABEL_FWD].sum()),
+        "pipeline_base_rate": float(df[LABEL_FWD].mean()),
+        "tiers": st,
+    }}
+    tiers = df[col].to_numpy()
+
+    print(f"  built    tier 1 {100*st[0]['observed']:.2f}%  ->  tier {N_TIERS} "
+          f"{100*st[-1]['observed']:.2f}%   "
+          f"({st[-1]['observed']/max(st[0]['observed'], 1e-9):.0f}x)")
+    print(f"  pipeline tier 1 {100*st[0]['observed_pipeline']:.2f}%  ->  tier {N_TIERS} "
+          f"{100*st[-1]['observed_pipeline']:.2f}%")
+    print(f"  top decile holds {100*divide['top_tier_share_built']:.1f}% of built "
+          f"but {100*divide['top_tier_share_pipeline']:.1f}% of pipeline")
+    print(f"  {divide['n_divergent']} ZIPs with 0 built and >=1 proposed "
+          f"({100*divide['divergent_rural_share']:.1f}% rural vs "
+          f"{100*divide['hosting_rural_share']:.1f}% of hosting ZIPs)")
 
     print("\nComputing per-ZCTA factors...")
     factors = compute_factors(df, "has_dc", cols, labels_map)
@@ -205,8 +287,7 @@ def main():
     recs = {}
     for i, z in enumerate(df["zcta"].astype(str).str.zfill(5)):
         recs[z] = {
-            "e": int(tiers["exposure"][i]),
-            "p": int(tiers["pipeline"][i]),
+            "e": int(tiers[i]),
             "s": df["state"].iloc[i],
             "f": factors[i],
             "n": int(df["n_built"].iloc[i]) if "n_built" in df.columns else 0,
@@ -223,7 +304,7 @@ def main():
     gdf_grid = pd.DataFrame({
         "gx": np.floor(df["lon"] / gcell).astype(int),
         "gy": np.floor(df["lat"] / gcell).astype(int),
-        "tier": tiers["exposure"],
+        "tier": tiers,
         "built": df["n_built"] if "n_built" in df.columns else 0,
     })
     agg = gdf_grid.groupby(["gx", "gy"]).agg(
@@ -241,6 +322,7 @@ def main():
     (OUT_DIR / "zcta_tiers.json").write_text(json.dumps(recs, separators=(",", ":")))
     (OUT_DIR / "tier_stats.json").write_text(json.dumps({
         "n_tiers": N_TIERS, "n_zctas": len(df), "stats": stats,
+        "divide": divide,
         "sources": ["OpenStreetMap (ODbL)", "PeeringDB", "IM3 Atlas (ODbL)",
                     "Compute Atlas (CC BY 4.0, (c) 2026 Edward Kubiak)"],
     }, indent=1))

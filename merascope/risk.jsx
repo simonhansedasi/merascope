@@ -119,7 +119,7 @@ function TierLadder({ rows, mine }) {
 }
 
 function RiskResult({ data, rows }) {
-  const e = data.exposure, p = data.pipeline;
+  const e = data.exposure;
   return (
     <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 24, background: 'var(--paper)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
@@ -169,22 +169,41 @@ function RiskResult({ data, rows }) {
         </div>
       )}
 
-      <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--line-soft)' }}>
-        <h4 style={{ margin: '0 0 8px', fontSize: 13, textTransform: 'uppercase', letterSpacing: .6, color: 'var(--slate)' }}>
-          Active pipeline
-        </h4>
-        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5 }}>
-          On a <em>separate</em> ranking for proposed and permitted projects, this ZIP
-          is tier <strong>{p.tier}</strong> of {p.n_tiers} &mdash; {pct(p.observed)} of ZIPs
-          scoring like this one have something in the pipeline. Pipeline tiers are their
-          own scale, so tier {p.tier} here is a different set of ZIPs than tier {p.tier}{' '}
-          above.{' '}
-          <span style={{ color: 'var(--slate)' }}>
-            This signal is much weaker than the one above (259 known projects nationally),
-            so treat it as a hint, not a finding.
-          </span>
-        </p>
-      </div>
+      {e.observed_pipeline != null && (
+        <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--line-soft)' }}>
+          <h4 style={{ margin: '0 0 8px', fontSize: 13, textTransform: 'uppercase', letterSpacing: .6, color: 'var(--slate)' }}>
+            What is coming, in the same tier
+          </h4>
+          <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55 }}>
+            Of the ZIP codes in tier <strong>{e.tier}</strong>, {pct(e.observed)} host a
+            data center today and <strong>{pct(e.observed_pipeline)}</strong> have one
+            proposed or permitted. Both figures describe the same group of ZIPs, so they
+            can be compared directly.{' '}
+            <span style={{ color: 'var(--slate)' }}>
+              The pipeline number rests on 259 known projects nationally &mdash; far
+              thinner evidence than the first, and coverage of proposals is patchier
+              still.
+            </span>
+          </p>
+        </div>
+      )}
+
+      {/* The case Simon named: nothing here yet, something on the way. Both are
+          observed counts for this exact ZIP, not model output, so it can be stated
+          flatly without any of the hedging the tier rates need. */}
+      {data.divergence && (
+        <div style={{
+          marginTop: 16, padding: '14px 18px', borderRadius: 8,
+          background: 'var(--mist)', borderLeft: '3px solid var(--gate)',
+          fontSize: 14, lineHeight: 1.55
+        }}>
+          <strong>Nothing built here, {data.pipeline_facilities} proposed.</strong> This
+          ZIP hosts no mapped data center but has {data.pipeline_facilities === 1
+            ? 'a project' : 'projects'} in the pipeline. Nationally that is true of{' '}
+          {data.divide && data.divide.n_divergent ? data.divide.n_divergent : 'a few hundred'}{' '}
+          ZIP codes, and they are disproportionately rural.
+        </div>
+      )}
     </div>
   );
 }
@@ -207,18 +226,35 @@ const GRID_BINS = [
 ];
 const gridColor = t => (GRID_BINS.find(b => t <= b.max) || GRID_BINS[4]).color;
 
-function TierTable({ title, blurb, rows, mine, valueHead }) {
+/* One table, two rates.
+
+   There were two tables here, because there were two rankings — a ZIP had an
+   exposure tier and a separate pipeline tier off a second model, and "tier 9"
+   named a different set of ZIPs on each. They could not be read across, and
+   quoting one next to the other produced visible contradictions.
+
+   Now there is one binning. Every row is a single group of ZIP codes described
+   twice: how many host a facility today, how many have one proposed. Same ZIPs,
+   same statistic, so the columns compare directly.
+
+   The pipeline column is optional on purpose — CI ships code without data/, so
+   this renders against older JSON that has no `observed_pipeline` until the
+   regenerated file is copied up. Absent means hide the column, not crash. */
+function TierTable({ title, blurb, rows, mine }) {
   if (!rows || !rows.length) return null;
+  const hasPipe = rows.some(r => r.observed_pipeline != null);
   return (
     <div style={{ marginTop: 26 }}>
       <h3 style={{ fontFamily: 'var(--serif)', marginBottom: 4 }}>{title}</h3>
       <p style={{ color: 'var(--slate)', fontSize: 14, marginTop: 0 }}>{blurb}</p>
+      <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
         <thead>
           <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--line)' }}>
             <th style={{ padding: '8px 6px' }}>Tier</th>
             <th style={{ padding: '8px 6px' }}>ZIP codes</th>
-            <th style={{ padding: '8px 6px' }}>{valueHead}</th>
+            <th style={{ padding: '8px 6px' }}>Host a data center</th>
+            {hasPipe && <th style={{ padding: '8px 6px' }}>Have something proposed</th>}
           </tr>
         </thead>
         <tbody>
@@ -231,10 +267,12 @@ function TierTable({ title, blurb, rows, mine, valueHead }) {
               <td style={{ padding: '7px 6px' }}>{r.tier}</td>
               <td style={{ padding: '7px 6px', color: 'var(--slate)' }}>{r.n.toLocaleString()}</td>
               <td style={{ padding: '7px 6px' }}>{pct(r.observed)}</td>
+              {hasPipe && <td style={{ padding: '7px 6px' }}>{pct(r.observed_pipeline)}</td>}
             </tr>
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -398,7 +436,9 @@ function RiskPage({ query }) {
   }, [deepZip]);
 
   const rows = stats && stats.stats && stats.stats.exposure ? stats.stats.exposure.tiers : null;
-  const pipeRows = stats && stats.stats && stats.stats.pipeline ? stats.stats.pipeline.tiers : null;
+  // Absent when the server is still serving pre-shared-bin data (CI ships code
+  // without data/, so there is a window). The block below just does not render.
+  const divide = stats && stats.divide;
 
   const search = e => {
     if (e) e.preventDefault();
@@ -447,15 +487,8 @@ function RiskPage({ query }) {
 
       <TierTable
         title="Exposure tiers"
-        blurb="Ranked by how much a ZIP resembles places that already have data centers. Every tier holds the same number of ZIP codes."
-        rows={rows} mine={data && data.exposure.tier}
-        valueHead="Host a data center" />
-
-      <TierTable
-        title="Pipeline tiers"
-        blurb="A separate ranking, for proposed and permitted projects only. The same tier number here covers a different set of ZIP codes than above."
-        rows={pipeRows} mine={data && data.pipeline.tier}
-        valueHead="Have something proposed" />
+        blurb="Ranked by how much a ZIP resembles places that already have data centers. Every tier holds the same number of ZIP codes, and both columns are measured on those same ZIPs — so they can be read across."
+        rows={rows} mine={data && data.exposure.tier} />
 
       <RiskMap focus={data} />
 
@@ -465,7 +498,7 @@ function RiskPage({ query }) {
         </h3>
         <p style={{ margin: 0 }}>
           Exposure tiers track community burden. ZIPs in the top tier have a mean
-          community-burden score of 0.53 against 0.82 in the bottom tier &mdash; that is,
+          community-burden score of 0.52 against 0.81 in the bottom tier &mdash; that is,
           places with more poverty and a larger minority share sit systematically higher.
           Part of this is that data centers really do get built on industrial land near
           cities; part is that the indicators driving the model are themselves measures of
@@ -475,6 +508,44 @@ function RiskPage({ query }) {
         </p>
       </div>
 
+      {/* The built-vs-coming divide. Every number here comes from the `divide` block
+          in tier_stats.json, computed by scripts/18_risk_tiers.py — none of it is
+          typed in by hand.
+
+          Two claims are deliberately NOT made. The pipeline rate still RISES with
+          the tier (0.09% to 1.80%), so proposals are less concentrated than built
+          stock, not rural in absolute terms — the claim stays relative. And nothing
+          is said about whether these places can respond: divergence ZIPs actually
+          score LOWER on community burden than hosting ZIPs, and the product has no
+          measure of planning or permitting capacity at all. */}
+      {divide && divide.top_tier_share_built != null && (
+        <div style={{ marginTop: 20, padding: '18px 20px', background: 'var(--mist)', borderRadius: 10, fontSize: 14, lineHeight: 1.65 }}>
+          <h3 style={{ margin: '0 0 8px', fontFamily: 'var(--serif)', fontSize: 17 }}>
+            What is coming is less concentrated than what is built
+          </h3>
+          <p style={{ margin: 0 }}>
+            The top tier holds <strong>{pct(divide.top_tier_share_built)}</strong> of every
+            mapped data center in the country, but only{' '}
+            <strong>{pct(divide.top_tier_share_pipeline)}</strong> of the proposed and
+            permitted pipeline. Read down the table and the two columns converge: the
+            places that already host are still the likeliest to gain more, but the
+            pipeline is spread more widely than the built stock is.
+            {divide.n_divergent != null && divide.divergent_rural_share != null && (
+              <>{' '}<strong>{divide.n_divergent.toLocaleString()}</strong> ZIP codes host
+              nothing today but have something proposed, and{' '}
+              <strong>{pct(divide.divergent_rural_share)}</strong> of those are sparsely
+              populated &mdash; against {pct(divide.hosting_rural_share)} of the ZIPs that
+              already host one.</>
+            )}{' '}
+            <span style={{ color: 'var(--slate)' }}>
+              Proposals are not rural in absolute terms; they are simply less
+              concentrated than the existing build-out. Pipeline coverage is also the
+              thinnest data on this page.
+            </span>
+          </p>
+        </div>
+      )}
+
       <div style={{ marginTop: 28, fontSize: 12, color: 'var(--slate)', lineHeight: 1.7 }}>
         <p style={{ marginBottom: 6 }}>
           <strong>What this is not.</strong> This is not a prediction that a data center
@@ -482,8 +553,11 @@ function RiskPage({ query }) {
           a model validated on spatially separated hold-out regions. Facility coverage is
           incomplete &mdash; a ZIP showing none may simply have one nobody has mapped.
         </p>
+        {/* Separator below is a literal '·', not '&middot;'. Inside braces it is a
+            JS string, so an HTML entity renders as its own characters — and this
+            line is the attribution ODbL and CC BY 4.0 both require to be legible. */}
         {stats && stats.sources && (
-          <p style={{ margin: 0 }}>Facility data: {stats.sources.join(' &middot; ')}</p>
+          <p style={{ margin: 0 }}>Facility data: {stats.sources.join(' · ')}</p>
         )}
       </div>
     </div>

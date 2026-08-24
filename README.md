@@ -326,6 +326,13 @@ must exist locally to run the full local verification pass. `playwright install
 `deploy_hetzner.sh` deploys from the local working tree — keep the two in sync by
 committing local changes before pushing `master`, or a git deploy will revert them.
 
+**CI never ships `data/`.** The rsync in `deploy.yml` carries
+`--exclude='data/'`, so every artifact under `data/` reaches the server only by a
+manual copy. This bit the risk surface on its first deploy: the code went up fine
+and `/api/risk/*` returned `503 risk data not built` because
+`data/.risk/` had never existed anywhere but the machine that generated it. See
+"Shipping the risk data" below.
+
 **`requirements.txt` must list every third-party import used by `scripts/`,
 `server.py`, and pytest-collected tests** (added 2026-07-03, after CI failed on
 `ModuleNotFoundError: No module named 'scipy'`). The local conda env
@@ -453,9 +460,11 @@ it states instead is the measured share of ZIPs in the same tier that host a
 facility, quoted against the lowest tier — the same statistic on both sides, so the
 claim does not depend on calibration. `tests/test_risk.py` guards the wording.
 
-Two tiers per ZIP: `exposure` (from `has_dc`, 254x top-vs-bottom) and `pipeline`
-(from `has_dc_forward`, only 21x on 259 known projects — presented as a hint, not a
-finding).
+**One tier per ZIP**, from `has_dc` (0.09% in the bottom tier to 15.2% in the top),
+with two rates on every
+tier row: how many of those ZIPs host a facility now, and how many have one
+proposed. See "One binning, two rates" below for why the second ranking was
+removed and what the pipeline column may and may not be used to claim.
 
 ### Security model for the public routes
 
@@ -493,3 +502,140 @@ Deep links work: `#/risk?zip=20147` looks the ZIP up on load and drops a pin.
 `data/datacenters/facilities.geojson` is reachable over HTTP, and ODbL and CC BY
 both require attribution to travel with the data — so the notice is written into the
 GeoJSON itself as a top-level `attribution` member, and returned by `/api/risk/<zip>`.
+
+
+## Shipping the risk data
+
+`scripts/17_datacenter_labels.py` and `scripts/18_risk_tiers.py` write to
+`data/datacenters/` and `data/.risk/`. Both live under the gitignored `data/`, and
+`deploy.yml`'s rsync excludes `data/` outright, so **regenerating them does nothing
+for production until they are copied across by hand.** Symptom if you forget:
+the page renders, the map is blank, the tier tables are absent, and
+`/api/risk/tiers` returns `503 risk data not built`.
+
+```bash
+# on the machine that generated them
+tar -czf /tmp/merascope_risk_data.tgz data/.risk data/datacenters   # ~1.2 MB
+# on a machine with Hetzner access
+scp /tmp/merascope_risk_data.tgz root@204.168.182.60:/tmp/
+ssh root@204.168.182.60 "cd /home/simonhans/coding/merascope \
+  && tar -xzf /tmp/merascope_risk_data.tgz && systemctl restart merascope"
+# verify
+curl -s https://merascope.com/api/risk/tiers | head -c 40   # want {"n_tiers":10,
+```
+
+**`.risk` is a dot-directory, and `rsync data/* host:...` silently skips it** — the
+shell glob does not match dotfiles, so you get `datacenters/` and a still-broken
+risk surface with no error. Name the directory explicitly or sync `data/` whole.
+
+**Order: code first, data second.** Because CI ships code while `data/.risk/` goes
+by hand, production runs new code against the previous JSON for a window. The
+shared-bin fields (`observed_pipeline`, `divide`) are therefore read with `.get()`
+in `server.py` and guarded in `risk.jsx`, so old data degrades to a table without
+the pipeline column instead of a 500. Keep that property when adding fields: a new
+key must never be required for the page to render.
+
+The leading dot is deliberate: `server.py`'s catch-all static route refuses any
+path with a dot-segment at any depth, so `zcta_tiers.json` cannot be downloaded
+even though `.json` is an allowlisted extension. **Do not un-ignore `data/.risk/`
+to make deploys easier** — this repo is public, so committing `zcta_tiers.json`
+would publish the complete per-ZIP ranking, which is exactly the bulk export the
+product declines to offer.
+
+Regenerating on the server is not an option either: `18_risk_tiers.py` needs
+scikit-learn, which is deliberately absent from `requirements.txt`. The server
+serves precomputed artifacts; it does not train.
+
+## Border ZCTAs get the state they mostly lie in
+
+Fixed 2026-08-24 in `notebooks/dcmodel.py`. `build_zcta.py` joins ZCTAs to states
+with `intersects`, so **3,365 ZCTAs (10% of the table) appear in two or more state
+files** — and the geometry in each copy is the *full, unclipped* ZCTA polygon,
+byte-identical everywhere it appears.
+
+`load_zctas()` used to dedupe by sorting on the ZCTA's own area and keeping the
+first row, on the assumption that the files held state-clipped geometry so the
+larger copy meant "mostly in this state". Because the copies are identical, **every
+one of those sorts was a tie**, and pandas' stable ordering handed each ZCTA to
+whichever state came first in `STATES`. That is why 73717 and 74056 (Oklahoma) read
+KS, and 84313 (Utah) read NV — KS and NV simply precede them in the list.
+
+The label was the smaller half of the problem. Because normalization is
+state-relative, **18 of the 23 `_nat` columns differ between two copies of the same
+ZCTA** — `tx_score_nat` by up to 0.968 on a 0-1 scale — so the arbitrary pick also
+chose arbitrary *feature values* for a tenth of the rows.
+
+Now each duplicate is overlaid against Census TIGER state polygons
+(`state_boundaries()`, cached at `notebooks/cache/tiger_states.geojson`) and
+assigned to the state holding the largest share of its area, taking that state's
+copy of the scores. Results:
+
+- 1,675 of 3,365 duplicates changed state; row count unchanged at 33,252.
+- Against ZIP prefixes that belong to exactly one state, mislabelling fell from
+  **6.94% to 0.55%**. The residual 41 are genuine straddles — 83414 (Alta) has an
+  Idaho prefix and lies 100% in Wyoming; 73960 (Texhoma) has an Oklahoma prefix and
+  lies 100% in Texas. Assigning those by area is correct, not a miss.
+- Model quality improved slightly: lift **4.10x -> 4.18x**, ROC AUC 0.832 -> 0.835.
+- Labels are spatial joins on geometry, which did not change, so positives held at
+  523 / 204 / 29 exactly.
+
+**Rebuild after touching this:** `notebooks/cache/model_table.csv` is generated
+(notebook 01 cell 10 = `load_zctas()` -> `attach_labels()`), so a change here does
+nothing until that file is regenerated and `scripts/18_risk_tiers.py` re-run.
+
+## One binning, two rates
+
+**Supersedes the earlier "two tier scales" rule** (2026-08-24). That rule was
+correct for the design it described and is now obsolete, because the design is gone.
+
+There used to be two rankings: a model on `has_dc` and a second on
+`has_dc_forward`, each decile-binned on its own out-of-fold score. Two ladders of
+ten equal bins look comparable but are not — **the two top tiers shared only 812 of
+3,326 ZIPs**, so "tier 9" named a different set of ZIP codes on each. That forced
+two separately-headed tables and made the one useful comparison — what is already
+here against what is coming here — impossible to state.
+
+Now ZCTAs are binned **once**, on the `has_dc` score, and every tier row carries
+both observed rates measured over the same ZIPs:
+
+| field | meaning |
+|---|---|
+| `observed` | share of the tier's ZIPs hosting a facility now |
+| `observed_pipeline` | share of **those same** ZIPs with something proposed/permitted |
+| `n_divergent` | ZIPs in the tier with 0 built and >= 1 proposed |
+
+One `n` serves both, which is what makes the columns readable across.
+`tests/test_risk.py::test_no_separate_pipeline_ranking` is the regression guard —
+do not reintroduce a second ladder.
+
+**The forward model is no longer fit.** It was weak (21x top-vs-bottom, against
+168x for the built label) and its bottom half was not monotonic: tier 3 came in
+*below* tier 2, with
+tiers 1-5 all inside each other's intervals, and nothing guarded it because
+`test_tier_stats_are_monotonic` only ever checked exposure. As a rate on stable
+bins the same signal survives without the spurious ordering.
+
+### What this licences you to say, and what it does not
+
+The divide is a **concentration** claim and only that. From `tier_stats.json`'s
+`divide` block, all script-computed:
+
+- Top decile holds **42.2%** of built facilities but **25.9%** of the pipeline.
+- **206** ZIPs host nothing but have something proposed; **68.9%** of those are
+  sparsely populated, against **29.3%** of ZIPs that already host.
+
+Do not quote the bottom-to-top ratio as a headline: tier 1 holds 3 positives out
+of 3,326, so it swings on a single facility. The top-decile shares and the rural
+gap are the stable figures.
+
+Two claims the data does **not** support, both easy to reach for:
+
+1. **Not "the pipeline is rural."** `observed_pipeline` still *rises* with the tier
+   (0.06% -> 2.01%). Proposals are less *concentrated* than built stock, not rural
+   in absolute terms. Keep it relative.
+2. **Not "expanding faster than communities can protect themselves."** Divergence
+   ZIPs average `ej_score` **0.660** against **0.594** for hosting ZIPs, and higher
+   `ej_score` means *less* burden — the opposite sign. Protective capacity
+   (planning staff, permitting sophistication, legal resources) is a different
+   construct from pollution/demographic burden and the product has no indicator for
+   it, so the claim is untestable here, not merely unproven.
