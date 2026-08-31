@@ -1,0 +1,1354 @@
+id,name,latitude,longitude,city,state
+1,"Equinix DC1-DC15,DC21-DC22 - Ashburn",39.016363,-77.459023,Ashburn,VA
+2,Digital Realty SFO (200 Paul),37.723407,-122.397923,San Francisco,CA
+4,Equinix DA1 - Dallas,32.800955,-96.81955,Dallas,TX
+5,"Equinix SV8 - Silicon Valley, Palo Alto",37.445896,-122.160775,Palo Alto,CA
+6,"Equinix SV1/SV5/SV10 - Silicon Valley, San Jose",37.241767,-121.782967,San Jose,CA
+7,Equinix CH1/CH2/CH4 - Chicago,41.85365,-87.618342,Chicago,IL
+8,Equinix LA1 - Los Angeles,34.047501,-118.2573,Los Angeles,CA
+9,"Equinix NY1 - New York, Newark",40.736844,-74.173402,Newark,NJ
+10,Digital Realty NYC (60 Hudson),40.717723,-74.008299,New York,NY
+11,Equinix AT2/AT3 - Atlanta,33.755456,-84.39153,Atlanta,GA
+15,"Equinix MI1 - Miami, NOTA",25.782648,-80.193157,Miami,FL
+16,Digital Realty NYC (111 8th Ave),40.741469,-74.003387,New York,NY
+19,CoreSite - Los Angeles (LA1) One Wilshire,34.047942,-118.255564,Los Angeles,CA
+20,CoreSite - San Jose (SV1),37.334147,-121.891649,San Jose,CA
+21,FedConnect San Francisco,37.783322,-122.392048,San Francisco,CA
+22,JMA NAC Los Angeles,34.048428,-118.255186,Los Angeles,CA
+23,Digital Realty SFO (365 Main),37.788669,-122.390509,San Francisco,CA
+24,The Mission Street Center,37.780351,-122.408954,San Francisco,CA
+33,SVTIX San Jose,37.333765,-121.904828,San Jose,CA
+36,"Equinix NY2/NY4/NY5/NY6 - New York, Secaucus",40.778534,-74.072237,Secaucus,NJ
+38,"Equinix NY9 - New York, 111 8th Avenue",40.741469,-74.003387,New York,NY
+69,Equinix DA3 - Dallas,32.800955,-96.81955,Dallas,TX
+71,Digital Realty Seattle SEA10,47.614347,-122.338883,Seattle,WA
+84,KDWEB San Jose,37.333885,-121.889302,San Jose,CA
+85,"Equinix SV17 - Silicon Valley, Santa Clara",37.376348,-121.988591,Santa Clara,CA
+86,Equinix SE2/SE3 - Seattle,47.614358,-122.338864,Seattle,WA
+88,"Equinix DC7 - Ashburn, Vienna",38.908422,-77.219692,Vienna,VA
+102,Equinix LA2 - Los Angeles,34.048897,-118.259585,Los Angeles,CA
+120,Digital Realty NYC (32 AofA),40.72,-74.004561,New York,NY
+125,Digital Realty ATL13 - Atlanta,33.755456,-84.39153,Atlanta,GA
+144,"Equinix DC8 - Ashburn, Vienna",38.931419,-77.238951,Vienna,VA
+146,Equinix PH1 - Philadelphia,39.959668,-75.161377,Philadelphia,PA
+147,Evocative San Jose (SV7),37.338431,-121.910133,San Jose,CA
+149,iM Critical Miami,25.848356,-80.194926,Miami,FL
+171,Digital Realty PHX10 (120 E Van Buren),33.452003,-112.072042,Phoenix,AZ
+176,Level(3) Sunnyvale,37.373412,-121.98778,Sunnyvale,CA
+184,Printer's Square Chicago (600 S Federal),41.874302,-87.629928,Chicago,IL
+186,Netrality - Indy Telcom Center - 733 W. Henry,39.75988,-86.172275,Indianapolis,IN
+188,FiberNet Telecom Group - 60 Hudson St,40.717664,-74.008333,New York,NY
+189,FiberNet Telecom Group New York (111 Eighth Ave),40.741355,-74.003203,New York,NY
+209,Level(3) Weehawken,40.761825,-74.025031,Weehawken,NJ
+219,Markley Group One Summer Street Boston,42.354692,-71.060266,Boston,MA
+234,Peace Communications KNX1,35.965586,-83.921438,Knoxville,TN
+246,Looking Glass Networks NYC Node,40.726019,-74.00536,New York,NY
+249,Level(3) Atlanta (Courtland),33.765138,-84.383731,Atlanta,GA
+250,Level(3) Chicago (Canal),41.880436,-87.639611,Chicago,IL
+256,ServerCondo-219 Albuquerque,35.084663,-106.650102,Albuquerque,NM
+267,Citynet Columbus,39.968171,-82.994861,Columbus,OH
+268,Citynet Pittsburgh,40.447383,-80.003614,Pittsburgh,PA
+273,Citynet Indianapolis,39.759534,-86.170711,Indianapolis,IN
+275,PTOR1,45.521366,-122.680792,Portland,OR
+279,Centersquare New Jersey (EWR5),40.78616,-74.06912,Secaucus,NJ
+281,"Equinix BO1 - Boston, Waltham",42.395346,-71.269187,Waltham,MA
+283,365 Data Centers Chicago (CH6),41.876212,-87.631453,Chicago,IL
+286,"CoreSite - Washington,DC (DC1)",38.902918,-77.029149,Washington,DC
+293,Evocative SJC3,37.378042,-121.954136,Santa Clara,CA
+311,Level(3) Nashville (Sidco Drive),36.102726,-86.755786,Nashville,TN
+312,IRIS - Nashville,36.162621,-86.776316,Nashville,TN
+314,Cincinnatti Bell - West 7th Street,39.102789,-84.517261,Cincinnati,OH
+315,Level(3) Cincinnati,39.102533,-84.50313,Cincinnati,OH
+317,Telehouse - Los Angeles,34.048275,-118.256985,Los Angeles,CA
+330,Newport Financial Center,40.726597,-74.033401,Jersey City,NJ
+332,Netrality St. Louis - 900 Walnut,38.625536,-90.195238,St. Louis,MO
+333,"Equinix LA3/LA4 - Los Angeles, El Segundo",33.921239,-118.383778,El Segundo,CA
+348,Level(3) New York,40.743136,-74.007652,New York,NY
+350,165 Halsey Meet-Me Room,40.736844,-74.173402,Newark,NJ
+356,Crown Castle Brentwood (1650 Islip),40.784184,-73.219864,Brentwood,NY
+362,710 Tucker St Louis,38.632728,-90.195813,St. Louis,MO
+363,CoreSite - Los Angeles (LA2),34.058096,-118.235357,Los Angeles,CA
+368,XO Nashville,36.158837,-86.772516,Nashville,TN
+372,Network 222,43.073336,-89.386996,Madison,WI
+378,OCDC Orange County Datacenter Santa Ana,33.729872,-117.851779,Santa Ana,CA
+380,iConnect Billings Fiber Hotel,45.781098,-108.512522,Billings,MT
+381,iConnect Missoula,46.87101,-113.989835,Missoula,MT
+389,CoreSite - Denver (DE1),39.745636,-104.995636,Denver,CO
+397,WOW! Business (Tampa Datacenter),27.947729,-82.459331,Tampa,FL
+402,Digital Realty DFW (2323 Bryan St),32.787212,-96.794219,Dallas,TX
+403,Digital Realty LAX (600 W 7th),34.047335,-118.25745,Los Angeles,CA
+408,Digital Realty IAD (44480 Hastings),39.017808,-77.462489,Ashburn,VA
+409,Netrality Houston - 1301 Fannin,29.753242,-95.365882,Houston,TX
+410,KOMO Plaza Seattle (Formerly Fisher Plaza),47.619238,-122.348278,Seattle,WA
+411,University of Wisconsin-Madison,43.071309,-89.406318,Madison,WI
+414,190 Park Center Plaza San Jose,37.332218,-121.892948,San Jose,CA
+420,The Franklin Exchange Tampa,27.949606,-82.458393,Tampa,FL
+430,Level(3) Oakland,37.834675,-122.286597,Emeryville,CA
+435,Netrality Kansas City - 1102 Grand,39.100941,-94.581036,Kansas City,MO
+436,"Equinix SV3 - Silicon Valley, San Jose",37.388235,-121.888457,San Jose,CA
+437,"Equinix SV2 - Silicon Valley, Santa Clara",37.378463,-121.954945,Santa Clara,CA
+440,CoreSite - Chicago (CH1),41.876212,-87.631453,Chicago,IL
+448,CSSNW Bellingham,48.757306,-122.4805,Bellingham,WA
+466,Digital Realty CHI (350 E Cermak),41.85365,-87.618342,Chicago,IL
+468,Digital Realty OAK (720 2nd St),37.799021,-122.282507,Oakland,CA
+469,Digital Realty SJC (2820 NW Pkwy),37.372818,-121.973377,Santa Clara,CA
+474,GAP Union Station,41.669526,-86.255805,South Bend,IN
+476,360 Spear,37.788931,-122.390267,San Francisco,CA
+485,Carolina Internet / CaroNet,35.173324,-80.925975,Charlotte,NC
+500,TierPoint Spokane,47.671879,-117.09123,Liberty Lake,WA
+501,US Bank Building,47.658139,-117.4193,Spokane,WA
+505,Equinix DA - Dallas (previously Infomart Dallas),32.800748,-96.819412,Dallas,TX
+507,324 E Wisconsin,43.039016,-87.906937,Milwaukee,WI
+510,"Equinix SV6 - Silicon Valley, Sunnyvale",37.399589,-122.014572,Sunnyvale,CA
+519,Lumen Boston,42.367691,-71.086779,Cambridge,MA
+520,"1101 Stewart Ave, Garden City",40.73616,-73.594195,Garden City,NY
+525,180 E Broad St.,39.963183,-82.995994,Columbus,OH
+531,Iron Mountain Data Center - Scottsdale (AZS-1),33.64465,-111.895495,Scottsdale,AZ
+539,Equinix DA4 - Dallas,32.787212,-96.794219,Dallas,TX
+540,"Equinix NY8 - New York, 60 Hudson",40.717723,-74.008299,New York,NY
+541,SBTC,47.612139,-122.340036,Seattle,WA
+542,"Equinix NY7 - New York, North Bergen",40.796857,-74.031129,North Bergen,NJ
+547,Hurricane Electric Fremont 2,37.471809,-121.920111,Fremont,CA
+548,3500 Garrott,29.741436,-95.385784,Houston,TX
+558,Equinix MI2 - Miami,25.775869,-80.19313,Miami,FL
+559,5Nines Data,43.073336,-89.386996,Madison,WI
+561,H5 Data Centers Nashville,36.162626,-86.778674,Nashville,TN
+569,Epsilon Global Hubs New York (60 Hudson),40.717664,-74.008333,New York,NY
+572,Iron Mountain Data Center - Phoenix (AZP-1),33.454411,-111.976435,Phoenix,AZ
+574,"Equinix SV4 - Silicon Valley, Sunnyvale",37.41438,-122.014482,Sunnyvale,CA
+575,1623 Farnam - Omaha,41.257352,-95.938191,Omaha,NE
+578,QTS Santa Clara (SJC1/SJC2),37.394031,-121.978279,Santa Clara,CA
+579,QTS Jersey City (JCY1),40.716892,-74.03382,Jersey City,NJ
+580,QTS Atlanta-Suwanee (SUW1),34.035431,-84.06101,Suwanee,GA
+581,QTS Atlanta-Metro (ATL1),33.777526,-84.421036,Atlanta,GA
+582,QTS Miami (MIA1),25.791541,-80.379598,Miami,FL
+584,CoreSite - Boston (BO1),42.376703,-71.079763,Somerville,MA
+585,1025Connect,40.7558,-73.557923,Westbury,NY
+590,Intergate West / Digital.forest / Fortress,47.494136,-122.29441,Tukwila,WA
+593,274 Brannan Street,37.782582,-122.391764,San Francisco,CA
+604,FiberNet Telecom Group Newark - 165 Halsey,40.736844,-74.173402,Newark,NJ
+605,365 Data Centers Ft. Lauderdale (FLL),26.184971,-80.190819,Ft. Lauderdale,FL
+613,Centersquare Phoenix (PHX3),33.421225,-111.858984,Mesa,AZ
+619,"Colo at 55, LLC",33.755807,-84.391066,Atlanta,GA
+642,Telecom Center LA,34.048428,-118.255186,Los Angeles,CA
+643,Colo4Dallas,32.807888,-96.857296,Dallas,TX
+668,CoreSite - Reston (VA1),38.950631,-77.364541,Reston,VA
+669,CoreSite - Miami (MI1),25.797548,-80.230038,Miami,FL
+670,CoreSite - New York (NY1),40.72,-74.004561,New York,NY
+671,Coresite - Milpitas (SV2),37.405693,-121.916261,Milpitas,CA
+679,ColoHouse Miami,25.775811,-80.192959,Miami,FL
+696,Equinix DE2 - Denver,39.560317,-104.857528,Denver,CO
+702,Hurricane Electric Fremont 1,37.489879,-121.931012,Fremont,CA
+710,Equinix CU1/CU2/CU3/CU4 - Culpeper,38.454881,-77.978325,Culpeper,VA
+737,Telehouse - Teleport Center (New York),40.606231,-74.173722,Staten Island,NY
+739,Level(3) Jersey City,40.718534,-74.037494,Jersey City,NJ
+766,YRIX,45.781051,-108.512531,Billings,MT
+767,TelePacific,37.77942,-122.394082,San Francisco,CA
+770,Switch Las Vegas,36.059914,-115.210194,Las Vegas,NV
+784,"Kanobe, LLC",47.779371,-122.190511,Bothell,WA
+799,LightEdge San Diego 1 (SAN1),32.828068,-117.129906,San Diego,CA
+800,LightEdge San Diego 2 (SAN2),32.897149,-117.20105,San Diego,CA
+803,Cologix MIN1,44.971408,-93.25458,Minneapolis,MN
+809,JSLLC Bozeman,45.680672,-111.035371,Bozeman,MT
+829,Oak Tower,39.101138,-94.578927,Kansas City,MO
+854,Level(3) Salt Lake City,40.756316,-111.955031,Salt Lake City,UT
+855,XO Salt Lake City IP PoP,40.750975,-111.979876,Salt Lake City,UT
+865,NASA Moffet Field,37.420567,-122.040197,Mountain View,CA
+895,Quonix Datacenter (2401 Locust St),39.950345,-75.180048,Philadelphia,PA
+908,Digital Realty EWR (100 Delawanna),40.829926,-74.126752,Clifton,NJ
+917,PhoenixNAP,33.41601,-112.009445,Phoenix,AZ
+925,Lumen Baltimore,39.291768,-76.620065,Baltimore,MD
+940,Equinix AT1 - Atlanta,33.758567,-84.387874,Atlanta,GA
+941,Flex Data Center,38.951881,-77.346564,Reston,VA
+942,Netriplex,35.488137,-82.557785,Asheville,NC
+966,800 south hope,34.045995,-118.258993,Los Angeles,CA
+968,Equinix CH3 - Elk Grove,42.001171,-87.954882,Elk Grove Village,IL
+973,Login Tucson,32.244939,-110.969165,Tucson,AZ
+981,QuadraNet DTLA,34.048428,-118.255186,Los Angeles,CA
+992,801 Main Street - Lenoir,35.922479,-81.54274,Lenoir,NC
+1001,Tonaquint Data Center - Saint George,37.081472,-113.607242,Saint George,UT
+1003,XO 818 West 7th,34.04881,-118.259457,Los Angeles,CA
+1004,XO 600 West 7th,34.047322,-118.25745,Los Angeles,CA
+1020,Digital Fortress (PTL),45.521223,-122.681823,Portland,OR
+1021,Level(3) Dallas,32.807584,-96.86816,Dallas,TX
+1028,ixColo,42.884227,-78.875514,Buffalo,NY
+1038,Level(3) Seattle (Denny Way),47.619054,-122.336393,Seattle,WA
+1040,501 Franklin Ave,40.722759,-73.631821,Garden City,NY
+1049,Zayo Networks,39.964963,-105.165261,Louisville,CO
+1060,SBA Edge - Jacksonville (JAX),30.331375,-81.662322,Jacksonville,FL
+1069,Level(3) Kansas City,39.100517,-94.582419,Kansas City,MO
+1078,801 Tenth Street Modesto (Ayera),37.638551,-120.998503,Modesto,CA
+1080,500 Green (AKA VOLICO 2.0),26.289687,-80.130014,Deerfield,FL
+1096,Level(3) Los Angeles,34.048741,-118.25956,Los Angeles,CA
+1101,Digital Realty SJC (2220 De La Cruz Blvd),37.361768,-121.943773,Santa Clara,CA
+1102,Vantage Data Centers (Santa Clara),37.372595,-121.973508,Santa Clara,CA
+1110,RagingWire CA1 - NTT,38.650318,-121.489184,Sacramento,CA
+1111,RagingWire CA2 - NTT,38.650382,-121.49192,Sacramento,CA
+1112,RagingWire VA1 - NTT,39.022561,-77.455012,Ashburn,VA
+1115,"232 20th St NW, East Grand Forks",47.945477,-97.022654,East Grand Forks,MN
+1136,IUPUI Informatics & Communications Technology Complex,39.77382,-86.167904,Indianapolis,IN
+1142,INdigital,41.132672,-85.211021,Fort Wayne,IN
+1152,Syringa Networks Boise,43.567545,-116.207057,Boise,ID
+1155,SupraNet Communications Madison,43.075606,-89.524364,Madison,WI
+1177,QTS Piscataway (PNJ1),40.556905,-74.484735,Piscataway,NJ
+1183,I2B SAN02,32.830414,-117.136849,San Diego,CA
+1184,I2B SAN01,32.830139,-117.13445,San Diego,CA
+1205,USNAMES-NET,39.730981,-75.627882,Wilmington,DE
+1221,Level(3) Denver,39.745119,-104.979669,Denver,CO
+1223,DataBank Ashburn (IAD1),39.015966,-77.48158,Ashburn,VA
+1227,Fireline Data Center,34.062122,-118.358612,Los Angeles,CA
+1229,CoreSite - Denver (DE2),39.744922,-104.97913,Denver,CO
+1231,TierPoint Tulsa-Archer,36.158798,-95.988577,Tulsa,OK
+1238,321 S Boston Ave,36.153266,-95.989196,Tulsa,OK
+1271,"Equinix MI3 - Miami, Boca Raton",26.387989,-80.108267,Boca Raton,FL
+1272,Telehouse - New York Chelsea,40.743209,-74.007954,New York,NY
+1291,INOC Albany (80 State St),42.649364,-73.75268,Albany,NY
+1293,Colo@34 (Downtown),33.754975,-84.389635,Atlanta,GA
+1294,Level(3) Memphis,35.028826,-89.930755,Memphis,TN
+1297,Fiberhub LAS1,36.066019,-115.138297,Las Vegas,NV
+1309,Hivelocity,28.01989,-82.52466,Tampa,FL
+1327,NP Rochester,44.020868,-92.462576,Rochester,MN
+1328,DataCenter.BZ - Worthington-Columbus,40.115838,-83.00176,Worthington,OH
+1334,Duluth Missabe,46.785022,-92.103083,Duluth,MN
+1335,XMission - Salt Lake City - Utah,40.7609,-111.888856,Salt Lake City,UT
+1337,CoreSite - Atlanta (AT1),33.755801,-84.390928,Atlanta,GA
+1348,EvoSwitch WDC1,38.747494,-77.531749,Manassas,VA
+1380,Digital Realty IAD (44521 Hastings),39.020131,-77.463206,Ashburn,VA
+1381,Digital Realty IAD (44461 Chilum),39.021133,-77.463564,Ashburn,VA
+1382,Digital Realty DFW (1232 Alma),32.966309,-96.715602,Richardson,TX
+1384,Digital Realty CH1 - Chicago,41.994269,-87.962053,Elk Grove Village,IL
+1389,Rackspace Dallas Grapevine (DFW1),32.929191,-97.104853,Grapevine,TX
+1405,Carolina Internet / CaroNet XB,35.179019,-80.932278,Charlotte,NC
+1411,Westelcom Networks Watertown,43.974742,-75.913547,Watertown,NY
+1412,Westelcom Networks Plattsburgh,44.696433,-73.452937,Plattsburgh,NY
+1419,Fusion - Cleveland,41.501689,-81.680462,Cleveland,OH
+1420,Datacenter.BZ,40.115757,-83.002414,Columbus,OH
+1422,DataBank New York (LGA1),40.717664,-74.008333,New York,NY
+1423,Crown Castle Pittsburgh (Allegheny Center Mall),40.451062,-80.005186,Pittsburgh,PA
+1440,1500 Champa,39.745765,-104.994399,Denver,CO
+1452,ColoCenter.com - Manchester NH,42.971981,-71.468877,Manchester,NH
+1454,Implex Minneapolis,45.000634,-93.265888,Minneapolis,MN
+1460,IPR Wilmington CCC,39.747859,-75.546753,Wilmington,DE
+1467,CyrusOne Cincinnati 7th St,39.102771,-84.517262,Cincinnati,OH
+1468,CyrusOne Lebanon,39.389053,-84.220796,Lebanon,OH
+1469,CyrusOne Florence,38.98065,-84.618707,Florence,KY
+1470,CyrusOne Mason,39.303887,-84.311636,Mason,OH
+1471,CyrusOne Hamilton,39.386313,-84.567161,Hamilton,OH
+1475,Databank Houston Galleria (HOU5),29.728119,-95.445075,Houston,TX
+1476,Databank Houston West (HOU1) (HOU2),29.844182,-95.556656,Houston,TX
+1478,CyrusOne Dallas (Lewisville),33.001402,-96.99766,Lewisville,TX
+1481,CyrusOne Dallas (Carrollton),32.991929,-96.930465,Carrollton,TX
+1483,CyrusOne Austin (Met 2),30.205925,-97.69791,Austin,TX
+1484,CyrusOne San Antonio,29.46661,-98.688078,San Antonio,TX
+1486,CyrusOne Chicago (Lombard),41.849175,-88.029567,Lombard,IL
+1488,CyrusOne Phoenix,33.270744,-111.882056,Phoenix,AZ
+1496,200 Quannapowitt Pkwy,42.520526,-71.084976,Wakefield,MA
+1513,Bay Area Internet,37.365431,-121.961738,Santa Clara,CA
+1517,60 Hudson,40.717723,-74.008299,New York,NY
+1518,EZ Network Systems,37.990788,-121.289822,Stockton,CA
+1594,DataBank Las Vegas (LAS1),36.059162,-115.145989,Las Vegas,NV
+1601,Level(3) Newark,40.736844,-74.173402,Newark,NJ
+1619,CoreSite - Santa Clara (SV4),37.376259,-121.970705,Santa Clara,CA
+1637,Level(3) Bellevue,41.185518,-95.936099,Bellevue,NE
+1644,Level(3) Hayward,37.638508,-122.129908,Hayward,CA
+1663,Parsec,45.742945,-108.602984,Billings,MT
+1668,OneNet OSU Tulsa,36.163393,-95.987612,Tulsa,OK
+1669,ARE-ON Hope,33.664742,-93.600378,Hope,AR
+1670,ARE-ON Forrest City,35.040103,-90.768064,Forrest City,AR
+1671,CoreSite - Secaucus (NY2),40.784501,-74.065119,Secaucus,NJ
+1690,"375 Pearl, Intergate.Manhattan",40.71096,-74.00142,New York,NY
+1698,Sungard AS Sacramento,38.596081,-121.272635,Rancho Cordova,CA
+1701,SITCO Evansville,38.019934,-87.521467,Evansville,IN
+1707,Northwestern University co-location facility,41.895233,-87.616861,Chicago,IL
+1712,InfoBunker,42.164903,-93.794162,Boone,IA
+1718,DataBank Miami (MIA1),25.775811,-80.192959,Miami,FL
+1720,Data Foundry Texas 1,30.198926,-97.713716,Austin,TX
+1721,Level(3) Austin (Kramer),30.385034,-97.70922,Austin,TX
+1722,Alpheus Houston (777 Walker Street),29.75922,-95.366246,Houston,TX
+1724,CLT2,35.193762,-80.938485,Charlotte,NC
+1727,"SBA Edge, LLC",41.875948,-88.248975,Chicago,IL
+1729,Level(3) Atlanta (Peachtree),33.758573,-84.387873,Atlanta,GA
+1730,Level(3) Chicago (Kingsbury),41.898951,-87.644642,Chicago,IL
+1731,Level(3) Miami (5th St),25.779013,-80.192962,Miami,FL
+1732,Level(3) Herndon,38.964641,-77.382947,Herndon,VA
+1733,Level(3) McLean,38.920062,-77.212126,McLean,VA
+1736,Digital Realty New Jersey EWR10 (closed),40.761802,-74.025183,Weehawken,NJ
+1738,DataBank Dallas (DFW6),32.838552,-96.865083,Dallas,TX
+1739,HSW-DC1RH,34.92958,-81.021841,Rock Hill,SC
+1751,LightPoint Corporation,45.521436,-122.677878,Portland,OR
+1754,IC2NET Data Center,33.717178,-117.803253,Tustin,CA
+1759,Northland Communications - Syracuse,43.043813,-76.152378,Syracuse,NY
+1760,Northland Communications - Utica,43.099765,-75.235426,Utica,NY
+1769,NYI NY1 (100 William Street),40.708383,-74.007201,New York,NY
+1776,Host Color,40.74463,-73.987667,New York,NY
+1816,H5 Data Centers New York,40.726868,-74.007703,New York,NY
+1819,DataBank New York (LGA2),40.741469,-74.003387,New York,NY
+1820,DataBank Newark (EWR1),40.736844,-74.173402,Newark,NJ
+1828,WOW! Business (Columbus Datacenter),39.967631,-82.995434,Columbus,OH
+1835,DC74-CLT1,35.193902,-80.937263,Charlotte,NC
+1836,DC74-CLT4,35.180076,-80.92639,Charlotte,NC
+1837,612 W Main,43.06776,-89.392409,Madison,WI
+1841,Telefonica KeyCenter,25.796769,-80.379841,Miami,FL
+1842,Evocative SJC11,37.389466,-121.962115,Santa Clara,CA
+1866,DataBank Seattle (SEA1),47.614347,-122.338883,Seattle,WA
+1875,EdgeConneX Denver (EDCDEN01),39.561073,-104.826671,Englewood,CO
+1878,Digital Realty IAD (43940 Digital Loudoun),39.000821,-77.479198,Ashburn,VA
+1880,QTS Phoenix (PHX1),33.452003,-112.072042,Phoenix,AZ
+1895,Montana Opticom,45.673641,-111.19004,Bozeman,MT
+1896,Iron Mountain Data Center - Denver (DEN-1),39.777353,-104.968212,Denver,CO
+1910,EdgeConneX Houston (EDCHOU01),29.794579,-95.745149,Katy,TX
+1916,NEGMA Datacenter,32.949582,-96.837348,Farmers Branch,TX
+1917,EdgeConneX Phoenix (EDCPHX01),33.395544,-111.97012,Tempe,AZ
+1918,EdgeConneX Las Vegas (EDCLAS01),36.065272,-115.130816,Las Vegas,NV
+1921,EdgeConneX Norfolk (EDCNOR01),36.86186,-76.235342,Norfolk,VA
+1922,EdgeConneX Portland (EDCPOR01),45.548296,-122.907473,Hillsboro,OR
+1923,EdgeConneX Miami (EDCMIA01),25.793016,-80.38119,Miami,FL
+1924,EdgeConneX Nashville (EDCNAS01),36.144881,-86.701721,Nashville,TN
+1925,EdgeConneX Pittsburgh (EDCPIT01),40.452221,-80.041515,Pittsburgh,PA
+1926,EdgeConneX Sacramento (EDCSAC01),38.592346,-121.277389,Rancho Cordova,CA
+1927,EdgeConneX Detroit (EDCDET01),42.448537,-83.261226,Southfield,MI
+1928,EdgeConneX San Diego (EDCSDG01),32.84049,-117.168374,San Diego,CA
+1929,EdgeConneX Atlanta (EDCATL01),33.729369,-84.420099,Atlanta,GA
+1930,EdgeConneX Memphis (EDCMEM01),35.038995,-89.88623,Memphis,TN
+1938,CME Cermak,41.85365,-87.618342,Chicago,IL
+1941,Lifeline Eastgate,39.775998,-86.04275,Indianapolis,IN
+1946,Cologix JAX1,30.331403,-81.66242,Jacksonville,FL
+1947,Digital Realty MIA (36 NE 2nd St),25.775811,-80.192959,Miami,FL
+1948,Level(3) Boise,43.56619,-116.185889,Boise,ID
+1955,South Reach Networks,25.775869,-80.193129,Miami,FL
+1972,"LogInToUs, Inc.",44.861059,-74.294006,Malone,NY
+1976,MDC McAllen,26.201918,-98.231633,McAllen,TX
+1977,Laredo VTX,27.50656,-99.501483,Laredo,TX
+1978,Netrality St. Louis - 210 N Tucker,38.629332,-90.197305,St. Louis,MO
+1983,Level(3) Nashville (9th Ave),36.189148,-86.804111,Nashville,TN
+2010,Iron Mountain Data Center - Ohio (OHS-1),39.591093,-84.236385,Miamisburg,OH
+2011,Iron Mountain Data Center - New Jersey (NJE-1),40.521083,-74.347384,Edison,NJ
+2013,Evocative Emeryville (EM1),37.847054,-122.293028,Emeryville,CA
+2014,365 Data Centers New York (NY10),40.707335,-74.012583,New York,NY
+2015,365 Data Centers Philadelphia (PH2),39.956611,-75.196511,Philadelphia,PA
+2018,Netrality - Indy Telcom Center - 701 W. Henry,39.759534,-86.170711,Indianapolis,IN
+2021,365 Data Centers Detroit (DT1),42.469879,-83.259651,Southfield,MI
+2033,Wintek Corporation,40.421474,-86.890366,Lafayette,IN
+2034,NETRIX - MTP,42.078163,-87.915633,Mount Prospect,IL
+2035,NETRIX - ALSIP,41.662716,-87.746531,Alsip,IL
+2036,NETRIX - BBN,42.202902,-87.883783,Bannockburn,IL
+2068,DataBank Philadelphia (PHL1),39.959612,-75.161014,Philadelphia,PA
+2071,Pixel Factory Data Center,37.698641,-77.436436,Ashland,VA
+2073,EdgeConneX Boston (EDCBOS01),42.528505,-71.249495,Billerica,MA
+2074,EdgeConneX Tallahassee (EDCTAL01),30.471969,-84.353232,Tallahassee,FL
+2075,EdgeConneX Richmond (EDCRIC01),37.638915,-77.467703,Richmond,VA
+2076,EdgeConneX Jacksonville (EDCJAX01),30.254238,-81.604183,Jacksonville,FL
+2077,EdgeConneX Salt Lake City (EDCSLC01),40.720873,-111.984927,Salt Lake City,UT
+2078,EdgeConneX Seattle (EDCSEA01),47.498209,-122.289962,Tukwila,WA
+2082,FiberCloud-Westin1809,47.614358,-122.338864,Seattle,WA
+2083,FiberCloud-Westin3205,47.614358,-122.338864,Seattle,WA
+2084,123.NET - DC1 - 24700 Northwestern Hwy.,42.471634,-83.238056,Southfield,MI
+2086,H5 Data Centers Tampa,27.949508,-82.458396,Tampa,FL
+2087,H5 Data Centers Buffalo III,42.88427,-78.875707,Buffalo,NY
+2096,TierPoint Hawthorne (fka Xand),41.088318,-73.815224,Hawthorne,NY
+2111,Netrality Philadelphia - 401 N Broad,39.959889,-75.161752,Philadelphia,PA
+2112,833 Chestnut Street,39.949905,-75.154973,Philadelphia,PA
+2113,H5 Data Centers Philadelphia (PA01),39.962351,-75.163736,Philadelphia,PA
+2126,SD Data Center,28.259162,-80.694858,Melbourne,FL
+2140,Digital Fortress (SEA),47.617781,-122.356693,Seattle,WA
+2142,Digital Fortress (TUK),47.494136,-122.29441,Tukwila,WA
+2156,TierPoint Omaha - Midlands,41.134508,-96.039042,Papillion,NE
+2157,Flexential - Dallas/Downtown (DAL01),32.800748,-96.819412,Dallas,TX
+2180,CyrusOne NJ-1,40.538224,-74.546019,Somerset,NJ
+2181,CyrusOne NC-1,35.936339,-78.879943,Durham,NC
+2185,Psychz Networks LAX1,34.048684,-118.257528,Los Angeles,CA
+2190,230 Congress,42.354552,-71.054087,Boston,MA
+2198,DataBank Denver (DEN2),39.591303,-104.846748,Centennial,CO
+2221,Flexential - Phoenix (PHX01),33.684671,-112.098312,Phoenix,AZ
+2225,SoVerNet Burlington,44.479557,-73.213218,Burlington,VT
+2249,Simply Bits DC1,32.205098,-110.956748,Tucson,AZ
+2250,DataBank Boston (BOS1),42.354699,-71.060271,Boston,MA
+2251,Digital Realty BOS14 - Boston,42.301316,-71.219029,Needham,MA
+2261,Equinix DA6 - Dallas,32.800748,-96.819412,Dallas,TX
+2268,Colo@ (Buckhead),33.83887,-84.372429,Atlanta,GA
+2269,Atlanta Tech Village,33.848673,-84.373313,Atlanta,GA
+2270,GIP Plano,33.012213,-96.683109,Plano,TX
+2279,UFN Kearns,40.766212,-111.891494,Salt Lake City,UT
+2302,CyrusOne Sterling,39.025827,-77.41381,Sterling,VA
+2311,Stream Data Centers - San Antonio II,29.471741,-98.671576,San Antonio,TX
+2313,RSA Dexter Avenue Datacenter,32.37803,-86.303007,Montgomery,AL
+2320,Gafachi 1 West Main Rochester,43.155428,-77.612713,Rochester,NY
+2325,Cologix MIN2,44.971385,-93.254494,Minneapolis,MN
+2338,Vaultas,43.044997,-87.910189,Milwaukee,WI
+2340,Data Foundry Austin 1,30.215259,-97.695071,Austin,TX
+2341,Data Foundry Houston 1,29.749429,-95.471792,Houston,TX
+2342,Data Foundry Houston 2,29.945145,-95.424212,Houston,TX
+2349,TriTech Center,44.97859,-93.266407,Minneapolis,MN
+2354,CyrusOne Austin (Met 3),30.207107,-97.700668,Austin,TX
+2355,CyrusOne Wappingers Falls,41.599043,-73.882221,Wappingers Falls,NY
+2356,CyrusOne Totowa,40.907217,-74.242258,Totowa,NJ
+2357,CyrusOne Norwalk,41.110989,-73.39827,Norwalk,CT
+2365,QTS Richmond (RIC1),37.488073,-77.244177,Sandston,VA
+2375,Cologix DAL1,32.800748,-96.819412,Dallas,TX
+2376,Cologix DAL2,32.800748,-96.819412,Dallas,TX
+2377,Cologix COL1,40.116491,-83.001985,Columbus,OH
+2378,Cologix COL2,40.116491,-83.001985,Columbus,OH
+2379,Cologix JAX2,30.273221,-81.613866,Jacksonville,FL
+2380,Cologix LAK1,28.079624,-81.975179,Lakeland,FL
+2381,Flexential - Cincinnati (CIN1/2),39.316449,-84.450172,West Chester,OH
+2398,Level(3) Charlotte,35.17868,-80.928126,Charlotte,NC
+2400,ERC Broadband,35.594066,-82.55792,Asheville,NC
+2414,Lightboard ★ Massachusetts,42.109443,-72.575141,Springfield,MA
+2418,Stack Infrastructure Portland PORO2,45.547403,-122.897906,Hillsboro,OR
+2427,EdgeConneX Santa Clara (EDCSVC01/EDCSVC02),37.36437,-121.958865,Santa Clara,CA
+2432,"DataSite, Boise",43.606214,-116.303601,Boise,ID
+2433,Lunavi - Westin1809,47.614347,-122.338883,Seattle,WA
+2434,Lunavi - Westin1969,47.614347,-122.338883,Seattle,WA
+2435,Lunavi - Westin3205,47.614347,-122.338883,Seattle,WA
+2438,Flexential - Denver/Aurora (DEN03),39.66107,-104.849813,Aurora,CO
+2439,Flexential - Denver/Englewood (DEN11),39.559047,-104.8386,Englewood,CO
+2440,Flexential - Minneapolis/Chaska (MSP01),44.851292,-93.599549,Chaska,MN
+2441,Flexential - Las Vegas/Downtown (LAS03),36.168644,-115.143561,Las Vegas,NV
+2442,Flexential - Las Vegas/Downtown (LAS05),36.168333,-115.143126,Las Vegas,NV
+2443,Flexential - Las Vegas/North (LAS04),36.248009,-115.101272,North Las Vegas,NV
+2444,Flexential - Portland/Hillsboro (PDX01),45.54845,-122.891445,Hillsboro,OR
+2445,Flexential - Salt Lake City/Downtown (SLC04),40.756302,-111.954307,Salt Lake City,UT
+2447,Flexential - Portland/Hillsboro 2 (PDX02),45.557854,-122.917023,Hillsboro,OR
+2449,Flexential - Denver/Centennial (DEN05),39.594144,-104.843142,Centennial,CO
+2450,Flexential - Denver/Downtown (DEN02),39.745765,-104.994399,Denver,CO
+2452,Flexential - Dallas/Richardson (RCH01),32.993304,-96.756242,Richardson,TX
+2454,Flexential - Salt Lake City/Lindon (SLC03),40.332493,-111.728052,Lindon,UT
+2455,Flexential - Salt Lake City/Cottonwood (SLC05),40.634811,-111.805979,Salt Lake City,UT
+2456,Flexential - Salt Lake City/Fairpark (SLC07),40.766785,-111.920263,Salt Lake City,UT
+2457,Flexential - Salt Lake City/South Valley (SLC09),40.620556,-111.984644,West Jordan,UT
+2458,Flexential - Salt Lake City/Millcreek (SLC10),40.685494,-111.885063,Salt Lake City,UT
+2469,DataBank Dallas (DFW5),32.800748,-96.819412,Dallas,TX
+2508,Cologix NNJ2,40.831821,-74.448794,Cedar Knolls,NJ
+2509,Cologix NNJ3,40.857084,-74.418907,Parsippany,NJ
+2511,Alpheus Austin (1905 E. 6th Street),30.261059,-97.722123,Austin,TX
+2519,Voonami SLC2,40.720873,-111.984927,West Valley City,UT
+2520,Voonami SLC1,40.326235,-111.681642,Orem,UT
+2526,DRFortress HNL,21.335678,-157.917855,Honolulu,HI
+2530,ACT Cheyenne,41.131025,-104.900887,Cheyenne,
+2532,ACT Wheatland,42.045087,-104.963884,Wheatland,WY
+2533,ACT Douglas,42.734225,-105.338279,Douglas,WY
+2534,ACT Casper,42.852917,-106.319088,Casper,WY
+2535,ACT Riverton,43.023952,-108.3816,Riverton,WY
+2536,ACT Gillette,44.246829,-105.504717,Gillette,WY
+2537,ACT Buffalo,44.354194,-106.696638,Buffalo,WY
+2538,ACT Sheridan,44.797251,-106.955883,Sheridan,WY
+2539,ACT Colstrip,45.89347,-106.618344,Colstrip,MT
+2542,Digital Realty SJC (2805 Lafayette),37.372597,-121.947955,Santa Clara,CA
+2547,Digital Realty LAX (2260 E El Segundo),33.915663,-118.384725,El Segundo,CA
+2553,325 Delaware Ave,42.893011,-78.875279,Buffalo,NY
+2571,Forsythe Data Centers,42.00687,-87.96457,Elk Grove Village,IL
+2572,Columbia County Community Broadband Utility,33.545316,-82.135633,Evans,GA
+2578,Equinix DA2 - Dallas,32.800955,-96.81955,Dallas,TX
+2579,Equinix DA7 - Dallas,33.064858,-96.810993,Plano,TX
+2591,Centersquare Chicago (ORD1),41.85365,-87.618342,Chicago,IL
+2593,Centersquare Chicago (ORD2),41.99209,-87.958015,Elk Grove Village,IL
+2594,Centersquare Columbus (CMH1),40.16884,-83.010799,Lewis Center,OH
+2596,Centersquare Northern Virginia (IAD1-A/F),39.023339,-77.413194,Sterling,VA
+2600,EdgeConneX Madison (EDCMAD01),43.04802,-89.297331,Madison,WI
+2601,EdgeConneX Minneapolis (EDCMSP01),44.878844,-93.404156,Eden Prairie,MN
+2615,Centersquare Northern Virginia (IAD1-C/E),39.025283,-77.413213,Sterling,VA
+2616,Centersquare Northern Virginia (IAD2),38.984122,-77.423889,Sterling,VA
+2618,Centersquare Northern Virginia (IAD3),38.980226,-77.443486,Sterling,VA
+2619,Centersquare Dallas (DFW1),32.832607,-97.040726,Fort Worth,TX
+2621,Centersquare Denver (DEN1),39.550215,-105.033374,Highlands Ranch,CO
+2623,Centersquare Denver (DEN2),39.560863,-104.830727,Englewood,CO
+2633,Centersquare Minneapolis (MSP1),44.778828,-93.461982,Shakopee,MN
+2636,Centersquare New Jersey (EWR2),40.76218,-74.024685,Weehawken,NJ
+2638,Centersquare New Jersey (EWR3),40.554537,-74.4569,Piscataway,NJ
+2641,Centersquare Los Angeles (LAX3),33.687339,-117.848727,Irvine,CA
+2642,Centersquare Phoenix (PHX1),33.454411,-111.976435,Phoenix,AZ
+2643,Centersquare Silicon Valley (SFO1),37.371485,-121.969739,Santa Clara,CA
+2645,Centersquare Silicon Valley (SFO2),37.398632,-121.980961,Santa Clara,CA
+2647,Centersquare Seattle (SEA1-B),47.491883,-122.289792,Tukwila,WA
+2653,Centersquare Silicon Valley (SFO3),37.372078,-121.986073,Sunnyvale,CA
+2655,Centersquare Tampa (TPA1),27.945324,-82.351199,Tampa,FL
+2686,Dataverge,40.657808,-74.004881,Brooklyn,NY
+2733,NP Belle Plaine (MSP1),44.624122,-93.778109,Belle Plaine,MN
+2754,I-Evolve Technology Datacenter Amherst,43.018107,-78.784612,Amherst,NY
+2756,Lowest Host/Empire Technology,40.7997,-111.946913,Salt Lake City,UT
+2762,CoreSite - Santa Clara (SV3),37.374919,-121.970216,Santa Clara,CA
+2763,CoreSite - Reston (VA2),38.948974,-77.364545,Reston,VA
+2770,Ascent - CH2,41.920029,-87.912164,Northlake,IL
+2781,MultaCom Main,34.049219,-118.257002,Los Angeles,CA
+2782,Multacom One Wilshire,34.047942,-118.255564,Los Angeles,CA
+2783,Multacom Telecom Center,34.048428,-118.255186,Los Angeles,CA
+2793,NetSolus Inc,39.101274,-94.578821,Kansas City,MO
+2835,SDN Communications Campus Sioux Falls South Dakota,43.546529,-96.764101,Sioux Falls,SD
+2836,SDN Communication Mark Shlanta Technology Park,43.605177,-96.808315,Sioux Falls,SD
+2853,BESTNAP,30.273541,-97.742944,Austin,TX
+2861,Evocative DA4,32.837967,-96.878307,Dallas,TX
+2873,H5 Data Centers Silicon Valley,37.372036,-121.987545,Sunnyvale,CA
+2924,Digital Realty CHI (600-780 S Federal),41.874224,-87.629937,Chicago,IL
+2929,Zayo Pittsburgh - 2500 Allegheny Center Mall,40.451862,-80.006977,Pittsburgh,PA
+2936,Zayo Nashville - 209 10th Ave. S,36.155165,-86.782559,Nashville,TN
+2943,Zayo Cleveland - 1525 Rockwell Ave,41.506167,-81.68395,Cleveland,OH
+2954,Sungard AS Scottsdale,33.632423,-111.917795,Scottsdale,AZ
+2955,INAP Houston,29.753536,-95.365771,Houston,TX
+2956,DataBank Chicago (ORD1),41.874224,-87.629937,Chicago,IL
+2957,Zayo Baltimore - 111 Market Pl,39.287414,-76.606104,Baltimore,MD
+2958,DataBank Memphis (MEM1),35.203086,-89.808615,Memphis,TN
+2959,Zayo Minneapolis - 10300 6th Ave N,44.98646,-93.411433,Minneapolis,MN
+2960,DataBank Chicago (ORD3),42.078055,-87.923547,Mount Prospect,IL
+2961,"Roller Network (Reno, NV)",39.469306,-119.76983,Reno,NV
+2971,Zayo Washington DC - 2100 M Street NW,38.904888,-77.047082,Washington,DC
+2972,DataBank Seattle (SEA2),47.495027,-122.290569,Tukwila,WA
+2973,DataPipe Silicon Valley One,37.333597,-121.887886,San Jose,CA
+2974,1011 San Jacinto,30.27167,-97.738559,Austin,TX
+2975,H5 Data Centers Cleveland,41.506167,-81.68395,Cleveland,OH
+2976,Digital Realty CLT (125 N Myers St),35.222057,-80.8353,Charlotte,NC
+2977,DataBank Denver (DEN1),39.564112,-104.866554,Englewood,CO
+2978,Alpheus Fort Worth (307 W 7th St),32.751443,-97.331678,Fort Worth,TX
+2979,Digital Realty EWR (3 Corporate Pl),40.554537,-74.4569,Piscataway,NJ
+2980,DataBank Irvine (SNA1),33.690423,-117.840518,Irvine,CA
+2981,Evocative EWR1,40.787662,-74.068015,Secaucus,NJ
+2982,TierPoint Chicago - West,41.927017,-87.858028,Franklin Park,IL
+2983,US Signal - Oak Brook,41.846308,-87.939656,Oak Brook,IL
+2985,Evocative SEA1,47.619446,-122.34811,Seattle,WA
+2988,Gosnell - International Gateway 1 (8100 Boone),38.913686,-77.225887,Vienna,VA
+2989,Evocative Virginia (VA1),38.948869,-77.329428,Reston,VA
+3011,Long Lines Data Center,42.483287,-96.348107,Sioux City,IA
+3012,UnitedLayer Los Angeles,34.048428,-118.255186,Los Angeles,CA
+3013,TierPoint Philadelphia,39.892465,-75.165482,Philadelphia,PA
+3014,TierPoint Chicago - Polk,41.871616,-87.642825,Chicago,IL
+3071,H5 Data Centers Denver,39.618102,-104.891509,Greenwood Village,CO
+3076,H5 Data Centers Phoenix,33.277073,-111.885739,Chandler,AZ
+3077,H5 Data Centers Seattle,47.619054,-122.336393,Seattle,WA
+3078,H5 Data Centers Atlanta,33.765199,-84.38365,Atlanta,GA
+3080,H5 Data Centers Ashburn,39.013682,-77.451713,Ashburn,VA
+3088,Amplex DC0,41.481022,-83.451231,Luckey,OH
+3096,Markley Group Lowell,42.629897,-71.305788,Lowell,MA
+3099,GIP Dallas,32.783819,-96.79463,Dallas,TX
+3127,Enseva Cedar Rapids,42.05634,-91.679566,Hiawatha,IA
+3131,Digital Realty SJC (1100 Space Park),37.375823,-121.953325,Santa Clara,CA
+3143,CyrusOne Aurora I,41.796754,-88.24276,Aurora,IL
+3149,AlohaNAP,21.335728,-158.086738,Kapolei,HI
+3186,Optic Fusion - Perkins Building,47.253338,-122.436709,Tacoma,WA
+3187,Optic Fusion - Westin Building 2505,47.614358,-122.338864,Seattle,WA
+3263,Digital Realty HOU (12001 North Freeway),29.943168,-95.416846,Houston,TX
+3286,Tech Vault South Burlington,44.45418,-73.141763,South Burlington,VT
+3300,Digital Realty Portland - PDX10,45.547609,-122.892017,Hillsboro,OR
+3312,Cologix MIN3,44.971408,-93.25458,Minneapolis,MN
+3313,Cologix COL3,40.116491,-83.001985,Columbus,OH
+3322,Consolidated - 811 Louisiana,29.759292,-95.366313,Houston,TX
+3344,CoreSite - Santa Clara (SV7),37.3761,-121.973055,Santa Clara,CA
+3345,Prov.net PVD1 (1155 Westminster),41.817374,-71.427671,Providence,RI
+3346,Prov.net PVD2 (304 Carpenter),41.817622,-71.429267,Providence,RI
+3347,Prov.net CHF1 (Boston North),42.597085,-71.331383,Chelmsford,MA
+3359,QTS Sacramento (SAC1),38.646407,-121.486335,Sacramento,CA
+3360,QTS Princeton (PJC1),40.279249,-74.547551,East Windsor,NJ
+3362,QTS Chicago (CHI1),41.841895,-87.668306,Chicago,IL
+3363,QTS Irving - Dallas (DFW1),32.89709,-96.982993,Irving,TX
+3364,QTS Overland Park (OVP1),38.89627,-94.673374,Overland Park,KS
+3378,US Internet - Minnetonka,44.972011,-93.436607,Minnetonka,MN
+3394,Bluebird Fiber Parma Data Center,41.407902,-81.780019,Parma,OH
+3398,Netrality Chicago - 717 S Wells,41.872911,-87.63327,Chicago,IL
+3421,LADC1 - 624 S Grand Ave,34.047948,-118.255358,Los Angeles,CA
+3422,LADC2 - 707 Wilshire Blvd,34.049219,-118.257002,Los Angeles,CA
+3423,LADC3 - 600 W 7th St,34.047415,-118.257382,Los Angeles,CA
+3424,LADC4 - 530 W 6th St,34.048428,-118.255186,Los Angeles,CA
+3425,LADC5 - 650 S Grand Ave,34.047423,-118.25618,Los Angeles,CA
+3426,SFDC1 - 200 Paul Ave,37.723698,-122.398056,San Francisco,CA
+3427,NYDC1 - 60 Hudson Street,40.717729,-74.008306,New York,NY
+3428,NYDC2 - 111 8th ave,40.741469,-74.003387,New York,NY
+3429,NYDC3 - 11 skyline dr,41.088241,-73.815348,Hawthorne,NY
+3430,NJDC1 - 100 Delawanna ave,40.829947,-74.126657,Clifton,NJ
+3431,NJDC2 - 300 J F Kennedy Blvd,40.777818,-74.075909,Secaucus,NJ
+3432,BDC1 - 34 Saint Martin Dr,42.312902,-71.579257,Marlborough,MA
+3433,PDC1 - 9999 Hamilton blvd,40.544235,-75.655718,Breinigsville,PA
+3434,PDC2 - 1000 Adams ave,40.121801,-75.421011,Audubon,PA
+3435,PDC3 - 3949 Schelden Cir,40.675013,-75.378107,Bethlehem,PA
+3436,CDC1 - 350 E Cermak Rd,41.853701,-87.618252,Chicago,IL
+3437,CDC2 - 600 S Federal st,41.874224,-87.629937,Chicago,IL
+3438,CDC3 - 800 E Business Center Dr,42.078055,-87.923547,Mount Prospect,IL
+3439,CDC4 - 1808 Swift Dr,41.854051,-87.920916,Oak Brook,IL
+3440,CDC5 - 2200 Busse Rd,41.994269,-87.962053,Elk Grove Village,IL
+3441,MDC1 - 36 NE 2nd St,25.775825,-80.192808,Miami,FL
+3442,HDC1 - 108 Bank St,41.554434,-73.041219,Waterbury,CT
+3457,"ColoSpace - Bedford, NH",42.928233,-71.463933,Bedford,NH
+3458,"ColoSpace - Waltham, MA",42.399882,-71.253131,Waltham,MA
+3459,"ColoSpace - Rockland, MA",42.166264,-70.898347,Rockland,MA
+3460,"ColoSpace - Somerville, MA",42.376703,-71.079763,Somerville,MA
+3469,MI Tech - Main Campus,47.119532,-88.551329,Houghton,MI
+3482,Crown Castle Philadelphia (401 N Broad),39.959668,-75.161377,Philadelphia,PA
+3483,Crown Castle Hartford (960 Main),41.768371,-72.672133,Hartford,CT
+3484,Crown Castle Boston (1 Summer),42.354692,-71.060266,Boston,MA
+3485,Crown Castle Springfield (1 Federal),42.109052,-72.576013,Springfield,MA
+3486,Crown Castle Newark (165 Halsey),40.736844,-74.173402,Newark,NJ
+3487,Crown Castle Providence (235 Promenade),41.828542,-71.41934,Providence,RI
+3488,Crown Castle Chicago (725 S Wells),41.872619,-87.633278,Chicago,IL
+3489,Crown Castle Marlboro (34 St Martin),42.313247,-71.578316,Marlborough,MA
+3490,Crown Castle Worcester (474 Main),42.262556,-71.802963,Worcester,MA
+3491,Crown Castle New York (111 8th),40.741469,-74.003387,New York,NY
+3492,Crown Castle Providence (300 Carpenter),41.817911,-71.42888,Providence,RI
+3493,Crown Castle Columbus (101 E Town),39.958911,-82.996895,Columbus,OH
+3498,ManagedWay TYM1,42.537158,-83.099861,Troy,MI
+3499,ManagedWay TYM2,42.540615,-83.098459,Troy,MI
+3500,ManagedWay BYK1,42.825353,-85.672818,Byron Center,MI
+3501,ManagedWay SFJ1,42.471634,-83.238056,Southfield,MI
+3502,ManagedWay SFJ2,42.467029,-83.234962,Southfield,MI
+3524,Liquid Web DC3,42.705368,-84.666064,Lansing,MI
+3581,NWT Data Center,25.775583,-80.188189,Miami,FL
+3582,IM Datacenter,25.775811,-80.192959,Miami,FL
+3634,Patmos KC1,39.097212,-94.567238,Kansas City,MO
+3647,CoreSite - Orlando (OR1),28.427139,-81.419829,Orlando,FL
+3663,"DartPoints Cincinnati, OH - CVG1",39.098228,-84.517483,Cincinnati,OH
+3664,TierPoint Allentown-TekPark,40.544235,-75.655718,Breinigsville,PA
+3665,TierPoint Lehigh Valley,40.675013,-75.378107,Bethlehem,PA
+3666,TierPoint Valley Forge,40.121849,-75.420907,Norristown,PA
+3668,"DartPoints Asheville, NC - AVL1",35.488154,-82.558062,Asheville,NC
+3669,"DartPoints Greenville, SC - GSP1",34.807763,-82.34338,Greenville,SC
+3670,"DartPoints Columbia, SC - CAE1",33.987661,-81.030715,Columbia,SC
+3671,"DartPoints Charleston, SC - CHS1",32.964888,-80.101283,Ladson,SC
+3672,Hosted Backbone Richmond1,37.646784,-77.438443,Richmond,VA
+3716,T5@Dallas,33.064858,-96.810993,Plano,TX
+3725,Digital Realty ATL14 - Atlanta,33.761611,-84.391309,Atlanta,GA
+3771,Anexio NJ1,40.557342,-74.484434,Piscataway,NJ
+3772,Anexio ACC5,39.020131,-77.463206,Ashburn,VA
+3777,Aecero - Orange County (SNA1),33.848958,-117.971033,Anaheim,CA
+3825,QuadraNet LAX,33.945894,-118.393553,Los Angeles,CA
+3853,DataBank Atlanta (ATL2),33.733895,-84.425712,Atlanta,GA
+3860,FirstLight Regen Hut,43.658074,-70.29982,Portland,ME
+3861,Opus Interactive Portland (PDX01),45.52306,-122.683661,Portland,OR
+3862,Opus Interactive Hillsboro (HIO01),45.547403,-122.897906,Hillsboro,OR
+3863,Opus Interactive Dallas (DTX01),32.778287,-96.7984,Dallas,TX
+3864,Opus Interactive Silicon Valley (SJC01),37.402211,-121.892822,San Jose,CA
+3868,Digital Fortress (PTL2),45.476347,-122.776398,Beaverton,OR
+3876,WhiteLabelITSolutions,40.883258,-74.050276,Hackensack,NJ
+3890,Bresco Broadband Data Center,39.959803,-82.988601,Columbus,OH
+3891,Continental Plaza,39.963223,-82.995858,Columbus,OH
+3919,H5 Data Centers Secaucus (NJ01),40.784817,-74.076264,Secaucus,NJ
+3920,H5 Data Centers Portland (OR01),45.531851,-122.683964,Portland,OR
+3922,Element Critical  Austin AUS1,30.3421,-97.6963,Austin,TX
+3923,Tech Mahindra Cleveland,41.49786,-81.693321,Cleveland,OH
+3924,Cologix MIN4,44.971408,-93.25458,Minneapolis,MN
+3925,H5 Data Centers Nashville (TN01),36.162621,-86.776316,Nashville,TN
+3926,75 Broad Street,40.704687,-74.01123,New York,NY
+3927,H5 Data Centers Minneapolis,44.972309,-93.147411,St. Paul,MN
+3928,H5 Data Centers St. Louis (MO01),38.632728,-90.195813,St. Louis,MO
+3929,vXchnge Raleigh-Durham (NC01),35.895769,-78.849214,Durham,NC
+3930,Evocative New York (JFK2),41.180558,-73.755109,Chappaqua,NY
+3931,H5 Data Centers Pittsburgh (PA02),40.452053,-79.980564,Pittsburgh,PA
+3951,Verizon Atlanta,33.727965,-84.417833,Atlanta,GA
+4021,University of Oregon,44.045988,-123.07043,Eugene,OR
+4047,Centersquare Albuquerque (ABQ1),35.086183,-106.651864,Albuquerque,NM
+4048,Centersquare Atlanta (ATL1-A/B/C),33.74424,-84.58259,Lithia Springs,GA
+4049,Centersquare Boston (BOS1-A),42.396785,-71.267452,Waltham,MA
+4069,AINET - Beltsville,39.052767,-76.925864,Beltsville,MD
+4104,Consolidated - 770 Elm St.,42.989023,-71.46365,Manchester,NH
+4105,Consolidated - 266 Main St.,44.476496,-73.208582,Burlington,VT
+4106,Consolidated - 45 Forest Ave.,43.656009,-70.263803,Portland,ME
+4165,Switch Tahoe Reno,39.515706,-119.471281,McCarran,NV
+4226,Sabey Intergate East Building 4,47.493087,-122.293706,Tukwila,WA
+4279,Verus Corportation,45.124986,-93.2728,Coon Rapids,MN
+4284,DataBank Dallas (DFW1),32.778287,-96.7984,Dallas,TX
+4285,DataBank Dallas (DFW2),32.966683,-96.711345,Richardson,TX
+4286,DataBank Dallas (DFW3),33.08846,-96.813905,Plano,TX
+4287,DataBank Minneapolis (MSP1),44.862766,-93.330405,Edina,MN
+4288,DataBank Minneapolis (MSP2),44.838484,-93.145777,Eagan,MN
+4290,DataBank Kansas City (MCI2),38.975187,-94.708903,Overland Park,KS
+4291,DataBank Cleveland (CLE1),41.501022,-81.684102,Cleveland,OH
+4292,DataBank Pittsburgh (PIT1),40.451062,-80.005186,Pittsburgh,PA
+4293,DataBank Salt Lake City (SLC1),40.768519,-111.885833,Salt Lake City,UT
+4294,DataBank Salt Lake City (SLC2),40.480032,-111.904533,Bluffdale,UT
+4295,DataBank Salt Lake City (SLC3),40.479891,-111.905781,Bluffdale,UT
+4334,1706 Richardson,64.034628,-145.731673,Delta Junction,AK
+4347,Smartcom Telephone (MCAL2),26.203611,-98.225848,McAllen,TX
+4348,Smartcom Telephone (MCAL1),26.203638,-98.225835,McAllen,TX
+4371,TierPoint Dallas,32.807982,-96.857362,Dallas,TX
+4372,TierPoint Dallas2 - Allen,33.137525,-96.657906,Allen,TX
+4373,TierPoint Jacksonville,30.216587,-81.581459,Jacksonville,FL
+4374,TierPoint Nashville,35.924575,-86.85582,Franklin,TN
+4443,Equinix DE1 - Denver,39.587739,-104.864707,Englewood,CO
+4505,EDCDET01,42.448537,-83.261226,Southfield,MI
+4514,Fireline Broadband,33.948356,-118.073256,Santa Fe Springs,CA
+4546,LightEdge Des Moines 1 (DSM1),41.667665,-93.455473,Altoona,IA
+4547,LightEdge Des Moines 2 (DSM2),41.666762,-93.455725,Altoona,IA
+4548,LightEdge Kansas City Subtropolis (KCI1),39.159195,-94.471237,Kansas City,MO
+4549,LightEdge Omaha (OMA1),41.159748,-96.025585,Papillion,NE
+4571,Quest Roseville,38.789905,-121.313861,Roseville,CA
+4572,Omnis Network Phoenix,33.394673,-111.952418,Tempe,AZ
+4580,MDC El Paso,31.750001,-106.309928,El Paso,TX
+4581,MDC Laredo,27.690636,-99.450354,Laredo,TX
+4582,Cogent New York 1,40.705781,-74.013972,New York,NY
+4600,CyrusOne Sterling V,39.027202,-77.435827,Sterling,VA
+4604,Coloblox Data Centers ATL2,33.755851,-84.391243,Atlanta,GA
+4666,"Equinix BO2 - Boston, Billerica",42.55167,-71.215669,Billerica,MA
+4675,Digital Realty SJC (3205 Alfred St),37.379576,-121.958562,Santa Clara,CA
+4676,Digital Realty SJC (3105 Alfred St),37.378271,-121.958112,Santa Clara,CA
+4678,Digital Realty SJC (3011 Lafayette St),37.376362,-121.948543,Santa Clara,CA
+4679,Digital Realty SJC (1725 Comstock St),37.375034,-121.958096,Santa Clara,CA
+4680,Digital Realty SJC (1525 Comstock St),37.37493,-121.956008,Santa Clara,CA
+4681,Digital Realty SJC (1500 Space Park Dr),37.375801,-121.955182,Santa Clara,CA
+4682,Digital Realty SJC (1201 Comstock St),37.37498,-121.954079,Santa Clara,CA
+4745,Digital Realty IAD (44100 Digital Loudoun),39.001795,-77.47841,Ashburn,VA
+4747,H5 Data Centers Virginia (4030),38.910141,-77.472549,Chantilly,VA
+4748,H5 Data Centers Virginia (4040),38.909881,-77.473498,Chantilly,VA
+4749,H5 Data Centers Virginia (4050),38.909241,-77.472266,Chantilly,VA
+4750,43915 Devin Shafron,39.002814,-77.481851,Ashburn,VA
+4751,Digital Realty IAD (43881 Devin Shafron),39.002034,-77.483444,Ashburn,VA
+4752,Digital Realty IAD (43791 Devin Shafron),39.003285,-77.487214,Ashburn,VA
+4753,Digital Realty IAD (43830 Devin Shafron),39.004182,-77.484108,Ashburn,VA
+4754,Digital Realty IAD (44060 Digital Loudoun),39.001795,-77.47841,Ashburn,VA
+4755,Digital Realty IAD (44490 Chilum),39.020901,-77.459831,Ashburn,VA
+4756,Digital Realty IAD (44520 Hastings),39.020372,-77.459125,Ashburn,VA
+4757,Digital Realty IAD (21625 Gresham),39.017522,-77.465676,Ashburn,VA
+4758,Digital Realty IAD (21745 Sir Timothy),39.014286,-77.466327,Ashburn,VA
+4759,Digital Realty IAD (1780 Business Center),38.948482,-77.327203,Reston,VA
+4760,Digital Realty GNV (8217 Linton Hall),38.775892,-77.596103,Gainesville,VA
+4770,Digital Realty CLT (113 N Myers St),35.221885,-80.835538,Charlotte,NC
+4773,Digital Realty EWR (2 Peekay),40.830886,-74.125188,Clifton,NJ
+4804,Aphorio Carter Trumbull Data Center,41.240684,-73.147321,Trumbull,CT
+4870,Digital Realty AUS11 - Austin,30.212179,-97.695775,Austin,TX
+4906,Jaguar Communications,44.083125,-93.228236,Owatonna,MN
+4952,Serverfarm LAX1 Los Angeles,33.921614,-118.386551,El Segundo,CA
+4953,Cogent Seattle,47.31176,-122.294551,Federal Way,WA
+4966,Cogent Herndon,38.962883,-77.380442,Herndon,VA
+4990,Burbank Water and Power,34.177856,-118.316743,Burbank,CA
+4992,Flexential - Philadelphia/Collegeville (PHL01),40.151699,-75.479529,Collegeville,PA
+4993,Flexential - Dallas/Plano (DFW01),33.007418,-96.666318,Plano,TX
+4994,Flexential - Fort Lauderdale (FLL1/2),26.190264,-80.19326,Fort Lauderdale,FL
+4995,Flexential - Atlanta/Norcross (ATL1/2),33.954763,-84.198645,Norcross,GA
+4996,Flexential - Atlanta/Alpharetta (ATL3/4),34.08716,-84.252346,Alpharetta,GA
+4998,Flexential - Charlotte/South (CLT1/2/3),35.135366,-80.93693,Charlotte,NC
+4999,Flexential - Charlotte/North (CLT4/5),35.329674,-80.766017,Charlotte,NC
+5000,Flexential - Jacksonville (JAX1/2),30.24567,-81.581866,Jacksonville,FL
+5001,Flexential - Louisville/Downtown (LOU02/03/04),38.242458,-85.733412,Louisville,KY
+5002,Flexential - Louisville/East (LOU5),38.276081,-85.50733,Louisville,KY
+5003,Flexential - Nashville/Brentwood (NAS01/04),35.972453,-86.808748,Brentwood,TN
+5004,Flexential - Nashville/Cool Springs (NAS02/03),35.951091,-86.833251,Franklin,TN
+5005,Flexential - Nashville/Franklin (NAS05/06),35.92028,-86.815618,Franklin,TN
+5007,Flexential - Raleigh (RAL01/02/03),35.84984,-78.829017,Morrisville,NC
+5008,Flexential - Richmond (RIC01/02),37.646784,-77.438443,Richmond,VA
+5009,Flexential - Tampa/West (TPA01/02),28.036955,-82.540938,Tampa,FL
+5010,Flexential - Tampa/North (TPA03),28.074222,-82.368201,Tampa,FL
+5020,Colocation Northwest - Tacoma,47.253339,-122.436765,Tacoma,WA
+5042,"702 Communications - Moorhead, MN",46.874078,-96.769171,Moorhead,MN
+5084,Data Center West Medford,42.332451,-122.880416,Medford,OR
+5085,Data Center West Eugene,44.05071,-123.093116,Eugene,OR
+5092,H5 Data Centers Albuquerque,35.088555,-106.652284,Albuquerque,NM
+5111,EdgeConneX Miami (EDCMIA02),25.945524,-80.191391,Miami,FL
+5113,University of Maine - Neville Telecom Colo,44.901994,-68.66674,Orono,ME
+5138,Digital Realty PHX15 (2121 S Price Rd),33.27485,-111.886948,Chandler,AZ
+5150,QTS Ashburn (ASH1),39.000373,-77.448809,Sterling,VA
+5183,WowRack,47.49312,-122.293712,Tukwila,WA
+5187,Digital Realty IAD 39 (44274 Round Table),32.958748,-96.822079,Ashburn,VA
+5197,CyrusOne Dallas (Allen),33.137525,-96.657906,Allen,TX
+5204,"Lawton Information Services, LLC",27.958465,-81.965329,Lakeland,FL
+5211,HostDime Orlando Data Center,28.617526,-81.393381,Orlando,FL
+5231,CentriLogic Rochester (ROC),43.167127,-77.673029,Rochester,NY
+5232,CentriLogic Buffalo (BUF),42.884112,-78.875431,Buffalo,NY
+5246,X2nSat Petaluma,38.274793,-122.666564,Petaluma,CA
+5268,TRG Datacenters Houston (HOU1) (HOU2),30.065987,-95.459024,Spring,TX
+5269,TierPoint St. Louis - Olive,38.629757,-90.196398,St. Louis,MO
+5270,TierPoint St. Louis - Walnut,38.625536,-90.195238,St. Louis,MO
+5326,Wave Data Centers San Francisco,37.723698,-122.398056,San Francisco,CA
+5334,Equinix HO1 - Houston,29.9358,-95.36435,Houston,TX
+5342,TierPoint Baltimore,39.27541,-76.625461,Baltimore,MD
+5363,Aunalytics Kalamazoo Datacenter,42.246545,-85.675111,Kalamazoo,MI
+5373,Iron Mountain Data Center - Manassas (VA-1),38.778046,-77.547069,Manassas,VA
+5434,Serverfarm CH1 Chicago,41.870905,-87.640153,Chicago,IL
+5435,Serverfarm ATL1 Atlanta,34.036063,-84.063817,Suwanee,GA
+5436,ScaleMatrix Charlotte Data Center US-East 01,35.173088,-80.927807,Charlotte,NC
+5437,Serverfarm TiTAN Moses Lake,47.181497,-119.3215,Moses Lake,WA
+5438,Serverfarm CH2 Oak Brook / Chicago,41.845343,-87.941522,Oak Brook,IL
+5439,ServerFarm SC1,37.407382,-121.965885,Santa Clara,CA
+5467,CoreSite - Reston (VA3),38.948941,-77.371495,Reston,VA
+5483,Peace Communications NSH2,36.103326,-86.668932,Nashville,TN
+5500,INOC Albany (11 North Pearl St),42.650018,-73.752061,Albany,NY
+5501,INOC Albany (4 Tower Pl),42.686106,-73.84255,Albany,NY
+5522,OzarksGo Fayetteville,36.077952,-94.212464,Fayetteville,AR
+5545,Intergate.Quincy,47.246308,-119.815715,Quincy,WA
+5600,Subrigo LAX11,34.047423,-118.25618,Los Angeles,CA
+5601,Subrigo DET11,42.471612,-83.238138,Southfield,MI
+5609,Indiana University Data Center,39.174464,-86.500753,Bloomington,IN
+5617,JAX NAP,30.331375,-81.662322,Jacksonville,FL
+5648,Simple Helix,34.745454,-86.691888,Huntsville,AL
+5693,RACK59 Data Center,35.466482,-97.649302,Oklahoma City,OK
+5745,Hawaii Pacific Teleport,21.334443,-158.08691,Kapolei,HI
+5775,Crown Castle Los Angeles (624 S Grand),34.047948,-118.255358,Los Angeles,CA
+5804,IP Pathways DSM1,41.627418,-93.768033,Urbandale,IA
+5835,TulsaConnect DC3,36.098083,-95.839889,Tulsa,OK
+5839,QX.Net Lexington,38.047912,-84.499563,Lexington,KY
+5890,Evocative ATL1,33.761505,-84.39141,Atlanta,GA
+5945,NJFX,40.16059,-74.052962,Wall,NJ
+5951,LightWave Networks,42.302267,-71.219577,Needham,MA
+5970,LightEdge Austin 1 (AUS1),30.214315,-97.712733,Austin,TX
+5971,LightEdge Austin 2 (AUS2),30.200169,-97.70627,Austin,TX
+6011,H5 Data Centers San Antonio,29.429369,-98.486791,San Antonio,TX
+6022,Coloblox Data Centers ATL3,33.887451,-84.467834,Atlanta,GA
+6064,InterConnX Realty,29.754605,-95.369869,Houston,TX
+6084,NYI NY2 (60 Hudson Street),40.717729,-74.008306,New York,NY
+6085,365 Data Centers Bridgewater (BW1),40.58144,-74.573881,Bridgewater,NJ
+6090,COPT DC-6,38.747494,-77.531749,Manassas,VA
+6095,Stack Infrastructure Silicon Valley SVY01,37.402211,-121.892822,San Jose,CA
+6206,Encompass New York 60 Hudson,40.717729,-74.008306,New York,NY
+6207,Encompass New York 111 8th Ave,40.741469,-74.003387,New York,NY
+6272,Element Critical Chicago CH2,41.974047,-87.966966,Wood Dale,IL
+6273,Element Critical Northern Virginia VA1,38.908613,-77.220473,Vienna,VA
+6317,"ark data centers - Duluth, MN",46.827451,-92.130338,Duluth,MN
+6334,Cloudpath CT1 (26 Fahey St),41.091604,-73.516758,Stamford,CT
+6338,365 Data Centers Herndon (VA1),38.934436,-77.428691,Herndon,VA
+6339,Iron Mountain Data Center - Boston (BOS-1),42.340622,-71.639811,Northborough,MA
+6340,Iron Mountain Data Center - Western Pennsylvania (WPA-1),41.092096,-79.912188,Boyers,PA
+6342,Iron Mountain Data Center - Kansas City (KCM-1),39.010862,-94.501281,Kansas City,MO
+6344,Iron Mountain Data Center - Manassas (VA-2),38.770228,-77.539018,Manassas,VA
+6346,Iron Mountain Data Center - Phoenix (AZP-2),33.452061,-111.977263,Phoenix,AZ
+6352,SFN MN-Albert Lea,43.633435,-93.383825,Albert Lea,MN
+6380,H5 Data Centers Quincy,47.252471,-119.819721,Quincy,WA
+6381,H5 Data Centers Cincinnati,39.097935,-84.524095,Cincinnati,OH
+6418,ColoCrossing BUF1,42.893049,-78.875318,Buffalo,NY
+6422,ColoCrossing SJ1,37.33417,-121.891703,San Jose,CA
+6423,ColoCrossing SEA1,47.49312,-122.293712,Seattle,WA
+6425,ColoCrossing NJ1,40.557342,-74.484434,Piscataway,NJ
+6426,ColoCrossing LA1,34.048336,-118.255083,Los Angeles,CA
+6427,ColoCrossing DFW1,32.807888,-96.857296,Dallas,TX
+6428,ColoCrossing CHI1,41.994256,-87.961965,Elk Grove Village,IL
+6436,CloudHQ MCC1,38.716855,-77.499738,Manassas,VA
+6439,Peer-Point Colocation,25.767492,-80.191037,Miami,FL
+6453,ATI Solutions,38.908137,-77.475261,Chantilly,VA
+6458,Heyburn Building,38.245857,-85.758047,Louisville,KY
+6461,Lunavi - Cheyenne,41.129714,-104.741612,Cheyenne,WY
+6480,SFN IA-Emery,43.132695,-93.27891,Mason City,IA
+6505,Endeavor Data Center,21.331924,-157.888183,Honolulu,HI
+6529,UPX Miami,25.932848,-80.121136,Miami,FL
+6536,AiNET WDC8,39.052767,-76.925864,Beltsville,MD
+6537,AiNET WDC11,39.101379,-76.847997,Laurel,MD
+6538,AiNET MD-300L,39.291768,-76.620065,Baltimore,MD
+6539,AiNET MD-790R,39.13848,-76.605528,Glen Burnie,MD
+6543,AiNET DC-900S,38.90101,-77.003861,Washington,DC
+6553,RagingWire CA3 - NTT,38.644384,-121.498636,Sacramento,CA
+6554,RagingWire TX1 - NTT,32.981068,-96.657798,Garland,TX
+6555,RagingWire VA3 - NTT,39.019293,-77.470655,Ashburn,VA
+6556,RagingWire VA2 - NTT,39.02489,-77.457559,Ashburn,VA
+6575,Colocation Northwest - Bellevue,47.583534,-122.134492,Bellevue,WA
+6576,Colocation Northwest - Redmond,47.632512,-122.138538,Redmond,WA
+6577,Colocation Northwest - Seattle,47.614347,-122.338883,Seattle,WA
+6578,Colocation Northwest - South Hill,47.154859,-122.279018,Puyallup,WA
+6587,Digital Realty CHI (505 N Railroad),41.920267,-87.912334,Northlake,IL
+6598,Wnet Telecom USA,40.59761,-73.995101,New York,NY
+6638,CoreSite - Atlanta (AT2),33.925548,-84.481654,Marietta,GA
+6669,Centersquare Los Angeles (LAX4),33.924259,-118.320802,Hawthorne,CA
+6670,Centersquare Los Angeles (LAX5),33.684675,-117.836821,Irvine,CA
+6675,Centersquare Atlanta (ATL1-D),33.744326,-84.581852,Lithia Springs,GA
+6676,Centersquare Chicago (ORD4),41.802407,-88.094656,Lisle,IL
+6678,Centersquare Boston (BOS4-A),42.365768,-71.158084,Watertown,MA
+6681,Centersquare Dallas (DFW2),33.094894,-96.68326,Allen,TX
+6682,Centersquare Dallas (DFW3),32.911684,-96.87274,Dallas,TX
+6684,Centersquare Northern Virginia (IAD4),39.021941,-77.453284,Ashburn,VA
+6716,UnReal Servers,39.13335,-94.580005,North Kansas City,MO
+6747,Level(3) Raleigh,35.854381,-78.597011,Raleigh,NC
+6765,Border Crossing Pop 1,32.544028,-117.027372,San Diego,CA
+6776,Lincoln Rackhouse Dallas,33.015496,-96.766132,Plano,TX
+6885,Lincoln Rackhouse Silver Spring,39.058289,-76.964548,Silver Spring,MD
+6886,Lincoln Rackhouse Aurora,41.772203,-88.217055,Aurora,IL
+6904,Element Critical Chicago CH1,41.975882,-87.964568,Wood Dale,IL
+6915,Smart City Telecom Maitland Colo,28.638819,-81.39965,Orlando,FL
+6937,Liberty Center One,42.533508,-83.177393,Royal Oak,MI
+6972,Volt Modesto,37.641953,-121.00224,Modesto,CA
+7047,Lumen Norfolk,36.878851,-76.221387,Norfolk,VA
+7073,Globalinx Virginia Beach CLS,36.784195,-76.00859,Virginia Beach,VA
+7074,"Equinix SE4 - Seattle, Kent",47.420627,-122.247527,Kent,WA
+7109,Evocative DAL6,33.015681,-96.768421,Plano,TX
+7142,WēConnect Westerville,40.123627,-82.943999,Westerville,OH
+7169,AlohaNAP Datacenter,21.334443,-158.08691,Kapolei,HI
+7173,TSR Solutions Data Center,43.03904,-87.907046,Milwaukee,WI
+7187,CloudHQ MCC2,38.722972,-77.499229,Manassas,VA
+7217,DC BLOX CHA1 - DCBLOX Chattanooga,35.031582,-85.297262,Chattanooga,TN
+7218,DC BLOX HSV1 - DCBLOX Huntsville,34.711822,-86.692154,Huntsville,AL
+7219,DC BLOX BHM1 - DCBLOX Birmingham,33.49959,-86.821129,Birmingham,AL
+7220,DC BLOX ATL1 - DCBLOX Atlanta,33.831665,-84.339169,Atlanta,GA
+7262,TurnKey Internet,42.74545,-73.75914,Latham,NY
+7263,TurnKey Internet - CA,34.048336,-118.255083,Los Angeles,CA
+7264,TurnKey Internet - DR,42.649423,-73.752684,Albany,NY
+7265,Cogent Albany,42.649423,-73.752684,Albany,NY
+7267,Lumen New York,40.751657,-74.007158,New York,NY
+7271,TierPoint Omaha - Bellevue,41.178209,-95.924766,Bellevue,NE
+7273,"Crown Castle Baltimore (111 Market, 700 E Pratt)",39.287345,-76.606434,Baltimore,MD
+7288,Planet Networks Newton Datacenter,41.058209,-74.75396,Newton,NJ
+7297,Xfernet LAX01,34.061086,-118.293315,Los Angeles,CA
+7332,SFN IA-IowaFalls,42.555386,-93.259636,Iowa Falls,IA
+7345,"702 Communications - Fargo, ND",46.864784,-96.832308,Fargo,ND
+7359,Sabey Intergate.Ashburn,39.015352,-77.478264,Ashburn,VA
+7525,NYI CH1 (800 Jorie Blvd),41.845343,-87.941522,Oak Brook,IL
+7563,Neutron - Spokane,47.658366,-117.419213,Spokane,WA
+7566,EdgeConneX Hillsboro (EDCPOR02),45.548296,-122.907473,Hillsboro,OR
+7568,EdgeConneX Atlanta (EDCATL02),33.731803,-84.423585,Atlanta,GA
+7609,Racksquared Data Centers,39.966878,-82.992615,Columbus,OH
+7670,Unwired FAT1 - Fresno Colocation,36.846165,-119.799363,Fresno,CA
+7671,RagingWire VA4 - NTT,39.019293,-77.470655,Ashburn,VA
+7705,SFN IA-Davenport,41.548129,-90.621185,Davenport,IA
+7706,SFN IA-Waterloo,42.488836,-92.330614,Waterloo,IA
+7736,"DartPoints Spartanburg, SC - SPA1",34.996536,-82.033518,Spartanburg,SC
+7737,"DartPoints Columbus, IN - CLU1",39.182544,-85.897349,Columbus,IN
+7740,Citynet Charleston,38.353138,-81.640921,Charleston,WV
+7741,Citynet Bridgeport,39.276713,-80.270157,Bridgeport,WV
+7836,Centersquare Silicon Valley (SFO4-A),37.375719,-121.955154,Santa Clara,CA
+7861,Aligned Ashburn (IAD-01),39.014003,-77.469729,Ashburn,VA
+7862,Aligned Dallas (DFW-01),33.009295,-96.676434,Plano,TX
+7863,Aligned Phoenix (PHX-01),33.658881,-112.110606,Phoenix,AZ
+7864,Aligned Salt Lake (SLC-02),40.585936,-111.969762,South West Jordan,UT
+7865,Aligned Salt Lake (SLC-01),40.585936,-111.969762,South West Jordan,UT
+7872,QTS Hillsboro (HIL1),45.55717,-122.927173,Hillsboro,OR
+7874,QTS Manassas (MAN1),38.754611,-77.51326,Manassas,VA
+7875,QTS Fort Worth (FTW1),32.988738,-97.258448,Fort Worth,TX
+7878,CENTRA CLT01 - Charlotte NC (701 E Trade),35.222101,-80.836747,Charlotte,NC
+7938,Coloblox Data Centers ATL1,33.889646,-84.465365,Atlanta,GA
+7985,The Garland Center / West 7 Center,34.05112,-118.26591,Los Angeles,CA
+8021,AlasConnect Data Center 1,64.851655,-147.719813,Fairbanks,AK
+8025,AlasConnect Data Center 5,61.188879,-149.912324,Anchorage,AK
+8032,Bluebird Underground Data Center,37.231398,-93.212181,Springfield,MO
+8081,Stream Data Centers - DFW VII,32.983596,-96.655836,Garland,TX
+8082,Stream Data Centers - Houston I,30.177801,-95.486494,The Woodlands,TX
+8083,Stream Data Centers - MN I,44.808431,-93.636931,Chaska,MN
+8087,Stream Data Centers - Chicago I,42.002586,-87.951707,Elk Grove Village,IL
+8088,Stream Data Centers - Phoenix I,33.419639,-112.359487,Goodyear,AZ
+8125,DQE Communications (Downtown Pittsburgh),40.438903,-80.000547,Pittsburgh,PA
+8126,DQE Communications (Butler),40.860587,-79.907512,Butler,PA
+8127,DQE Communications (Allegheny Center Mall),40.451062,-80.005186,Pittsburgh,PA
+8223,Data102 - COS01,38.832108,-104.82403,Colorado Springs,CO
+8224,Data102 - COS02,38.832108,-104.82403,Colorado Springs,CO
+8240,Frontier Tampa Main Tandem Office,27.950136,-82.456447,Tampa,FL
+8257,Navégalo Data Center Miami (MI1),25.775869,-80.19313,Miami,FL
+8281,Agile Silver Spring,39.058289,-76.964548,Silver Spring,MD
+8283,Agile Aurora,41.772203,-88.217055,Aurora,IL
+8315,Crosspoint Data College Station,30.601412,-96.2873,College Station,TX
+8317,FIBERTOWN Houston Data Center,29.943078,-95.417308,Houston,TX
+8318,FIBERTOWN Bryan Data Center,30.674256,-96.373773,Bryan,TX
+8319,Quasar Data Center,29.760061,-95.362102,Houston,TX
+8336,"ark data centers - Tucson, AZ",32.1723,-110.95415,Tucson,AZ
+8337,"ark data centers - Akron,OH",41.057108,-81.522183,Akron,OH
+8338,"ark data centers - Cedar Rapids ,IA",42.052632,-91.554004,Marion,IA
+8340,PhoenixNAP ASHBURN,39.015966,-77.48158,Ashburn,VA
+8341,PhoenixNAP ATLANTA,33.927915,-84.481824,Marietta,GA
+8387,Cologix DAL3,32.800748,-96.819412,Dallas,TX
+8411,T5@Chicago,42.023691,-87.973753,Elk Grove Village,IL
+8458,Expedient Indianapolis,39.963184,-86.145575,Carmel,IN
+8459,ORI.NET Noblesville,40.045407,-86.013927,Noblesville,IN
+8464,Expedient Cleveland - 151 NEO,41.428228,-81.573952,Cleveland,OH
+8468,Expedient Baltimore - Owings Mills,39.427117,-76.811709,Baltimore,MD
+8469,Expedient Boston,42.405414,-71.074978,Medford,MA
+8470,Expedient Cleveland - 152 NEO,41.429415,-81.574072,Cleveland,OH
+8471,Expedient Columbus - Dublin,40.091865,-83.143709,Dublin,OH
+8472,Expedient Columbus - Upper Arlington,40.057853,-83.0785,Upper Arlington,OH
+8473,Expedient Memphis,35.062965,-89.786143,Memphis,TN
+8474,Expedient Phoenix,33.41601,-112.009445,Phoenix,AZ
+8475,Expedient Pittsburgh - Nova Place,40.451847,-80.005856,Pittsburgh,PA
+8477,Expedient Pittsburgh - Green Tree,40.42735,-80.042457,Pittsburgh,PA
+8484,Databank Atlanta (ATL1),33.775499,-84.387735,Atlanta,GA
+8517,365 Data Centers Commack (CNY),40.822677,-73.291647,Commack,NY
+8552,FairlawnGig Service Center,41.133097,-81.629367,Fairlawn,OH
+8566,Cogent Tampa,27.947747,-82.459056,Tampa,FL
+8572,Senawave,40.711882,-111.964741,Salt Lake City,UT
+8577,Corepacket PDX-1,45.521056,-122.67918,Portland,OR
+8583,TierPoint Boston - Andover,42.685693,-71.208694,Andover,MA
+8584,TierPoint Baltimore – BWI,39.213809,-76.679891,Linthicum Heights,MD
+8586,TierPoint Charlotte - North Myers,35.222114,-80.835313,Charlotte,NC
+8587,TierPoint Charlotte - Center Park,35.173088,-80.927807,Charlotte,NC
+8591,TierPoint Tulsa-State Farm,36.096334,-95.840438,Tulsa,OK
+8592,TierPoint Kansas City - Lenexa,38.940686,-94.755003,Lenexa,KS
+8593,TIerPoint Little Rock,34.756041,-92.444207,Little Rock,AR
+8594,TierPoint Milwaukee,43.009336,-87.96114,Milwaukee,WI
+8595,TierPoint Oklahoma City,35.514225,-97.596767,Oklahoma City,OK
+8598,TierPoint Research Triangle Park – RTP,35.896667,-78.878838,Durham,NC
+8599,TierPoint Seattle,47.619446,-122.34811,Seattle,WA
+8600,TierPoint Sioux Falls - East,43.596146,-96.716872,Sioux Falls,SD
+8601,TierPoint Sioux Falls - West,43.606059,-96.810208,Sioux Falls,SD
+8602,TierPoint Raleigh,35.854381,-78.597011,Raleigh,NC
+8603,TierPoint Waterbury,41.554434,-73.04122,Waterbury,CT
+8721,BlueBridge Networks | Downtown Cleveland,41.500806,-81.683699,Cleveland,OH
+8722,BlueBridge Networks | Mayfield Heights Data Center,41.505827,-81.467108,Mayfield Heights,OH
+8727,Fortress SF1,37.782608,-122.391772,San Francisco,CA
+8736,bigbyte.cc,35.084508,-106.648933,Albuquerque,NM
+8744,InterServer Teb2,40.78606,-74.073757,Secaucus,NJ
+8745,InterServer Teb4,40.785251,-74.074991,Secaucus,NJ
+8756,Oso Grande Technologies,35.09252,-106.653315,Albuquerque,NM
+8780,mindSHIFT Ashburn,39.016363,-77.459022,Ashburn,VA
+8781,mindSHIT Commack,40.822677,-73.291647,Commack,NY
+8782,mindSHIFT Minneapolis,44.971408,-93.25458,Minneapolis,MN
+8859,Synergy Fiber,42.241804,-83.737636,Ann Arbor,MI
+8861,INAP Phoenix,33.298287,-112.053638,Phoenix,AZ
+8863,Evocative LAX14,33.889248,-118.368733,Los Angeles,CA
+8867,CoreSite - Santa Clara (SV8),37.377388,-121.97175,Santa Clara,CA
+8868,CoreSite - Chicago (CH2),41.86255,-87.640966,Chicago,IL
+8874,Southwest Cyberport Albuquerque,35.102314,-106.589084,Albuquerque,NM
+8929,Digital Realty CH2 - Chicago,41.99418,-87.957678,Elk Grove,IL
+8930,Digital Realty CH3 - Chicago,41.993346,-87.964112,Elk Grove,IL
+8931,Digital Realty DFW (4025 Midway Road),33.021668,-96.844732,Carrollton,TX
+8932,Digital Realty DFW (2440 Marsh Lane),32.980107,-96.853694,Carrollton,TX
+9067,"Equinix MI6 - Miami, Doral",25.787849,-80.354555,Doral,FL
+9085,Telxius Boca Raton DC,26.405641,-80.114041,Miami,
+9129,NOLA BROADBAND,29.901419,-90.041661,Gretna,
+9145,1530 SWIFT - NOCIX,39.136878,-94.577558,North Kansas City,MO
+9148,NOCIX Clay Facility,39.137389,-94.578645,North Kansas City,MO
+9161,Fort Rock Data Center,44.047402,-121.328535,Bend,OR
+9309,Aunalytics South Bend Datacenter (AUSB),41.661423,-86.257342,South Bend,IN
+9360,Jackson Technical Datacenter,36.151937,-95.984342,Tulsa,OK
+9381,123.NET - DC4 - 400 76th St SW,42.825389,-85.672784,Byron Center,MI
+9382,123.NET - DC2 - 24275 Northwestern Hwy.,42.467035,-83.235001,Southfield,MI
+9390,"DartPoints Dublin, OH - CMH1",40.093185,-83.133589,Dublin,OH
+9398,TunBroker Baltimore,39.213809,-76.679891,Linthicum Heights,MD
+9403,123.NET - DC3 - 24245 Northwestern Hwy.,42.466862,-83.234666,Southfield,MI
+9406,Equinix LA7 - Los Angeles,33.850864,-118.304002,Los Angeles,CA
+9415,QTS Ashburn (ASH3),39.000915,-77.475168,Ashburn,VA
+9416,Colo Solutions Downtown Orlando,28.534496,-81.379455,Orlando,FL
+9429,505 Marquette -- Lobo Internet,35.088935,-106.652526,Albuquerque,NM
+9460,Evocative BOS1,42.377932,-71.080419,Somerville,MA
+9515,Neutron - Coeur d'Alene,47.700339,-116.794444,Coeur d'Alene,ID
+9537,Prov.net 935,41.81764,-71.423806,Providence,RI
+9622,Cogent Atlanta,33.755851,-84.391243,Atlanta,GA
+9659,200 South Virginia - Reno,39.522999,-119.811358,Reno,NV
+9663,"CoreSite - Washington,DC (DC2)",38.903404,-77.031169,Washington,DC
+9664,CoreSite - Los Angeles (LA3),34.058703,-118.235929,Los Angeles,CA
+9699,SecureData 365,40.832529,-81.431933,Canton,OH
+9707,DNSnetworks IDC4,25.775869,-80.19313,Miami,FL
+9738,Globenet Boca Raton CLS,26.344915,-80.08815,Boca Raton,FL
+9773,AISO Data Center,33.74821,-117.152165,Romoland,CA
+9845,Connect Des Moines,41.585529,-93.625422,Des Moines,IA
+9846,Tonaquint Data Center - Boise ID,43.60801,-116.310153,Boise,ID
+9853,T5@Cleveland,41.440122,-81.80254,Cleveland,OH
+9854,T5@Cincinnati,39.10585,-84.536559,Cincinnati,OH
+9855,T5@Minneapolis,44.971526,-93.270339,Minneapolis,MN
+9856,4120 Lafayette Center Drive,38.905944,-77.469017,Chantilly,VA
+9900,AceHost Tampa,27.948986,-82.457025,Tampa,FL
+9918,Alpha Technologies DC1,38.353059,-81.696117,South Charleston,WV
+9925,Direct LTx Reading,40.381319,-75.982026,Reading,PA
+10103,Lincoln Rackhouse Kansas City,39.295603,-94.67394,Kansas City,MO
+10104,Lincoln Rackhouse Atlanta,33.92663,-84.326708,Dunwoody,GA
+10149,Victory Technology Center,42.82652,-78.821501,Lackawanna,NY
+10202,Heartland Technology Data Center,42.471271,-92.054083,Jesup,IA
+10349,365 Data Centers New Jersey (NJ1),40.58144,-74.573881,Bridgewater Township,NJ
+10376,LCOG Park Place,44.050388,-123.092459,Eugene,OR
+10407,Amarillo Petroleum Building,35.205583,-101.839148,Amarillo,TX
+10411,Bluebird Quad Cities Data Center,41.550323,-90.482459,Bettendorf,IA
+10415,Beloit-NOC,39.459519,-98.110625,Beloit,KS
+10439,BendTel,44.060152,-121.309509,Bend,OR
+10444,Cloudpath CT2 (1351 Washington Blvd),41.058085,-73.542936,Stamford,CT
+10445,Cloudpath CT19 (5 Landmark Sq),41.054701,-73.537277,Stamford,CT
+10473,Cogent Boca Raton,26.392805,-80.109732,Boca Raton,FL
+10474,Cogent Boston,42.393191,-71.255728,Waltham,MA
+10476,Cogent Chicago 1,41.878465,-87.634525,Chicago,IL
+10477,Cogent Chicago 2,41.886487,-87.632145,Chicago,IL
+10478,Cogent Cleveland,41.501689,-81.680462,Cleveland,OH
+10479,Cogent Columbus,39.968136,-82.995596,Columbus,OH
+10547,Fiber Alley 8915,32.829836,-117.134159,San Diego,CA
+10548,Fiber Alley 8917,32.829836,-117.134159,San Diego,CA
+10564,Lincoln Data Centers,40.812034,-96.702272,Lincoln,NE
+10565,Binary Net Vault,40.812702,-96.70235,Lincoln,NE
+10623,Stream Data Centers - Chicago II,41.999144,-87.958291,Elk Grove Village,IL
+10674,OpenColo,37.378892,-121.956248,Santa Clara,CA
+10687,Digital Realty DFW18 (1210 Integrity Dr),32.96547,-96.711986,Richardson,TX
+10766,ColoHouse New York,41.034512,-73.97584,Orangeburg,NY
+10791,"DartPoints North Liberty, IA",41.756979,-91.596653,North Liberty,IA
+10829,Navisite Andover,42.696486,-71.211131,Andover,MA
+10830,Navisite Santa Clara,37.37289,-121.948022,Santa Clara,CA
+10862,ORNY1,41.034512,-73.97584,Orangeburg,NY
+10864,Sungard AS Philadelphia,39.959612,-75.161014,Philadelphia,PA
+10865,Sungard AS Aurora,39.762718,-104.762172,Aurora,CO
+10866,Sungard AS Carlstadt 777,40.828282,-74.044333,Carlstadt,NJ
+10869,Houston Bunker,30.377702,-95.668803,Montgomery,TX
+10910,DataBank San Diego (SAN1),32.988781,-117.073181,San Diego,CA
+10915,DataBank McLean (IAD2),38.919781,-77.215636,McLean,VA
+10916,DataBank Atlanta (ATL3),33.734567,-84.425652,Atlanta,GA
+10917,DataBank Pittsburgh (PIT2),40.451321,-80.190035,Pittsburgh,PA
+10918,DataBank Chicago (ORD2),41.870906,-87.640153,Chicago,IL
+10919,DataBank Chicago (ORD4),41.854051,-87.920916,Oak Brook,IL
+10920,DataBank Denver (DEN3),39.74576,-104.994518,Denver,CO
+10921,DataBank Denver (DEN4),39.884552,-105.080128,Westminster,CO
+10922,DataBank Piscataway (EWR2),40.549247,-74.458241,Piscataway,NJ
+10923,DataBank Dallas (DFW4),32.821596,-96.873457,Dallas,TX
+10924,DataBank Dallas (DFW7),32.922798,-96.791315,Dallas,TX
+10925,DataBank Austin (AUS1),30.436287,-97.763776,Austin,TX
+10926,DataBank Waco (ACT1),31.55495,-97.13324,Waco,TX
+10927,DataBank Kansas City (MCI3),38.92519,-94.77028,Lenexa,KS
+10928,DataBank Minneapolis (MSP4),44.971408,-93.25458,Minneapolis,MN
+10929,DataBank Indianapolis (IND1),39.759374,-86.172235,Indianapolis,IN
+10930,DataBank Indianapolis (IND2),39.760096,-86.170486,Indianapolis,IN
+10931,DataBank Santa Clara (SFO1),37.407382,-121.965885,Santa Clara,CA
+10932,DataBank Los Angeles (LAX1),34.047948,-118.255358,Los Angeles,CA
+10933,DataBank Irvine (SNA2),33.687905,-117.842407,Irvine,CA
+10934,DataBank Phoenix (PHX1),33.483936,-112.0767,Phoenix,AZ
+10935,DataBank Phoenix (PHX2),33.454431,-111.975724,Phoenix,AZ
+10936,DataBank Phoenix (PHX3),33.273916,-111.885259,Chandler,AZ
+10937,DataBank Salt Lake City (SLC4),40.481315,-111.90496,Bluffdale,UT
+10938,DataBank Salt Lake City (SLC5),40.480867,-111.904275,Bluffdale,UT
+10960,ACW Winter Haven,28.024126,-81.728175,Winter Haven,FL
+11008,ScaleMatrix San Diego Data Center US-West 01,32.838205,-117.133185,San Diego,CA
+11009,ScaleMatrix Dallas Data Center US-South 01,33.138618,-96.657387,Allen,TX
+11010,ScaleMatrix Seattle Data Center US-West 02,47.154858,-122.279018,Puyallup,WA
+11011,ScaleMatrix Jacksonville Data Center US-South 02,30.216445,-81.582092,Jacksonville,FL
+11192,Databridge Sites Silver Spring,39.05867,-76.964486,Silver Spring,MD
+11195,DataBridge Sites Aurora,41.772203,-88.217055,Aurora,IL
+11255,BluBroadband Shell Ave,30.411196,-86.612424,Fort Walton Beach,FL
+11363,TierPoint Bethlehem,40.670346,-75.37493,Bethlehem,PA
+11364,TierPoint Boston - Marlborough,42.312902,-71.579257,Marlborough,MA
+11366,TierPoint St. Louis – Millpark,38.698612,-90.411954,Maryland Heights,MO
+11370,Golden West Rapid City Skyline Facility,44.047645,-103.244187,Rapid City,SD
+11380,CENTRA RNO01 - Reno Nevada (200 S. Virginia),39.522999,-119.811358,Reno,NV
+11429,LightEdge Kansas City Cavern (KCI2),38.95187,-94.789552,Lenexa,KS
+11497,Equinix CH7 - Westmont,41.812598,-87.972834,Westmont,IL
+11523,H5 Data Centers Cincinnati II,39.105851,-84.53657,Cincinnati,OH
+11633,Cologix SV1,37.365431,-121.961738,Santa Clara,CA
+11651,Cologix ASH1,39.019135,-77.457738,Ashburn,VA
+11671,Peak Internet,44.559445,-123.275141,Corvallis,OR
+11694,Ridgeview Minnetonka,44.97197,-93.436798,Minnetonka,MN
+11742,713 Nebraska,42.498104,-96.403951,Sioux City,IA
+11762,Equinix DA11 - Dallas,32.801347,-96.821074,Dallas,TX
+11786,EdgeConneX New Orleans (EDCSLI01),30.287098,-89.737403,Slidell,LA
+11838,"CENTRA PWM1 - Portland, Maine (340 Cumberland)",43.6578,-70.261218,Portland,ME
+11867,Sungard AS Thornton,39.847081,-104.979182,Thornton,CO
+11903,MDC Nogales,31.334862,-110.943701,Nogales,AZ
+11927,T5@SiliconValley,37.510156,-122.001869,Newark,CA
+11928,T5@Portland,45.555659,-122.938245,Hillsboro,OR
+11929,T5@Charlotte,35.250449,-81.395098,Kings Mountain,NC
+11930,T5@Atlanta,33.763445,-84.604971,Lithia Springs,GA
+11931,T5@Augusta,33.438755,-82.157946,Augusta,GA
+11932,T5@Colorado Springs,38.785862,-104.788567,Colorado Springs,CO
+11952,DC Host Sheridan,44.784169,-106.940957,Sheridan,WY
+11971,EXA Datacenter New York,40.717729,-74.008306,New York,NY
+12049,Lumen Tulsa 1,36.15682,-95.993421,Tulsa,OK
+12068,Foremost Dallas,32.933377,-96.808683,Dallas,TX
+12069,Foremost Corpus Christi,27.795871,-97.397251,Corpus Christi,TX
+12070,Foremost San Antonio,29.42938,-98.487309,San Antonio,TX
+12071,Foremost Harlingen,26.192979,-97.690638,Harlingen,TX
+12107,Spin Servers DAL1,32.783697,-96.79467,Dallas,TX
+12120,AUBix Auburn,32.601054,-85.513729,Auburn,AL
+12159,RagingWire HI1 - NTT,45.549514,-122.937479,Hillsboro,OR
+12160,RagingWire CH1 - NTT,41.988567,-88.01368,Itasca,IL
+12189,Segra Kannapolis,35.504805,-80.62259,Kannapolis,NC
+12210,CENTRA CMH01 - Columbus Ohio (180 E Broad),39.963183,-82.995994,Columbus,OH
+12212,BluegrassNet Louisville,38.241182,-85.74932,Louisville,KY
+12234,"ark data centers - Boise, ID",43.579984,-116.290797,Boise,ID
+12235,"ark data centers - Cleveland, OH",41.361157,-81.632535,Independence,OH
+12236,421 N 6th Ave East,46.795743,-92.096014,Duluth,MN
+12237,"ark data centers - Canton,OH",40.832529,-81.431933,Canton,OH
+12238,"ark data centers - Youngstown, OH",41.11832,-80.657012,Youngstown,OH
+12239,"ark data centers - Pittsburgh, PA",40.752216,-79.637268,Freeport,PA
+12302,US Signal MN01 - Minneapolis,44.877094,-93.407686,Eden Prairie,MN
+12303,US Signal WI02 - Madison,42.994734,-89.423602,Fitchburg,WI
+12304,US Signal IA01 - Des Moines,41.620242,-93.853996,Waukee,IA
+12305,US Signal CO01 - Denver,39.559076,-104.833542,Englewood,CO
+12306,US Signal OR01 - Bend,44.086238,-121.282971,Bend,OR
+12307,US Signal AZ01 - Phoenix,33.355173,-111.826816,Gilbert,AZ
+12344,EdgeConneX Chicago (EDCCHI02),42.001364,-87.952626,Elk Grove Village,IL
+12396,Cogent New Orleans,29.948875,-90.070115,New Orleans,LA
+12488,Digital Realty CHI (9333 Grand Ave),41.926884,-87.859119,Franklin Park,IL
+12489,Digital Realty CHI (9355 Grand Ave),41.927658,-87.859333,Franklin Park,IL
+12490,Digital Realty CHI (9377 Grand Ave),41.928621,-87.85877,Franklin Park,IL
+12513,Equinix AT4 - Atlanta,33.895445,-84.453611,Atlanta,GA
+12553,EdgeCore Phoenix,33.345396,-111.619886,Mesa,AZ
+12675,tzulo Chicago,41.876203,-87.631496,Chicago,IL
+12679,SD / Comsat Southbury Ground Station,41.451602,-73.28939,Southbury,CT
+12680,SD / Comsat Santa Paula Ground Station,34.413094,-119.080887,Santa Paula,CA
+12749,HostDime Orlando Tier IV Data Center,28.614463,-81.385657,Orlando,FL
+12785,Sunbreak Electronics,45.261026,-122.676541,Portland,
+12844,Scott Data Center Omaha,41.242916,-96.016491,Omaha,NE
+12877,Aligned Ashburn (IAD-02),39.010562,-77.475185,Ashburn,VA
+12878,Aligned Chicago (ORD-01),41.913464,-87.91876,Northlake,IL
+12879,Aligned Chicago (ORD-02),41.913464,-87.91876,Northlake,IL
+13001,Connect Cedar Valley,42.474167,-92.458792,Cedar Falls,IA
+13021,Digital Fortress (PTL3),45.475663,-122.776066,Beaverton,OR
+13022,Digital Fortress (LYN),47.822503,-122.289478,Lynnwood,WA
+13023,Digital Fortress (PNJ),40.544144,-74.496592,Piscataway,NJ
+13029,Quad State Internet PAH1 Colocation,37.09402,-88.634104,Paducah,KY
+13093,SFN MN-Rochester,44.020906,-92.462501,Rochester,MN
+13094,SFN IL-Peoria,40.738991,-89.584721,Peoria,IL
+13101,Aureon Downtown,41.5879,-93.631042,Des Moines,IA
+13102,Aureon Minneapolis,44.971408,-93.25458,Minneapolis,MN
+13103,Aureon West Des Moines,41.597249,-93.735197,West Des Moines,
+13111,LSVL-CTC1,39.965362,-105.124453,Louisville,CO
+13220,Midco Sioux Falls,43.496635,-96.785669,Sioux Falls,SD
+13221,Midco Yankton,42.892031,-97.416548,Yankton,SD
+13222,Midco Fargo,46.836551,-96.865917,Fargo,ND
+13223,Midco Grand Forks,47.902115,-97.090307,Grand Forks,ND
+13227,Cogent La Mirada,33.879828,-118.026751,La Mirada,CA
+13230,DLI One,32.498252,-84.883576,Columbus,GA
+13252,Ethoplex Data Center,43.227892,-88.146745,Germantown,WI
+13254,DataBank Minneapolis (MSP3),45.14438,-93.385913,Brooklyn Park,MN
+13256,SFN IA-Urbana,42.246422,-91.886635,Urbana,IA
+13284,Hemlock Plaza,42.051179,-124.28091,Brookings,OR
+13291,STRATA Vernal Data Center,40.456615,-109.528963,Vernal,UT
+13313,MDC San Diego,32.594192,-117.085384,San Diego,CA
+13357,Router12 - Brick and Tile,43.151696,-93.199328,Mason City,IA
+13389,Flexential - Atlanta/Douglasville (ATL5),33.731164,-84.615714,Douglasville,GA
+13390,Flexential - Portland/Hillsboro 3 (PDX03),45.559203,-122.938018,Hillsboro,OR
+13391,Flexential - Portland/Hillsboro 4 (PDX04),45.555183,-122.939056,Hillsboro,OR
+13438,Venyu BTR1,30.45352,-91.115624,Baton Rouge,LA
+13439,Otava Metro Detroit,42.331172,-83.419408,Westland,MI
+13440,C Spire Mississippi,33.470581,-88.791097,Starkville,MS
+13441,Crown Castle Philadelphia (1309 Noble),39.960652,-75.160469,Philadelphia,PA
+13442,Crown Castle White Plains (360 Hamilton),41.034715,-73.767108,White Plains,NY
+13478,EdgeCore Silicon Valley,37.384692,-121.964919,Santa Clara,CA
+13479,EdgeCore VA1,39.021724,-77.414111,Sterling,VA
+13480,EdgeCore VA2,38.994747,-77.444362,Sterling,VA
+13481,EdgeCore Reno 1,39.524415,-119.481812,McCarran,NV
+13493,Ethoplex Edge DC - Green Bay,44.428051,-88.050196,De Pere,WI
+13494,Ethoplex Edge DC - Fond du Lac,43.833878,-88.494331,Friendship,WI
+13509,901 Commerce Dr,44.632611,-90.168593,Marshfield,WI
+13510,Lumen Jacksonville,30.271996,-81.623873,Jacksonville,FL
+13512,Lumen Portland,45.531671,-122.68496,Portland,OR
+13513,Lumen Pittsburgh,40.425388,-79.970352,Pittsburgh,PA
+13514,Lumen Philadelphia,39.959621,-75.161021,Philadelphia,PA
+13611,Crown Castle Manchester (1 Sundial Ave),42.972613,-71.469472,Manchester,NH
+13614,VELCO Rutland,43.660147,-72.992651,Rutland,VT
+13628,Energynet Datacenter,36.847841,-87.465157,Hopkinsville,KY
+13629,Lost River Data Center,36.962312,-86.470939,Bowling Green,KY
+13661,Atomic Data MSP250,44.980944,-93.267514,Minneapolis,MN
+13664,Russellvile EPB Smartnet,36.846023,-86.88624,Russellville,KY
+13669,"DartPoints Baton Rouge, LA - BTR1",30.452287,-91.115571,Baton Rouge,LA
+13681,H5 Data Centers San Luis Obispo,35.255773,-120.640747,San Luis Obispo,CA
+13686,QTS Phoenix (PHX2),33.462368,-111.995794,Phoenix,AZ
+13692,Lumen West Haven,41.289812,-72.970174,West Haven,CT
+13693,Lumen New Haven,41.299871,-72.926131,New Haven,CT
+13694,Lumen Hartford,41.745091,-72.665146,Hartford,CT
+13695,Lumen Stamford,41.049146,-73.530484,Stamford,CT
+13696,Lumen New London,41.347035,-72.102643,New London,CT
+13697,Crown Castle Stamford,41.058085,-73.542936,Stamford,CT
+13849,Mountain West Technologies - Casper,42.849554,-106.326238,Casper,WY
+13850,Mountain West Technologies - Cheyenne,41.175834,-104.82786,Cheyenne,WY
+13974,Microtronix Datacenter Ottoville,40.929554,-84.341921,Ottoville,OH
+13975,SKYLINK DATA CENTERS,26.167743,-81.799835,Naples,FL
+14101,FIBERSTATE Salt Lake City (SLC1),40.511814,-111.887967,Draper,UT
+14149,ColoradoColo - Lakewood (LKWD),39.728305,-105.122436,Lakewood,CO
+14177,Peace Communications CHA1,35.03746,-85.293181,Chattanooga,TN
+14178,Peace Communications HSV1,34.699841,-86.593493,Huntsville,AL
+14189,Midwest Energy & Communications,41.919049,-85.973476,Cassopolics,MI
+14193,Mainstream Little Rock,34.744124,-92.274415,Little Rock,AR
+14198,CloudOgre,35.299848,-82.160867,Mill Spring,NC
+14224,DC BLOX GSP1 - DCBLOX Greenville,34.806553,-82.345891,Greenville,SC
+14264,SMRWORXA - Somerset West Central Office,45.546391,-122.866777,Portland,OR
+14265,HLBOORXH - Hawthorne Central Office,45.551374,-122.937143,Hillsboro,OR
+14266,BVTNORXB - Beaverton Central Office,45.490175,-122.811642,Beaverton,OR
+14267,GRHMORXB - Gresham Central Office,45.510725,-122.431708,Gresham,OR
+14268,TGRDORXA - Tigard Central Office,45.42558,-122.768572,Tigard,OR
+14269,KNWCWAXA - Kennewick Central Office,46.212947,-119.187198,Kennewick,WA
+14270,EVRTWAXA - Everett Primary Central Office,47.921151,-122.226913,Everett,WA
+14272,BOTHWAXB - Bothell Central Office,47.790938,-122.201932,Bothell,WA
+14273,CRALIDXX - Coeur d'Alene Central Office,47.696497,-116.787537,Coeur d'Alene,ID
+14280,Data Holdings Milwaukee,43.044331,-87.954079,Milwaukee,WI
+14327,CoreSite - Miami (MI2),25.793318,-80.333581,Doral,FL
+14341,DC BLOX MYR1 - DCBLOX Myrtle Beach,33.674793,-78.942594,Myrtle Beach,SC
+14342,GigeNET CHI3,42.040442,-87.976151,Arlington Heights,IL
+14343,Bonnie Lane,35.350076,-83.208476,Sylva,NC
+14379,ProRacks Datacenter- Kansas City,39.104854,-94.568004,Kansas City,MO
+14479,"aspStation, Inc.",40.46531,-79.946682,Pittsburgh,PA
+14488,TierPoint Dallas Forth Worth,32.979657,-97.252306,Fort Worth,TX
+14499,SecureNet DC1,38.366315,-81.695218,South Charleston,WV
+14565,Cologix COL4,40.118438,-82.999997,Columbus,OH
+14600,Lightboard ★ Vermont,44.448637,-73.146839,South Burlington,VT
+14750,Carrier Core - Tampa,27.949606,-82.458393,Tampa,FL
+14769,Midcon Recovery Solutions B3 Data Center,35.61718,-97.572301,Oklahoma City,OK
+14784,US Signal - Grand Rapids South,42.825329,-85.672664,Byron Center,MI
+14834,Raeden Michigan 1,42.32854,-83.053799,Detroit,MI
+14869,RC Solutions,39.016494,-77.459262,Ashburn,VA
+14871,Encore Technologies NOR1,39.160536,-84.44869,Norwood,OH
+14872,Encore Technologies BLU1,39.277612,-84.36949,Blueash,OH
+14873,Encore Technologies MSB1,39.616231,-84.229032,Miamisburg,OH
+14878,Fusetelecom Data Center,18.398479,-66.156217,Bayamon,PR
+14908,IP Pathways KC1,39.101199,-94.578884,Kansas City,MO
+14920,ELN02,46.012816,-98.569881,Ellendale,ND
+14952,RC-Facility,39.008455,-77.467576,Ashburn,VA
+14982,Cologix DSM2,42.474028,-92.458755,Cedar Falls,IA
+14983,Cologix DSM1,41.585529,-93.625422,Des Moines,IA
+14986,Cologix MIN5,44.971408,-93.25458,Minneapolis,MN
+15003,Netrality Kansas City Metro – KC2 | 7801 Nieman,38.986502,-94.712431,Shawnee,KS
+15013,South Spencer Aureon hut,43.112257,-95.120631,Spencer,IA
+15079,CoreSite - Santa Clara (SV9),37.3749,-121.969155,Santa Clara,CA
+15080,Lightboard ★ New England,42.109522,-72.576306,Springfield,MA
+15090,EXA CLS Lynn,42.45957,-70.960773,Lynn,MA
+15092,Dataverge Jersey City,40.726366,-74.033696,Jersey City,NJ
+15142,ACS North Wire Center,61.208966,-149.890871,Anchorage,AK
+15215,Lake Region Technology & Communications,35.931102,-95.134992,Hulbert,OK
+15240,Metanet New York Data Center CHELSEA,40.74331,-74.007932,New York,NY
+15241,Metanet New York Data Center Staten Island,40.603355,-74.181099,Staten Island,NY
+15242,Metanet New York Data Center GOOGLEPLEX,40.741491,-74.003389,New York,NY
+15243,Interphase Data Center New York I,40.741469,-74.003387,New York,NY
+15252,"ark data centers - Green Bay, WI",44.207099,-88.345585,Menasha,WI
+15276,Interphase Data Center New York II,40.74331,-74.007932,New York,NY
+15282,3HCloud - MIA-1,25.775702,-80.193056,Miami,FL
+15283,3HCloud - MIA-2,25.782365,-80.19313,Miami,FL
+15284,3HCloud - DFW-1,32.827345,-96.873974,Dallas,TX
+15285,3HCloud - SFO-1,37.788637,-122.390676,San Francisco,CA
+15438,Equinix DC16,39.024202,-77.452284,Ashburn,VA
+15455,LSTI 401 Market,40.800863,-81.374423,Canton,OH
+15548,TierPoint St. Louis - Locust,38.633537,-90.21267,St Louis,MO
+15560,LightSpeed Hosting - Medina,41.137371,-81.701097,Medina,OH
+15589,Lumen Kansas City,39.090638,-94.568428,Kansas City,MO
+15590,Lumen San Antonio 1,29.475675,-98.390801,San Antonio,TX
+15594,Cogent Detroit,42.330743,-83.055773,Detroit,MI
+15599,Apotech,42.078443,-87.915648,Mount Prospect,IL
+15667,"Atlantech Online - Rockville, MD",39.064319,-77.160038,Rockville,MD
+15668,"Atlantech Online - Silver Spring, MD",38.993843,-77.027705,Silver Spring,MD
+15681,East Kentucky Network Data Center,37.596989,-82.68065,Ivel,KY
+15701,365 Data Centers Carlstadt (NJ3),40.827949,-74.049418,Carlstadt,NJ
+15758,Element Critical Houston HOU1,29.802918,-95.755821,Katy,TX
+15828,Clackamas ESD Datacenter,45.426814,-122.564112,CLACKAMAS,OR
+15844,"DartPoints Baton Rouge, LA - BTR2",30.452287,-91.115571,Baton Rouge,LA
+15861,Southern Telecom,33.762044,-84.387804,Atlanta,GA
+15862,70 Henry St,42.100956,-75.909021,Binghamton,NY
+15892,"DartPoints Shreveport, LA - SHV1",32.511085,-93.749942,Shreveport,LA
+16023,American Tower RA1,35.78812,-78.726568,Raleigh,NC
+16034,USSHC,42.284076,-91.092129,Monticello,IA
+16042,H5 Data Centers Quincy 2/3,47.247916,-119.824924,Quincy,WA
+16043,H5 Data Centers Omaha,41.180701,-96.084974,La Vista,NE
+16044,H5 Data Centers Buffalo I,43.167553,-78.751731,Lockport,NY
+16045,H5 Data Centers Buffalo II,43.169757,-78.748743,Lockport,NY
+16052,Lightboard ★ Western NY,43.050221,-76.150348,Syracuse,NY
+16062,BLDR-1919,40.017695,-105.277335,Boulder,CO
+16125,365 Data Centers Buffalo (PA1),39.962369,-75.163734,Philadelphia,PA
+16126,365 Data Centers Philadelphia (PA1),39.962369,-75.163734,Philadelphia,PA
+16127,365 Data Centers Alpharetta (GA1),34.06343,-84.272727,Alpharetta,GA
+16128,365 Data Centers Aurora (CO1),39.762184,-104.760923,Aurora,CO
+16129,365 Data Centers Marlboro (MA1),42.352468,-71.586082,Marlboro,MA
+16130,365 Data Centers Rancho Cordova (CA1),38.596063,-121.272644,Rancho Cordova,CA
+16131,365 Data Centers Richardson (TX1),32.976121,-96.707323,Richardson,TX
+16132,365 Data Centers Smyrna (GA2),33.841159,-84.522407,Smyrna,GA
+16184,Hurricane Electric San Jose 1,37.33417,-121.891703,San Jose,CA
+16207,1623 Farmam,41.25737,-95.938164,Omaha,NE
+16291,Metanet New York Data Center 60 HUDSON,40.717729,-74.008306,New York,NY
+16321,Wowrack Datacenter - Tukwila,47.493158,-122.293832,Tukwila,WA
+16353,Cogent Springfield MA,42.112956,-72.583699,Springfield,MA
+16370,WANSEC DC16,38.962363,-94.714725,Overland Park,KS
+16383,YAKMWAFP - Wholesail Yakima,46.604852,-120.493644,Yakima,WA
+16395,DCN Dakota Carrier Networks,46.8141,-96.841621,Fargo,ND
+16396,DCN Dakota Carrier Networks Bismarck,46.851773,-100.78185,Bismarck,ND
+16421,Cogent St Louis,38.621224,-90.212002,St. Louis,MO
+16422,Cogent Houston,29.944087,-95.416408,Houston,TX
+16443,Cogent Akron,41.087427,-81.513895,Akron,OH
+16444,Cogent Atlanta 2,33.722413,-84.412569,Atlanta,GA
+16445,Cogent Austin,30.209234,-97.697975,Austin,TX
+16446,Cogent Elkridge,39.203469,-76.712389,Elkridge,MD
+16447,Cogent Billings,45.740895,-108.591913,Billings,MT
+16448,Cogent Buffalo,42.881232,-78.846588,Buffalo,NY
+16452,Cogent Charlotte,35.222097,-80.836767,Charlotte,NC
+16453,Cogent Charlotte 2,35.221028,-80.858282,Charlotte,NC
+16454,Cogent Cheyenne,41.127922,-104.811619,Cheyenne,WY
+16455,Cogent Chicago 3,41.819974,-87.728896,Chicago,IL
+16456,Cogent Cleveland 2,41.484768,-81.674771,Cleveland,OH
+16457,Cogent Columbus 2,39.974016,-82.998627,Columbus,OH
+16467,CoreSite - Secaucus (NY3),40.784289,-74.064895,Secaucus,NJ
+16563,QTS Atlanta-Fayetteville (ATL2),33.448789,-84.522289,Fayetteville,GA
+16564,QTS Charlotte (CTL1),35.035376,-81.104511,York,South Carolina
+16565,QTS Richmond - (RIC5),37.502016,-77.260573,Sandston,VA
+16587,Databank Orangeburg (LGA3),41.040063,-73.989975,Orangeburg,NY
+16588,Databank Denver (DEN5),39.590123,-104.846655,Centennial,CO
+16591,Databank Houston West (HOU3),29.84406,-95.560354,Houston,TX
+16607,Rochester Colo,43.049271,-77.466584,Pittsford,New York
+16608,AceHost Durham,35.895741,-78.849173,Durham,North Carolina
+16614,QTD2 - 60 Hudson Street 1602,40.717729,-74.008306,New York,NY
+16615,QTD1 - 60 Hudson Street 1510,40.717729,-74.008306,New York,NY
+16617,QTD3 - 60 Hudson Street 1901,40.717729,-74.008306,New York,NY
+16624,Cogent Fairfax,32.963731,-81.236142,Fairfax,South Carolina
+16659,CyberLynk MKE1,42.86183,-87.982826,Franklin,Wisconsin
+16749,Quad State Internet METRO1 Colocation,37.151821,-88.732324,Metropolis,IL
+16779,Hub Express System,42.375817,-71.080788,Somerville,MA
+16827,"Equinix NY3 - New York, Secaucus",40.775204,-74.068019,Secaucus,NJ
+16830,Patmos KC2,39.094739,-94.579376,Kansas City,MO
+16889,1GServers Data Center PHX1,33.396473,-112.000223,Phoenix,AZ
+16920,MCTX1,26.201918,-98.231633,McAllen,TX
+16941,Omega CT1,41.091604,-73.516758,Stamford,CT
+16943,Omega PA1,40.341233,-76.005374,Reading,PA
+16956,Rochelle Technology Center,41.940574,-89.033813,Rochelle,IL
+17004,Lifeline Ft Wayne,41.014028,-85.109976,Ft Wayne,IN
+17093,Servpac MTP DC,21.480922,-158.019259,Mililani,HI
+17094,Servpac Puahale DC,21.331917,-157.87825,Honolulu,HI
+17123,LCUB Data Center,35.840815,-84.265703,Lenoir City,Tennessee

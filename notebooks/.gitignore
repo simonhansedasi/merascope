@@ -1,0 +1,5 @@
+cache/zcta/
+cache/*.geojson
+cache/*.csv
+cache/osm_datacenters_raw.json
+.ipynb_checkpoints/
