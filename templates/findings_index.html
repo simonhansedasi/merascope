@@ -1,0 +1,82 @@
+<!--
+  findings_index.html — Server-rendered (Jinja2, no React) index of every public
+  findings page. Rendered by server.py's findings_index() (/findings). Nothing on
+  the live site linked to any finding before this page existed; the list itself
+  lives in server.py's _FINDINGS constant, so adding a new one is a one-line change.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Merascope — Findings</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 10pt;
+      color: #111;
+      background: #eef0f4;
+    }
+    .page {
+      width: 8.5in;
+      min-height: 11in;
+      margin: 0.4in auto;
+      padding: 0.6in 0.7in;
+      background: #fff;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.13);
+    }
+    .rpt-header {
+      border-bottom: 2px solid #1a1a2e;
+      padding-bottom: 12px;
+      margin-bottom: 20px;
+    }
+    .rpt-logo { font-size: 13.5pt; font-weight: 700; color: #1a1a2e; letter-spacing: 0.07em; }
+    .rpt-doc-title { font-size: 8pt; color: #555; margin-top: 3px; letter-spacing: 0.04em; }
+
+    h1.title { font-size: 17pt; font-weight: 700; margin-bottom: 6px; }
+    p.lede { font-size: 10.5pt; line-height: 1.65; color: #333; margin-bottom: 26px; }
+
+    .finding {
+      border: 1px solid #d8dae8;
+      border-radius: 8px;
+      padding: 16px 18px;
+      margin-bottom: 14px;
+      background: #f7f8fc;
+    }
+    .finding a.title-link {
+      font-size: 12.5pt;
+      font-weight: 700;
+      color: #1a1a2e;
+      text-decoration: none;
+    }
+    .finding a.title-link:hover { text-decoration: underline; }
+    .finding .date { font-size: 8pt; color: #888; margin-top: 2px; }
+    .finding p.blurb { font-size: 9.5pt; line-height: 1.6; color: #333; margin-top: 8px; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="rpt-header">
+    <div class="rpt-logo">MERASCOPE</div>
+    <div class="rpt-doc-title">Findings</div>
+  </div>
+
+  <h1 class="title">Findings</h1>
+  <p class="lede">
+    Reproducible, one-question-at-a-time results from the data behind Merascope's siting
+    model -- each page names its script, its data, and what it doesn't show.
+  </p>
+
+  {% for f in findings %}
+  <div class="finding">
+    <a class="title-link" href="/findings/{{ f.slug }}">{{ f.title }}</a>
+    <div class="date">{{ f.date }}</div>
+    <p class="blurb">{{ f.blurb }}</p>
+  </div>
+  {% endfor %}
+
+</div>
+</body>
+</html>

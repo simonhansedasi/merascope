@@ -64,9 +64,22 @@ sys.path.insert(0, str(ROOT / "notebooks"))
 import dcmodel as D  # noqa: E402
 
 OUT_DIR = ROOT / "data" / ".risk"
+RUCA_PATH = ROOT / "data" / "shared" / "zcta_ruca_rural.csv"
 N_TIERS = 10
 N_FACTORS = 3
 TOP_K_FEATURES = 14
+
+
+def load_ruca_rural():
+    """USDA ERS's real 2020 ZIP-code RUCA classification (RUCA 1-3 = metro,
+    4-10 = non-metro/rural) — zcta -> bool. Replaces an earlier
+    `pop_exposure_score_nat > 0.9` density-proxy threshold that turned out to have
+    only 69.9% national concordance with this real definition (see
+    drawing/civil/dc_risk_divide.ipynb for the concordance check, 2026-08-31).
+    """
+    ruca = pd.read_csv(RUCA_PATH, dtype={"zcta": str})
+    ruca["zcta"] = ruca["zcta"].str.zfill(5)
+    return dict(zip(ruca["zcta"], ruca["ruca_rural"]))
 
 
 def indicator_labels():
@@ -173,7 +186,8 @@ def divide_stats(df, tier_col, label, label_fwd, n_tiers):
     top = df[tier_col] == n_tiers
     div = (df["n_built"] == 0) & (df["n_forward"] > 0)
     hosting = df["n_built"] > 0
-    rural = df["pop_exposure_score_nat"] > 0.9      # same threshold as notebook 04
+    ruca_map = load_ruca_rural()
+    rural = df["zcta"].map(ruca_map).fillna(False).astype(bool)
 
     def share(mask, of):
         tot = int(df[of].sum())
@@ -187,7 +201,7 @@ def divide_stats(df, tier_col, label, label_fwd, n_tiers):
         "n_divergent": int(div.sum()),
         "divergent_rural_share": float(rural[div].mean()) if div.any() else None,
         "hosting_rural_share": float(rural[hosting].mean()) if hosting.any() else None,
-        "rural_threshold": "pop_exposure_score_nat > 0.9",
+        "rural_threshold": "USDA ERS 2020 ZIP-code RUCA codes (1-3 metro / 4-10 non-metro)",
     }
 
 

@@ -1,0 +1,235 @@
+<!--
+  finding_dc_ej_map.html — Server-rendered (Jinja2, no React) public findings
+  page. Rendered by server.py's finding_dc_ej_map() (/findings/dc-ej-map).
+  Plain Leaflet (vendored, same vendor/leaflet.js the SPA uses), no React bundle
+  -- findings pages are real Flask paths, not SPA hash routes, per the
+  static-file-catch-all's own routing convention in server.py.
+
+  Point data comes from /findings/dc-ej-map.json, the same compute() that backs
+  the narrative page at /findings/dc-ej-composition, so the two can never drift.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Merascope — Finding: where the data-center composition gap spreads out</title>
+  <link rel="stylesheet" href="/vendor/leaflet.css">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 10pt;
+      color: #111;
+      background: #eef0f4;
+    }
+    .page {
+      max-width: 9.5in;
+      margin: 0.4in auto;
+      padding: 0.5in 0.6in;
+      background: #fff;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.13);
+    }
+    .rpt-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 2px solid #1a1a2e;
+      padding-bottom: 12px;
+      margin-bottom: 20px;
+    }
+    .rpt-logo { font-size: 13.5pt; font-weight: 700; color: #1a1a2e; letter-spacing: 0.07em; }
+    .rpt-doc-title { font-size: 8pt; color: #555; margin-top: 3px; letter-spacing: 0.04em; }
+    .rpt-meta { text-align: right; font-size: 8pt; color: #555; line-height: 1.8; }
+    .rpt-meta strong { color: #222; }
+
+    h1.title { font-size: 17pt; font-weight: 700; margin-bottom: 6px; }
+    p.lede { font-size: 10.5pt; line-height: 1.65; color: #333; margin-bottom: 18px; }
+
+    .toggle-bar {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;
+    }
+    .toggle-bar h3 { font-size: 12pt; font-family: inherit; margin: 0; flex: 1 1 auto; }
+    .layer-btn {
+      padding: 6px 14px; font-size: 10pt; cursor: pointer; border-radius: 6px;
+      border: 1px solid #ccc; background: #fff; color: #333; font-weight: 600;
+    }
+    .layer-btn.active { background: #1a1a2e; color: #fff; border-color: #1a1a2e; }
+
+    #map { height: 560px; border-radius: 10px; border: 1px solid #ccc; }
+
+    .legend {
+      display: flex; align-items: center; gap: 10px; margin-top: 10px;
+      font-size: 9pt; color: #444;
+    }
+    .legend .gradient {
+      height: 12px; width: 220px; border-radius: 4px;
+      border: 1px solid #ccc;
+    }
+
+    .leaflet-tooltip.dc-tip {
+      font-size: 9.5pt; line-height: 1.5; padding: 6px 9px;
+    }
+
+    h3.sec {
+      font-size: 8.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em;
+      color: #444; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin: 22px 0 10px;
+    }
+    .repro {
+      background: #f7f8fc; border: 1px solid #d8dae8; border-radius: 6px;
+      padding: 11px 15px; font-size: 8pt; line-height: 1.9;
+    }
+    .repro strong { color: #222; }
+    .repro a { color: #3a5bd9; }
+    .permalink { text-align: right; margin-top: 10px; }
+    .permalink .lbl { font-size: 8.5pt; color: #555; text-transform: uppercase; letter-spacing: .08em; }
+    .permalink .url { font-size: 10pt; font-weight: 700; color: #1a7a45; margin-top: 2px; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="rpt-header">
+    <div>
+      <div class="rpt-logo">MERASCOPE</div>
+      <div class="rpt-doc-title">Data Finding — Not a Case Report</div>
+    </div>
+    <div class="rpt-meta">
+      <div><strong>Generated:</strong> {{ generated_at }}</div>
+      <div><strong>Geography:</strong> {{ n_hosting }} hosting ZCTAs, 2022 ACS5</div>
+      <div><strong>Related:</strong> <a href="/findings/dc-ej-composition">full decomposition</a></div>
+    </div>
+  </div>
+
+  <h1 class="title">Where the composition gap spreads out</h1>
+  <p class="lede">
+    The national averages on <a href="/findings/dc-ej-composition">the companion finding</a>
+    hide real geographic variation. Every one of the {{ n_hosting }} ZIP codes hosting a
+    confirmed data center is plotted here, individually -- toggle between how far each ZIP's
+    poverty rate sits from the national non-hosting benchmark, and how much of its population
+    is a racial or ethnic minority.
+  </p>
+
+  <div class="toggle-bar">
+    <h3>Hosting ZIP codes</h3>
+    <button class="layer-btn active" id="btn-poverty">Poverty gap</button>
+    <button class="layer-btn" id="btn-minority">Minority composition</button>
+  </div>
+
+  <div id="map"></div>
+
+  <div class="legend" id="legend"></div>
+
+  <h3 class="sec">What you're looking at</h3>
+  <div class="repro">
+    <div><strong>Poverty gap:</strong> each ZIP's 2022 poverty rate minus the national
+      non-hosting benchmark ({{ '%.1f'|format(national_nonhosting_pov_rate * 100) }}%), so
+      blue reads below the benchmark and yellow reads above it.</div>
+    <div><strong>Minority composition:</strong> each ZIP's minority population share (Census
+      B02001), red is low and yellow is high.</div>
+    <div style="margin-top: 6px;"><strong>Source:</strong> <code>scripts/analysis_dc_ej_composition.py</code>,
+      same compute() as <a href="/findings/dc-ej-composition">the decomposition finding</a>.
+      Raw data: <a href="/findings/dc-ej-map.json">/findings/dc-ej-map.json</a>.</div>
+    <div style="margin-top: 2px;"><strong>Generated:</strong> {{ generated_at }}</div>
+  </div>
+
+  <div class="permalink">
+    <div class="lbl">Live, reproducible page</div>
+    <div class="url">merascope.com/findings/dc-ej-map</div>
+  </div>
+
+</div>
+
+<script src="/vendor/leaflet.js"></script>
+<script>
+(function () {
+  var POVERTY_COLOR_1 = [33, 102, 172];    // blue, below benchmark
+  var POVERTY_COLOR_2 = [255, 237, 111];   // yellow, above benchmark
+  var MINORITY_COLOR_1 = [178, 24, 43];    // red, low share
+  var MINORITY_COLOR_2 = [255, 237, 111];  // yellow, high share
+
+  function lerpColor(c1, c2, t) {
+    var r = Math.round(c1[0] + (c2[0] - c1[0]) * t);
+    var g = Math.round(c1[1] + (c2[1] - c1[1]) * t);
+    var b = Math.round(c1[2] + (c2[2] - c1[2]) * t);
+    return 'rgb(' + r + ',' + g + ',' + b + ')';
+  }
+
+  // Rank-based (quantile-like) color scale, not linear min-max -- a handful of
+  // extreme-outlier ZIPs would otherwise flatten the whole map to one color.
+  function rankColors(values, c1, c2) {
+    var n = values.length;
+    var order = values.map(function (v, i) { return i; });
+    order.sort(function (a, b) { return values[a] - values[b]; });
+    var out = new Array(n);
+    order.forEach(function (origIdx, rank) {
+      out[origIdx] = lerpColor(c1, c2, n > 1 ? rank / (n - 1) : 0);
+    });
+    return out;
+  }
+
+  fetch('/findings/dc-ej-map.json').then(function (r) { return r.json(); }).then(function (data) {
+    var points = data.points;
+    var povertyColors = rankColors(points.map(function (p) { return p.poverty_gap; }), POVERTY_COLOR_1, POVERTY_COLOR_2);
+    var minorityColors = rankColors(points.map(function (p) { return p.minority_rate; }), MINORITY_COLOR_1, MINORITY_COLOR_2);
+
+    var map = L.map('map', { center: [39.5, -97], zoom: 4, scrollWheelZoom: false });
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=cb1_2n5a_1_898206fb108155e345cdba5c', {
+      maxZoom: 12, subdomains: 'abcd', attribution: '&copy; OpenStreetMap &copy; CARTO',
+    }).addTo(map);
+
+    var renderer = L.canvas({ padding: 0.4 });
+    var markers = points.map(function (p, i) {
+      var m = L.circleMarker([p.lat, p.lon], {
+        renderer: renderer, radius: 4, weight: 0.6, color: '#fff',
+        fillColor: povertyColors[i], fillOpacity: 0.85,
+      });
+      var povPct = (p.poverty_gap * 100).toFixed(1);
+      var minPct = (p.minority_rate * 100).toFixed(1);
+      m.bindTooltip(
+        '<strong>' + p.zcta + '</strong> (' + p.state + ')<br>' +
+        'Poverty gap vs. benchmark: ' + (p.poverty_gap >= 0 ? '+' : '') + povPct + ' pts<br>' +
+        'Minority population share: ' + minPct + '%',
+        { className: 'dc-tip' }
+      );
+      m.addTo(map);
+      return m;
+    });
+
+    var legend = document.getElementById('legend');
+    var current = 'poverty';
+
+    function renderLegend() {
+      if (current === 'poverty') {
+        legend.innerHTML =
+          '<span>Below benchmark</span>' +
+          '<span class="gradient" style="background:linear-gradient(to right, rgb(33,102,172), rgb(255,237,111));"></span>' +
+          '<span>Above benchmark</span>';
+      } else {
+        legend.innerHTML =
+          '<span>Low minority share</span>' +
+          '<span class="gradient" style="background:linear-gradient(to right, rgb(178,24,43), rgb(255,237,111));"></span>' +
+          '<span>High minority share</span>';
+      }
+    }
+
+    function setLayer(layer) {
+      current = layer;
+      var colors = layer === 'poverty' ? povertyColors : minorityColors;
+      markers.forEach(function (m, i) { m.setStyle({ fillColor: colors[i] }); });
+      document.getElementById('btn-poverty').classList.toggle('active', layer === 'poverty');
+      document.getElementById('btn-minority').classList.toggle('active', layer === 'minority');
+      renderLegend();
+    }
+
+    document.getElementById('btn-poverty').addEventListener('click', function () { setLayer('poverty'); });
+    document.getElementById('btn-minority').addEventListener('click', function () { setLayer('minority'); });
+    renderLegend();
+  }).catch(function (err) {
+    document.getElementById('map').innerHTML =
+      '<div style="padding:20px;color:#b92b27;">Map data failed to load: ' + err + '</div>';
+  });
+})();
+</script>
+</body>
+</html>

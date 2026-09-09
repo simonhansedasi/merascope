@@ -296,8 +296,8 @@ function RiskMap({ focus }) {
 
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     L.tileLayer(isDark
-      ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-      : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+      ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=cb1_2n5a_1_898206fb108155e345cdba5c'
+      : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=cb1_2n5a_1_898206fb108155e345cdba5c',
       { maxZoom: 12, subdomains: 'abcd' }).addTo(map);
 
     // Canvas, not SVG — ~10k grid cells plus 2.3k facility dots.
@@ -533,8 +533,8 @@ function RiskPage({ query }) {
             {divide.n_divergent != null && divide.divergent_rural_share != null && (
               <>{' '}<strong>{divide.n_divergent.toLocaleString()}</strong> ZIP codes host
               nothing today but have something proposed, and{' '}
-              <strong>{pct(divide.divergent_rural_share)}</strong> of those are sparsely
-              populated &mdash; against {pct(divide.hosting_rural_share)} of the ZIPs that
+              <strong>{pct(divide.divergent_rural_share)}</strong> of those are rural
+              &mdash; against {pct(divide.hosting_rural_share)} of the ZIPs that
               already host one.</>
             )}{' '}
             <span style={{ color: 'var(--slate)' }}>
@@ -558,6 +558,11 @@ function RiskPage({ query }) {
             line is the attribution ODbL and CC BY 4.0 both require to be legible. */}
         {stats && stats.sources && (
           <p style={{ margin: 0 }}>Facility data: {stats.sources.join(' · ')}</p>
+        )}
+        {divide && divide.rural_threshold && (
+          <p style={{ margin: '6px 0 0' }}>"Rural" uses the USDA's real ZIP-code
+            RUCA classification ({divide.rural_threshold}), not a population-density
+            proxy.</p>
         )}
       </div>
     </div>

@@ -3154,6 +3154,97 @@ def finding_wa_fire_risk_json():
     return jsonify(data)
 
 
+def _dc_ej_composition_data():
+    """Same pattern as _pnw_water_stress_data() -- runs the standalone analysis
+    script fresh each request rather than caching, so the finding pages and the
+    JSON API can never drift from what the reproducible script computes. Shared
+    by both dc-ej-composition (narrative) and dc-ej-map (interactive map) --
+    one compute(), two pages, see analysis_dc_ej_composition.py's docstring."""
+    import importlib.util
+    path = os.path.join(ROOT, 'scripts', 'analysis_dc_ej_composition.py')
+    spec = importlib.util.spec_from_file_location('analysis_dc_ej_composition', path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.compute()
+
+
+@app.route('/findings/dc-ej-composition')
+def finding_dc_ej_composition():
+    data = _dc_ej_composition_data()
+    data['generated_at'] = datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')
+    return render_template('finding_dc_ej_composition.html', **data)
+
+
+@app.route('/findings/dc-ej-composition.json')
+def finding_dc_ej_composition_json():
+    data = _dc_ej_composition_data()
+    data['generated_at'] = datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')
+    data['source'] = 'scripts/analysis_dc_ej_composition.py, reading data/shared/acs_zcta_2022_b17001_b02001.json + acs_zcta_2022_b17001a.json (2022 ACS5 poverty status + race) joined against data/datacenters/zcta_labels.csv (has_dc)'
+    return jsonify(data)
+
+
+@app.route('/findings/dc-ej-map')
+def finding_dc_ej_map():
+    data = _dc_ej_composition_data()
+    data['generated_at'] = datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')
+    return render_template('finding_dc_ej_map.html', **data)
+
+
+@app.route('/findings/dc-ej-map.json')
+def finding_dc_ej_map_json():
+    data = _dc_ej_composition_data()
+    data['generated_at'] = datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')
+    data['source'] = 'scripts/analysis_dc_ej_composition.py -- same data as /findings/dc-ej-composition.json, this route is what the map page fetches for its point layer'
+    return jsonify(data)
+
+
+# ── findings index ─────────────────────────────────────────────────────────────
+# Every finding below was previously reachable only by direct URL -- nothing on
+# the live site links to any of them. This is the fix: one small hardcoded list,
+# rendered as a plain index. Adding a future finding is a one-line addition here
+# plus its own route above (same "update both places" pattern as
+# _REPORT_INDICATORS/data.js elsewhere in this file).
+_FINDINGS = [
+    {
+        'slug': 'dc-ej-composition',
+        'title': 'The data-center poverty gap is Simpson’s Paradox',
+        'blurb': ('ZIP codes hosting a data center score poorer on average than ones that '
+                   'don’t. Split by race and the gap nearly disappears inside each group '
+                   '-- it’s a composition effect, not a rate effect.'),
+        'date': '2026-09-05',
+    },
+    {
+        'slug': 'dc-ej-map',
+        'title': 'Where the composition gap spreads out',
+        'blurb': ('The same 1,183 hosting ZIP codes, mapped nationally with two toggleable '
+                   'layers -- poverty gap vs. the national benchmark, and minority population '
+                   'share. Hover any point for its numbers.'),
+        'date': '2026-09-05',
+    },
+    {
+        'slug': 'wa-fire-risk',
+        'title': 'Washington data centers and wildfire risk',
+        'blurb': ('Real MTBS burn history plus USFS Wildfire Hazard Potential at every '
+                   'confirmed WA data-center site -- two real layers, not one invented '
+                   'composite score.'),
+        'date': '2026-08-06',
+    },
+    {
+        'slug': 'pnw-water-stress',
+        'title': 'Pacific Northwest vs. Colorado River Compact water stress',
+        'blurb': ('What the real WRI Aqueduct watershed data says about Washington and '
+                   'Oregon, checked against the 2026 Colorado River cuts everyone was '
+                   'talking about.'),
+        'date': '2026-08-06',
+    },
+]
+
+
+@app.route('/findings')
+def findings_index():
+    return render_template('findings_index.html', findings=_FINDINGS)
+
+
 @app.route('/report')
 def report_explorer():
     """Explorer report — no case required. Query params: state, lat, lon, name."""

@@ -503,6 +503,29 @@ Deep links work: `#/risk?zip=20147` looks the ZIP up on load and drops a pin.
 both require attribution to travel with the data — so the notice is written into the
 GeoJSON itself as a top-level `attribution` member, and returned by `/api/risk/<zip>`.
 
+## Findings (`/findings`)
+
+Reproducible, one-question-at-a-time public results — server-rendered Jinja2, no
+React, real Flask paths rather than SPA hash routes. Each finding's HTML page and
+its `.json` companion route are backed by the same `compute()` in one standalone
+script under `scripts/analysis_*.py`, run fresh on every request, so the two can
+never quote different numbers. `/findings` itself is a small index (list lives in
+`server.py`'s `_FINDINGS`) linking out to every page below — before it existed,
+none of these were reachable from anywhere on the site.
+
+| Page | Script |
+|---|---|
+| `/findings/dc-ej-composition` | `analysis_dc_ej_composition.py` — the data-center poverty gap decomposed into a composition effect (racial mix) and a rate effect (within-race poverty); the gap is Simpson's Paradox, not a real within-group effect |
+| `/findings/dc-ej-map` | same script — the same ~1,183 hosting ZCTAs as an interactive national Leaflet map, toggling between poverty gap and minority composition |
+| `/findings/wa-fire-risk` | `analysis_wa_fire_risk.py` — MTBS burn history + USFS Wildfire Hazard Potential at confirmed WA data-center sites |
+| `/findings/pnw-water-stress` | `analysis_pnw_water_stress.py` — WRI Aqueduct watershed water stress, WA/OR vs. the Colorado River Compact states |
+
+Data behind these lives in `data/shared/` (gitignored, same volume as the pipeline's
+supplemental-indicator caches) — copy it to Hetzner by hand after regenerating, same
+as `data/.risk/` (see "Shipping the risk data" below). Tests are gated with a
+`skipif` on that data being present locally (`tests/test_server.py`,
+`TestPnwWaterStressFinding` / `TestDcEjCompositionFinding`).
+
 
 ## Shipping the risk data
 

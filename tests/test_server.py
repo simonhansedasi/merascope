@@ -2100,3 +2100,60 @@ class TestPnwWaterStressFinding:
         umatilla = next(r for r in j['extreme_watersheds'] if r['state'] == 'OR')
         assert '{:.3f}'.format(umatilla['bws']) in html
         assert '/findings/pnw-water-stress.json' in html
+
+
+# Same gitignored-data-volume situation as TestPnwWaterStressFinding above: the two
+# cached ACS pulls behind this finding live in data/shared/ and are absent in CI.
+_DC_EJ_DATA = os.path.exists(os.path.join(_SHARED, 'acs_zcta_2022_b17001_b02001.json')) \
+    and os.path.exists(os.path.join(_SHARED, 'acs_zcta_2022_b17001a.json'))
+needs_dc_ej_data = pytest.mark.skipif(
+    not _DC_EJ_DATA,
+    reason='data/shared/acs_zcta_2022_*.json absent (gitignored) — copy the cached ACS '
+           'pulls from drawing/civil/data/ to run the dc-ej findings tests',
+)
+
+
+@needs_dc_ej_data
+class TestDcEjCompositionFinding:
+    def test_json_shared_between_both_pages(self, plain_client):
+        """The narrative page and the map page must never quote different numbers —
+        both routes are backed by the same compute()."""
+        comp = plain_client.get('/findings/dc-ej-composition.json').get_json()
+        mapd = plain_client.get('/findings/dc-ej-map.json').get_json()
+        # 'source' is deliberately route-specific text describing that particular
+        # endpoint's purpose; every other key must be identical, points included.
+        for d in (comp, mapd):
+            d.pop('generated_at'), d.pop('source')
+        assert comp == mapd
+
+    def test_composition_effect_survives_and_dominates(self, plain_client):
+        """The finding's actual claim: the composition effect is real and positive,
+        and it's bigger in magnitude than the (small) rate effect — the reason the
+        pooled gap doesn't cancel out."""
+        d = plain_client.get('/findings/dc-ej-composition.json').get_json()
+        assert d['comp'] > 0
+        assert d['minority_comp'] > 0 and d['white_comp'] < 0
+        assert abs(d['comp']) > abs(d['rate'])
+
+    def test_map_points_have_real_coordinates(self, plain_client):
+        d = plain_client.get('/findings/dc-ej-map.json').get_json()
+        assert d['n_hosting'] > 1000
+        assert len(d['points']) > 1000
+        p = d['points'][0]
+        assert -180 <= p['lon'] <= -60 and 15 <= p['lat'] <= 72  # sane CONUS+AK+HI bbox
+        assert len(p['zcta']) == 5
+
+    def test_html_renders_the_json_numbers(self, plain_client):
+        j = plain_client.get('/findings/dc-ej-composition.json').get_json()
+        html = plain_client.get('/findings/dc-ej-composition').get_data(as_text=True)
+        assert '{:+.4f}'.format(j['gap']) in html
+        assert '/findings/dc-ej-composition.json' in html
+
+    def test_map_page_fetches_the_shared_json(self, plain_client):
+        html = plain_client.get('/findings/dc-ej-map').get_data(as_text=True)
+        assert "fetch('/findings/dc-ej-map.json')" in html
+
+    def test_findings_index_links_to_both(self, plain_client):
+        html = plain_client.get('/findings').get_data(as_text=True)
+        assert '/findings/dc-ej-composition' in html
+        assert '/findings/dc-ej-map' in html

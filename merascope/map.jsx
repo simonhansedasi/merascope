@@ -526,8 +526,8 @@ function WAMap({ weights, selectedState = null, selectedCells = null, onCellTogg
     // after the map is already mounted).
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     const tileUrl = isDark
-      ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-      : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+      ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=cb1_2n5a_1_898206fb108155e345cdba5c'
+      : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=cb1_2n5a_1_898206fb108155e345cdba5c';
     tileLayerRef.current = L.tileLayer(tileUrl, { maxZoom: 14, subdomains: 'abcd' }).addTo(map);
 
     // Canvas renderer (not SVG) — required at this feature count (tens of
@@ -639,8 +639,8 @@ function WAMap({ weights, selectedState = null, selectedCells = null, onCellTogg
       if (!tileLayerRef.current) return;
       const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
       const url = isDark
-        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-        : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=cb1_2n5a_1_898206fb108155e345cdba5c'
+        : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=cb1_2n5a_1_898206fb108155e345cdba5c';
       tileLayerRef.current.setUrl(url);
     });
     obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
