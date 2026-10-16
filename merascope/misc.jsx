@@ -690,7 +690,7 @@ function MethodologyPage() {
           <div id="m-repro" style={{ scrollMarginTop: 72 }}>
             <h3 style={{ fontSize: 17, marginBottom: 8 }}>Reproducibility</h3>
             <p style={{ fontSize: 14.5, lineHeight: 1.65, marginBottom: 22 }}>
-              The pipeline is version-stamped ({M.VERSION}). Every score displayed in the product carries its version. All data inputs are drawn from public APIs and bulk downloads &#8212; none require proprietary access. Run the open-source pipeline against the same inputs and you will produce identical numbers. That is the warranty.
+              The pipeline is version-stamped ({M.VERSION}). Every score displayed in the product carries its version. All data inputs are drawn from public APIs and bulk downloads &#8212; none require proprietary access. Run the source-available pipeline against the same inputs and you will produce identical numbers. That is the warranty.
             </p>
           </div>
 
