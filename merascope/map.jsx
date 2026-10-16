@@ -1068,8 +1068,37 @@ function computeCellRank(composite, stateCode) {
   return { rank: rank > 0 ? rank : scores.length, total: scores.length };
 }
 
+// Ranks every ZCTA (optionally restricted to one state) against a given
+// weight profile and returns the top `limit` by national-scale composite
+// score. This is the reverse of findZip/findNearestCell (look up a ZIP you
+// already have) -- used by Explorer's "Find best ZIPs" panel to search FOR
+// ideal ZIPs under the current weight sliders / site-type profile. Excludes
+// cells failing either hard gate (protected land, flood zone), same
+// thresholds and fail-safe defaults as screenPortfolio in builder2.jsx.
+function findBestZctas(weights, opts) {
+  opts = opts || {};
+  const limit = opts.limit || 15;
+  const stateFilter = opts.state || null;
+  if (!_gridCache) return [];
+  const M = window.MERA;
+  let feats = _gridCache.features;
+  if (stateFilter) feats = feats.filter(f => f.properties._state === stateFilter);
+  const scored = feats.map(f => {
+    const p = f.properties;
+    const prot = p.protected_frac != null ? p.protected_frac : 1;
+    const flood = p.flood_score != null ? p.flood_score : 0;
+    return {
+      zcta: p.zcta, state: p._state,
+      composite: M.composite(propsToInd(p, true), weights),
+      protectedOk: prot <= 0.25, floodOk: flood > 0,
+    };
+  }).filter(r => r.protectedOk && r.floodOk);
+  scored.sort((a, b) => b.composite - a.composite);
+  return scored.slice(0, limit);
+}
+
 // No-bundler export: since there's no ES-module import/export between
 // these JSX files (each is transpiled independently by Babel and loaded
 // as a plain <script>), everything this file wants other files to use
 // gets hung off the global `window` object here at the bottom.
-Object.assign(window, { WAMap, MapLegend, WeightPanel, SiteThumb, StateSelector, normalizeWeights, getStateFeatures, getFeaturesById, computeCellRank, findNearestCell, findZip, STATE_NAMES, propsToInd, loadGridCache });
+Object.assign(window, { WAMap, MapLegend, WeightPanel, SiteThumb, StateSelector, normalizeWeights, getStateFeatures, getFeaturesById, computeCellRank, findNearestCell, findZip, findBestZctas, STATE_NAMES, propsToInd, loadGridCache });

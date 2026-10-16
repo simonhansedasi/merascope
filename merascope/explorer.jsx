@@ -691,6 +691,8 @@ function ExplorerPage({ query }) {
   const [zipInput, setZipInput] = React.useState('');
   const [zipError, setZipError] = React.useState(null);
   const [zipTarget, setZipTarget] = React.useState(null);
+  const [bestResults, setBestResults] = React.useState(null);
+  const [bestLoading, setBestLoading] = React.useState(false);
   const isMobile = window.innerWidth < 900;
 
   const hasSelection = selectedCells.size > 0;
@@ -712,7 +714,7 @@ function ExplorerPage({ query }) {
 
   // Switching states (or going back to national) invalidates any tile
   // selection made in the previous state/view.
-  React.useEffect(() => { clearSelection(); }, [selectedState]);
+  React.useEffect(() => { clearSelection(); setBestResults(null); }, [selectedState]);
 
   // ZIP code finder (sidebar search box): validates the 5-digit format,
   // looks the ZCTA up in the already-loaded grid cache via
@@ -730,6 +732,28 @@ function ExplorerPage({ query }) {
     // Timestamp suffix guarantees a fresh value even for repeat searches on
     // the same ZIP, so the effect watching zipTarget always re-fires.
     setZipTarget(zip + '_' + Date.now());
+  }
+
+  // "Find best ZIPs" (search FOR ideal ZIPs, the reverse of the ZIP finder above):
+  // ranks every ZCTA (or every ZCTA in selectedState, if one is picked) against the
+  // current weight profile via window.findBestZctas (map.jsx). Ensures the full
+  // national grid is loaded first -- same window.loadGridCache() idiom builder2.jsx's
+  // Portfolio Screening already uses, since a fresh page load may not have streamed
+  // every state's ZCTA file in yet.
+  function handleFindBest() {
+    if (!window.loadGridCache || !window.findBestZctas) return;
+    setBestLoading(true);
+    window.loadGridCache().then(() => {
+      setBestResults(window.findBestZctas(weights, { state: selectedState, limit: 15 }));
+      setBestLoading(false);
+    });
+  }
+
+  // Clicking a "Find best" result jumps the map to it exactly the way typing its
+  // ZIP into the search box does (handleZipSearch above).
+  function handleBestResultClick(r) {
+    setSelectedState(r.state);
+    setZipTarget(r.zcta + '_' + Date.now());
   }
 
   // Recomputes the state report card whenever the selected state or the
@@ -778,6 +802,9 @@ function ExplorerPage({ query }) {
                 <button className="btn btn-sm btn-ghost" onClick={handleZipSearch}>Find</button>
                 {zipError && <span style={{ fontSize: 11.5, color: 'var(--clay, #b45f1d)' }}>{zipError}</span>}
               </div>
+              <button className="btn btn-sm btn-ghost" disabled={bestLoading} onClick={handleFindBest}>
+                {bestLoading ? 'Searching…' : `Find best ZIPs ${selectedState ? 'in ' + selectedState : 'nationally'}`}
+              </button>
               {hasSelection && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--slate)' }}>
                   <span style={{ background: 'var(--evergreen)', color: '#fff', borderRadius: 12, padding: '2px 9px', fontWeight: 700, fontSize: 12 }}>{selectedCells.size} ZIP{selectedCells.size === 1 ? '' : 's'} selected</span>
@@ -788,6 +815,28 @@ function ExplorerPage({ query }) {
                 <span className="microcopy" style={{ marginLeft: 4 }}>Click any ZIP code to compare and save to workspace</span>
               )}
             </div>
+            {bestResults && (
+              <div style={{ marginBottom: 10, padding: 10, background: 'var(--sand)', borderRadius: 8 }}>
+                <div style={{ fontSize: 12, color: 'var(--slate)', marginBottom: 6 }}>
+                  Top {bestResults.length} ZIPs for these weights (protected-land and flood-zone gates excluded) — click to view
+                </div>
+                {bestResults.length === 0 ? (
+                  <div style={{ fontSize: 13, color: 'var(--slate)' }}>No ZIPs passed the hard gates in this scope.</div>
+                ) : (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {bestResults.map((r, i) => (
+                      <button key={r.zcta} className="btn btn-ghost btn-sm" onClick={() => handleBestResultClick(r)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ color: 'var(--slate)' }}>#{i + 1}</span>
+                        <span style={{ fontWeight: 700 }}>{r.zcta}</span>
+                        <span style={{ color: 'var(--slate)' }}>{r.state}</span>
+                        <span className="score-serif">{r.composite.toFixed(3)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 6 }}>
               <button className={'btn btn-sm ' + (showGrid ? 'btn-primary' : 'btn-ghost')}
                 onClick={() => setShowGrid(g => !g)}>

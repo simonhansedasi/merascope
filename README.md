@@ -359,6 +359,8 @@ The map uses ZCTA geography for both national and state views. All 48 states are
 
 **ZIP code finder:** search input in the Explorer sidebar (5-digit code, Enter or "Find" button). Calls `window.findZip(zip)` which searches `_gridCache.features` by `zcta` property, zooms to the match, and highlights it with a dashed border. Works across all 48 states once data is loaded.
 
+**Find best ZIPs (added 2026-09-16):** the reverse search — given the current weight profile (sliders / site type), find the best-scoring ZIPs instead of looking one up. "Find best ZIPs nationally/in {state}" button next to the ZIP finder calls `window.findBestZctas(weights, opts)` (map.jsx), which ranks `_gridCache` by national composite score, excludes hard-gate failures (protected land, flood zone), and returns the top matches as a clickable ranked list — clicking a result jumps the map the same way the ZIP finder does. See `contexts/merascope/CONTEXT.md`'s "Find best ZIPs" section for the full detail.
+
 **Lazy loading:** ZCTA files load incrementally via `window._onStateZctaLoaded(stateData)` callback — first state renders in ~1 second; remaining 47 stream in behind it using `L.geoJSON.addData()`.
 
 Dev server: `cd ~/coding/merascope && python3 server.py` (Flask, port 8877 — NOT python3 -m http.server; Flask provides /api routes)
