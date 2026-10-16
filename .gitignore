@@ -51,3 +51,6 @@ why-physics-works-notes.md
 
 # Junk
 .ipynb_checkpoints/
+
+# Deploy script (server address), stays local, still syncs via rsync
+scripts/deploy_hetzner.sh
