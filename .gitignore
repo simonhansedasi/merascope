@@ -54,3 +54,8 @@ why-physics-works-notes.md
 
 # Deploy script (server address), stays local, still syncs via rsync
 scripts/deploy_hetzner.sh
+
+# Private business material
+outreach/
+funding/
+whitepaper/
