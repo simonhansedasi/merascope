@@ -120,6 +120,16 @@ def run(page, base):
           page.locator('text=Enter the Builder workspace').count() > 0)
     check('Steward door removed from home page',
           page.locator('text=Enter the Steward console').count() == 0)
+    check('"Request a quote" button in the nav',
+          page.locator('nav.topnav button:has-text("Request a quote")').count() > 0)
+    page.locator('nav.topnav button:has-text("Request a quote")').click()
+    page.wait_for_timeout(400)
+    check('Nav button opens the quote form',
+          page.locator('text=Site screening batch').count() > 0
+          and page.locator('input[type="email"]').count() > 0)
+    page.keyboard.press('Escape')
+    page.goto(base)
+    page.wait_for_load_state('networkidle', timeout=10000)
     check('No steward link in nav/footer',
           page.locator('a[href="#/steward"]').count() == 0)
 

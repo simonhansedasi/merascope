@@ -63,19 +63,19 @@ function LeadModal({ lead, onClose }) {
             <b style={{ fontSize: 16 }}>Thanks — we got it.</b>
             <p style={{ fontSize: 13.5, color: 'var(--slate)', margin: '8px 0 0', lineHeight: 1.6 }}>
               We'll reply to <b>{form.email}</b> within one business day about <b>{lead.tier}</b>.
-              Meanwhile, the <a href="#/explorer" onClick={onClose}>Public Explorer</a> is open — same scores as every tier.
+              Meanwhile, the <a href="#/explorer" onClick={onClose}>Public Explorer</a> is open — same scores as everyone.
             </p>
             <button className="btn btn-quiet btn-sm" style={{ marginTop: 14 }} onClick={onClose}>Close</button>
           </div>
         ) : (
           <form onSubmit={submit}>
             <b style={{ fontSize: 16 }}>{lead.cta} — {lead.tier}</b>
-            <p className="microcopy" style={{ margin: '4px 0 0' }}>{lead.workspace === 'steward' ? 'Steward console' : 'Builder workspace'} · we reply within one business day.</p>
+            <p className="microcopy" style={{ margin: '4px 0 0' }}>Site screening service · we reply within one business day.</p>
             <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
               <input placeholder="Name" value={form.name} onChange={set('name')} style={inputStyle} />
               <input placeholder="Work email" type="email" required value={form.email} onChange={set('email')} style={inputStyle} />
               <input placeholder="Organization / agency" value={form.org} onChange={set('org')} style={inputStyle} />
-              <textarea placeholder="What are you evaluating? Timeline, geography, seats — whatever helps us scope."
+              <textarea placeholder="What are you screening? Rough number of sites, area, and timeline help us scope."
                 rows={3} value={form.note} onChange={set('note')} style={Object.assign({}, inputStyle, { resize: 'vertical' })} />
               {err && <div style={{ background: 'var(--hi-bg)', color: 'var(--hi-tx)', fontSize: 13, borderRadius: 7, padding: '8px 12px' }}>{err}</div>}
               <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>

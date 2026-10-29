@@ -233,6 +233,9 @@ function DemoSwitch() {
 // removed from the nav 2026-10-29; their components remain in this file, unused.)
 function TopNav({ route, role }) {
   const { authUser, logout } = React.useContext(AuthCtx);
+  // "Request a quote" opens the same LeadModal the pricing page uses (misc.jsx),
+  // so the offer is one click from every page instead of buried on the homepage.
+  const [quoteOpen, setQuoteOpen] = React.useState(false);
   const pub = [['#/explorer', 'Explorer'], ['#/factsheets', 'Fact sheets'], ['#/methodology', 'Methodology']];
   var links = pub;
   if (role === 'builder') links = [pub[0], ['#/builder', 'Builder'], ...pub.slice(1)];
@@ -250,11 +253,13 @@ function TopNav({ route, role }) {
       {authUser ? (
         <span className="hide-mobile" style={{ fontSize: 12.5, color: 'var(--slate)' }}>{authUser.email}</span>
       ) : null}
+      <button className="btn btn-primary btn-sm" onClick={() => setQuoteOpen(true)}>Request a quote</button>
       {authUser ? (
         <button className="btn btn-quiet btn-sm hide-mobile" onClick={logout}>Sign out</button>
       ) : (
-        role === 'public' && <a className="btn btn-primary btn-sm hide-mobile" href="#/login">Sign in</a>
+        role === 'public' && <a className="btn btn-quiet btn-sm hide-mobile" href="#/login">Sign in</a>
       )}
+      {quoteOpen && ReactDOM.createPortal(<LeadModal lead={{ workspace: 'builder', tier: 'Site screening batch', cta: 'Request a quote' }} onClose={() => setQuoteOpen(false)} />, document.body)}
     </nav>
   );
 }
