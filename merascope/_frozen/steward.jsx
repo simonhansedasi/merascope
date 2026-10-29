@@ -1129,7 +1129,7 @@ function CaseFilePage({ id }) {
               {isLead && !isDemo && dc.confirmed_at && (
                 <button className="btn btn-ghost btn-sm" onClick={() => setShowInvite(v => !v)}>Invite co-parties</button>
               )}
-              <a className="btn btn-ghost btn-sm" href={'/report/' + dc.case_id} target="_blank" rel="noreferrer">Permit justification report →</a>
+              <a className="btn btn-ghost btn-sm" href={'/report/' + dc.case_id} target="_blank" rel="noreferrer">Site screening report →</a>
               <div style={{ textAlign: 'right' }}>
                 <span className="score-badge" style={{ background: M.rampColor(dc.score || 0.5, ramp), color: M.rampText(dc.score || 0.5, ramp), fontSize: 22, padding: '4px 13px' }}>{(dc.score || 0.5).toFixed(3)}</span>
                 <div className="microcopy" style={{ marginTop: 3 }}>composite score</div>

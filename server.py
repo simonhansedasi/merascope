@@ -24,7 +24,7 @@ Big picture of what lives in this file, roughly top to bottom:
   - Magic-link email auth (`/api/auth/*`) and the `require_steward` decorator.
   - Steward weight templates + geographic zones (gate builders below a minimum
     score in a locked zone) with pure-Python point-in-polygon, no GDAL.
-  - The permit justification report (`/report/<case_id>`, `/report`) — server-
+  - The site screening report (`/report/<case_id>`, `/report`) — server-
     rendered Jinja2 HTML, no React involved.
   - The static file catch-all, which allowlists only front-end asset
     extensions so the rsynced repo (including this very file, `.env`, `.db`
@@ -149,7 +149,7 @@ _DEMO_FIXTURE_IDS = {'26-0142', '26-0171', '26-0168'}
 
 # ── report indicator metadata (mirrors data.js INDICATORS) ────────────────────
 # Python-side copy of the same 22-indicator metadata that lives in the frontend's
-# data.js INDICATORS array. Used only by the server-rendered permit justification
+# data.js INDICATORS array. Used only by the server-rendered site screening
 # report (_build_report_context / templates/report.html), which has no access to
 # the JS bundle. If a new indicator is added to data.js, it must be added here
 # too or it will silently be missing from the printable report.
@@ -2937,7 +2937,7 @@ def demo_case_get(case_id):
         r.pop('weights_json', None)
     return jsonify(r)
 
-# ── permit justification report ───────────────────────────────────────────────
+# ── site screening report ───────────────────────────────────────────────
 
 _zcta_centroids_cache = {}  # state_code -> [(cx, cy, props_dict), ...]
 
@@ -3060,7 +3060,7 @@ def _build_report_context(case_row, props):
 
 @app.route('/report/<case_id>')
 def report_case(case_id):
-    """Server-rendered (Jinja2, no React) permit justification report for a
+    """Server-rendered (Jinja2, no React) site screening report for a
     real or demo case — the document a builder can hand to a permitter as
     supporting evidence. Demo cases skip the access-control check (they're
     public/ephemeral already) and never carry an anchor, since only real

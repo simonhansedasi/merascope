@@ -125,7 +125,7 @@ Workspace tab (saved cells, comparison panel), Status tab (CRM tracker per site:
 
 **Streamlined flow (added 2026-07-03):** signed-in builders see a **My cases** list on the lookup tab (`/api/cases` already owner-filters — no more typing case IDs); every saved-cell card and the Explorer report card carry a **Submit inquiry** deep link (`#/builder/case/?submit=<fid>`) that lands on the submit form with the cell pre-selected; contact email prefills from the signed-in account; and the submission carries the builder's **actual tuned Explorer weights** (persisted to localStorage `mera_weights_v1` via `window.setCurrentWeights`/`getCurrentWeights` in `data.js`) instead of silently substituting platform defaults — so the "Custom weights" badge on the case file now reflects reality and the submitted score matches the submitted weights.
 
-**Permit justification report** (`/report/<case_id>`): after submission, the case intake view shows a "Download permit justification report" link that opens a printable HTML document in a new tab. The report includes: composite score block, hard gate analysis (PASS/FAIL), 22-indicator scorecard with national percentile bars and H/M/L confidence tiers, strengths/challenges summary, data sources table, and reproducibility block (pipeline version, SHA-256 anchor hash if at Resolution stage, verification URL). Explorer mode also supported: `/report?state=WA&lat=X&lon=Y&name=...` (no case required). Print-to-PDF via the browser "Print / Save PDF" button.
+**Site screening report** (`/report/<case_id>`): after submission, the case intake view shows a "Download site screening report" link that opens a printable HTML document in a new tab. The report includes: composite score block, hard gate analysis (PASS/FAIL), 22-indicator scorecard with national percentile bars and H/M/L confidence tiers, strengths/challenges summary, data sources table, and reproducibility block (pipeline version, SHA-256 anchor hash if at Resolution stage, verification URL). Explorer mode also supported: `/report?state=WA&lat=X&lon=Y&name=...` (no case required). Print-to-PDF via the browser "Print / Save PDF" button.
 
 ### Steward surface (`#/steward`)
 Kanban docket across all stages. Case file: versioned findings, conditions negotiation (propose/accept/reject), co-party coordination, rebuttal clock, document chain, CSV exports. Impasse register (route to mediation). Mandated studies workbench (section checklists, live progress). **Weight templates** (`#/steward/templates`): define named weight profiles and attach them to geographic zones; lock a template to gate builders whose cells score below the minimum threshold.
@@ -136,7 +136,7 @@ Kanban docket across all stages. Case file: versioned findings, conditions negot
 
 **Nearby cases** (case file panel, added 2026-07-03): surfaces other pending cases within 5km (haversine, pure Python — no GDAL) that share the same `lead_agency`, excluding the case itself and anything already at Resolution. `GET /api/case/<case_id>/nearby?radius_km=5`. Now rendered in both case-file layouts and link-prefixed per persona (steward vs co-party).
 
-**Unified case file (added 2026-07-03):** real builder-submitted cases used to get a stripped-down intake view with none of the negotiation tooling. Once a case is confirmed (`confirmed_at` set), the intake view now unlocks the full negotiation surface — conditions table, invite-co-parties modal, rebuttal clock, co-party tracker, mandated studies — reusing the exact same panels as the demo fixture cases (hoisted as JSX variables inside `CaseFilePage`, not duplicated). The steward case file also links the permit justification report (previously builder-only).
+**Unified case file (added 2026-07-03):** real builder-submitted cases used to get a stripped-down intake view with none of the negotiation tooling. Once a case is confirmed (`confirmed_at` set), the intake view now unlocks the full negotiation surface — conditions table, invite-co-parties modal, rebuttal clock, co-party tracker, mandated studies — reusing the exact same panels as the demo fixture cases (hoisted as JSX variables inside `CaseFilePage`, not duplicated). The steward case file also links the site screening report (previously builder-only).
 
 **Email invites (added 2026-07-03):** the invite modal's "Invite by email" input is now real — `POST /api/case/<id>/invite` with `{email}` stores an `invited_email` row in `case_invites` (schema: `agency_key` is now nullable, partial unique index on `(case_id, invited_email)`) and sends the invitee a notification email. Directory invites by `agency_key` unchanged.
 
@@ -292,7 +292,7 @@ bash scripts/deploy_hetzner.sh
 
 `tests/test_server.py` — server API routes: case access
 control (read/write/docs guards), weight logging, cryptographic record anchoring,
-permit justification report routes, `_build_report_context` / `_load_zcta_feature`
+site screening report routes, `_build_report_context` / `_load_zcta_feature`
 units, steward templates/zones CRUD, gate check, the Phase 1 permitter-upgrade
 routes (`TestStewardInbox`, `TestBulkImport`, `TestNearbyCases`, added 2026-07-03),
 the streamlining-pass additions (`TestEmailInvites`, `TestNotifications` — all
@@ -371,7 +371,7 @@ Dev server: `cd ~/coding/merascope && python3 server.py` (Flask, port 8877 — N
 merascope/
   index.html              — frontend entry point
   merascope/              — JSX source files + compiled dist/ (gitignored, built on deploy)
-  templates/              — Jinja2 HTML templates (report.html = permit justification report)
+  templates/              — Jinja2 HTML templates (report.html = site screening report)
   server.py               — Flask app (port 8877)
   package.json            — Babel build config
   babel.config.json       — JSX compile settings (classic runtime)

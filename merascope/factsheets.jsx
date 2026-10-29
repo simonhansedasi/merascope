@@ -666,7 +666,7 @@ function FactSheetsPage({ which }) {
       ) : (
         <div style={{ textAlign: 'center', padding: '80px 24px', color: 'var(--slate)', fontSize: 15 }}>
           Select a state above to load its fact sheet.
-          <div className="microcopy" style={{ marginTop: 8 }}>Company and site formats available in paid tiers.</div>
+          <div className="microcopy" style={{ marginTop: 8 }}>Company and site formats are not yet available.</div>
         </div>
       )}
       {selectedState && <IndicatorBreakdownPanel rawFeats={sheetFeats} />}

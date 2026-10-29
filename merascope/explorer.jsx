@@ -607,9 +607,6 @@ function TileCard({ feats, weights, selectedState }) {
                 ? (n > 1 ? `★ ${n} cells in workspace` : '★ In workspace')
                 : (n > 1 ? `+ Save ${n} cells to workspace` : '+ Save to workspace')}
             </button>
-            {allSaved && n === 1 && (
-              <a className="btn btn-quiet btn-sm" href={'#/builder/case/?submit=' + feats[0].properties._fid}>Submit inquiry →</a>
-            )}
           </div>
         </div>
 

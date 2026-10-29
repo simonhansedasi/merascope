@@ -918,10 +918,10 @@ function WeightPanel({ weights, setWeights, minScore = 0, setMinScore = null, do
             <div style={{ marginTop: 12, borderTop: '1px solid var(--line-soft)', paddingTop: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 2 }}>
                 <span style={{ color: 'var(--ink)', fontWeight: 600 }}>Minimum site score</span>
-                <span className="score-serif" style={{ color: 'var(--basalt)', fontWeight: 600 }}>{Math.round(minScore)}</span>
+                <span className="score-serif" style={{ color: 'var(--basalt)', fontWeight: 600 }}>{minScore.toFixed(3)}</span>
               </div>
-              <input className="mslider" type="range" min="0" max="100" step="1" value={Math.round(minScore)} aria-label="Minimum site score"
-                onChange={e => setMinScore(+e.target.value)} />
+              <input className="mslider" type="range" min="0" max="1" step="0.001" value={minScore} aria-label="Minimum site score"
+                onChange={e => setMinScore(parseFloat(e.target.value))} />
               <span className="microcopy">Cells below this score are hidden from the map.</span>
             </div>
           )}

@@ -172,7 +172,7 @@ function PromiseBadge({ compact = false, align = 'right' }) {
 // Segmented-control style nav between the three top-level surfaces (Public Explorer,
 // Builder, Steward) — navigates via location.hash rather than any router state.
 function SurfaceSwitch({ surface }) {
-  const opts = [['public', 'Public', '#/explorer'], ['builder', 'Builder', '#/builder'], ['steward', 'Steward', '#/steward']];
+  const opts = [['public', 'Public', '#/explorer'], ['builder', 'Builder', '#/builder']];
   return (
     <span className="seg" role="group" aria-label="Surface">
       {opts.map(([k, label, href]) => (
@@ -216,11 +216,10 @@ function DemoSwitch() {
       Explore as:
       <select className="demo-select" value={role} onChange={e => {
         const r = e.target.value; setRole(r);
-        location.hash = r === 'builder' ? '#/builder' : r === 'steward' ? '#/steward' : r === 'reporter' ? '#/factsheets' : '#/';
+        location.hash = r === 'builder' ? '#/builder' : r === 'reporter' ? '#/factsheets' : '#/';
       }}>
         <option value="public">Public</option>
         <option value="builder">Builder</option>
-        <option value="steward">Steward</option>
         <option value="reporter">Reporter</option>
       </select>
     </label>
@@ -230,15 +229,14 @@ function DemoSwitch() {
 /* ── top navigation ── */
 // Site-wide nav bar. Link set is built per role: public gets the 3 marketing/tool
 // links; builder/steward insert their own workspace link between Explorer and the
-// rest; admin sees both. Falls back to PersonaBadge + DemoSwitch when there's no real
-// authUser (i.e. this is a preview/demo session, not a logged-in account).
+// rest; admin sees both. (The demo persona badge and "Explore as" role switcher were
+// removed from the nav 2026-10-29; their components remain in this file, unused.)
 function TopNav({ route, role }) {
   const { authUser, logout } = React.useContext(AuthCtx);
   const pub = [['#/explorer', 'Explorer'], ['#/factsheets', 'Fact sheets'], ['#/methodology', 'Methodology']];
   var links = pub;
   if (role === 'builder') links = [pub[0], ['#/builder', 'Builder'], ...pub.slice(1)];
-  if (role === 'steward') links = [pub[0], ['#/steward', 'Steward'], ...pub.slice(1)];
-  if (role === 'admin') links = [pub[0], ['#/builder', 'Builder'], ['#/steward', 'Steward'], ...pub.slice(1)];
+  if (role === 'admin') links = [pub[0], ['#/builder', 'Builder'], ...pub.slice(1)];
   return (
     <nav className="topnav">
       <a href="#/" style={{ textDecoration: 'none', display: 'inline-flex' }}><Wordmark size={15} /></a>
@@ -248,8 +246,6 @@ function TopNav({ route, role }) {
         })}
       </div>
       <div style={{ flex: 1 }}></div>
-      {!authUser && <PersonaBadge surface={role} />}
-      {!authUser && <DemoSwitch />}
       <span className="hide-mobile"><PromiseBadge compact /></span>
       {authUser ? (
         <span className="hide-mobile" style={{ fontSize: 12.5, color: 'var(--slate)' }}>{authUser.email}</span>
@@ -283,7 +279,7 @@ function FooterMain() {
             <p className="microcopy" style={{ marginTop: 10 }}>The marked path for heavy infrastructure.</p>
             <PromiseBadge compact align="left" />
           </div>
-          {col('Product', [['Explorer', '#/explorer'], ['Builder', '#/builder'], ['Steward', '#/steward'], ['Fact sheets', '#/factsheets']])}
+          {col('Product', [['Explorer', '#/explorer'], ['Builder', '#/builder'], ['Fact sheets', '#/factsheets']])}
           {col('Methodology', [['Indicators', '#/methodology'], ['Hard gates', '#/methodology'], ['Data sources', '#/methodology'], ['Reproducibility', '#/methodology'], ['Changelog', '#/methodology']])}
           {col('Company', [['About', '#/methodology'], ['Advisory bench', '#/methodology'], ['Press', '#/explorer'], ['Careers', '#/'], ['Contact', '#/login']])}
         </div>
@@ -338,12 +334,10 @@ function NotifyToast({ message, onDone }) {
   );
 }
 
-// Content for the public onboarding tour: a 6-step scripted walkthrough of the full
-// builder→steward loop (Explorer map → save to Workspace → submit a site inquiry →
-// see it land on the agency docket → open the shared case file → wrap-up). Each step
-// can carry a `nav` hash to auto-navigate the app and a `role` to force the persona,
-// so the tour can walk a single visitor through both the builder and steward surfaces
-// without them manually switching roles. Consumed by TourOverlay below.
+// Content for the public onboarding tour: a 3-step scripted walkthrough (Explorer map →
+// save and compare in the Workspace → Portfolio screening). Each step can carry a `nav`
+// hash to auto-navigate the app and a `role` to force the persona. Consumed by
+// TourOverlay below.
 var TOUR_STEPS = [
   {
     title: 'The siting map',
@@ -358,27 +352,10 @@ var TOUR_STEPS = [
     nav: '#/builder', role: 'builder'
   },
   {
-    title: 'Submit a site inquiry',
-    body: 'Pick a saved site, fill in your contact details, and select a lead agency. Merascope routes your inquiry to the right permitting contact. No account needed — anonymous submissions go through as a demo so you can see the full workflow.',
-    action: "Fill out the form and click 'Submit site inquiry', then click Next →",
-    nav: '#/builder/case/', role: 'builder'
-  },
-  {
-    title: 'The agency docket',
-    body: 'This is your submission, exactly as an agency reviewer sees it — scored, timestamped, and routed. Your inquiry landed here the moment you clicked submit. In a live account the reviewer gets a notification immediately.',
-    action: 'Click your case to open the shared case file.',
-    nav: '#/steward', role: 'steward'
-  },
-  {
-    title: 'The shared case file',
-    body: 'From here, an agency reviewer can confirm intake with a tracking number, invite co-parties, propose conditions, and advance the case through permitting stages. The builder and all invited parties see every update in real time.',
-    action: 'Explore the case details, or use the tabs at the top to see other steward surfaces.',
-    nav: null, role: null
-  },
-  {
-    title: "You've seen the full loop",
-    body: "Builder submits → Merascope scores and routes → Agency opens a shared case → All parties coordinate conditions in one place. Sign in to file a real site inquiry.",
-    action: null, nav: null, role: null, done: true
+    title: 'Screen a whole list',
+    body: 'Portfolio screening takes a CSV of candidate sites and returns a scored, ranked table with the hard-gate check for each. It is an early desktop screen to decide which sites merit due-diligence spending, not a permit determination.',
+    action: 'Open Portfolio screening to try it with your own list.',
+    nav: '#/builder/portfolio', role: 'builder', done: true
   }
 ];
 
@@ -398,7 +375,7 @@ function TourOverlay({ tourStep, onStart, onNext, onBack, onSkip }) {
             <Icon name="rings" size={26} color="var(--basalt)" />
           </div>
           <h2 style={{ fontSize: 22, marginBottom: 10 }}>Welcome to Merascope</h2>
-          <p style={{ color: 'var(--slate)', fontSize: 14.5, lineHeight: 1.65, marginBottom: 26 }}>A 3-minute walkthrough of a complete siting workflow — explore the map, save and compare sites, submit a site inquiry, and watch it land on the agency docket in real time.</p>
+          <p style={{ color: 'var(--slate)', fontSize: 14.5, lineHeight: 1.65, marginBottom: 26 }}>A short walkthrough of the siting screen — explore the map, save and compare candidate sites, and screen a whole list at once.</p>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
             <button className="btn btn-primary" onClick={onStart}>Take the tour</button>
             <button className="btn btn-quiet" onClick={onSkip}>Explore on my own</button>

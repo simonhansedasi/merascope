@@ -1373,7 +1373,7 @@ class TestRecordAnchoring:
 
 
 # ---------------------------------------------------------------------------
-# Permit justification report routes  /report/<case_id>  and  /report
+# Site screening report routes  /report/<case_id>  and  /report
 # ---------------------------------------------------------------------------
 
 class TestReportRoutes:

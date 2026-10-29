@@ -6,9 +6,9 @@
 // nested inside a case file). Each section below is its own self-contained
 // piece — read the header comment above each to see which is which.
 
-/* ── pricing: two workspaces, each with its own schematic ── */
-// One row in the pricing table (one tier of one workspace). Reusable across
-// both the Builder and Steward columns in PricingPage below.
+/* ── pricing: one paid offering (site screening) plus the free public map ── */
+// One row in the pricing card. Kept as a component so a second offering can be
+// added to PricingPage without new markup.
 function TierRow({ name, price, per, blurb, cta, kind, href, onCta }) {
   return (
     <div style={{ display: 'flex', gap: 14, alignItems: 'center', padding: '13px 0', borderBottom: '1px solid var(--line-soft)' }}>
@@ -90,77 +90,45 @@ function LeadModal({ lead, onClose }) {
   );
 }
 
-// Public pricing page (#/pricing). Two side-by-side workspaces (Builder,
-// Steward), each a stack of TierRows, plus a "free and stays free" band for
-// the Public Explorer and a performance-participation callout. Any non-link
-// CTA opens LeadModal via `ask(workspace, tier, cta)` instead of navigating away.
+// Public pricing page (#/pricing). One paid offering (hand-delivered site screening,
+// quoted per batch), the free Public Explorer band, and a one-line promise. The
+// sales-touch CTA opens LeadModal via `ask(workspace, tier, cta)`. Rewritten
+// 2026-10-29 when Merascope narrowed to concierge screening; the old Builder/Steward
+// tier ladder (Individual/Group/Enterprise, County/State, Mandated studies,
+// performance participation) described products that were not on sale.
 function PricingPage() {
   const [lead, setLead] = React.useState(null);
   const ask = function(workspace, tier, cta) { return function() { setLead({ workspace: workspace, tier: tier, cta: cta }); }; };
   return (
-    <div style={{ maxWidth: 1080, margin: '0 auto', padding: '36px 24px 60px' }} data-screen-label="Pricing">
-      <PageHead eyebrow="Pricing" title="Two workspaces. One engine."
-        sub="Builder and Steward are priced separately because they buy different work, never different numbers." />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 18, alignItems: 'stretch' }}>
-        {/* Builder mode */}
-        <div className="card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ background: 'var(--sand)', borderBottom: '1px solid var(--line-soft)', padding: '16px 22px', display: 'flex', gap: 11, alignItems: 'center' }}>
-            <span style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--sand)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--line)' }}><Icon name="pylon" size={19} color="var(--basalt)" /></span>
-            <div>
-              <h3 style={{ fontSize: 17 }}>Builder workspace</h3>
-              <span className="microcopy">Developers, operators, capital</span>
-            </div>
-          </div>
-          <div style={{ padding: '6px 22px 18px', flex: 1 }}>
-            <TierRow name="Individual" price="$149" per="/mo" cta="Start now" kind="btn-quiet" href="#/login"
-              blurb="Full indicator set · grid resolution · exports · shareable weights" />
-            <TierRow name="Group" price="from $24k" per="/yr" cta="Start trial" kind="btn-primary" onCta={ask('builder', 'Group', 'Start trial')}
-              blurb="Seats & workspaces · ZCTA + parcel layers · API · watchlists · Site Lab · portfolio screening" />
-            <TierRow name="Enterprise" price="Custom" per="" cta="Talk to us" kind="btn-quiet" onCta={ask('builder', 'Enterprise', 'Talk to us')}
-              blurb="SSO · dossier credits · field-survey marketplace · named account manager" />
-            <p className="microcopy" style={{ margin: '12px 0 0' }}>Site dossiers $25–75k · field surveys proctored & tracked with chain-of-custody.</p>
+    <div style={{ maxWidth: 760, margin: '0 auto', padding: '36px 24px 60px' }} data-screen-label="Pricing">
+      <PageHead eyebrow="Pricing" title="Site screening, quoted per batch."
+        sub="The map is free. Paid work is a hand-delivered screening of your candidate sites. The fee buys the work, never a different number." />
+      <div className="card" style={{ overflow: 'hidden' }}>
+        <div style={{ background: 'var(--sand)', borderBottom: '1px solid var(--line-soft)', padding: '16px 22px', display: 'flex', gap: 11, alignItems: 'center' }}>
+          <span style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--sand)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--line)' }}><Icon name="pylon" size={19} color="var(--basalt)" /></span>
+          <div>
+            <h3 style={{ fontSize: 17 }}>Site screening service</h3>
+            <span className="microcopy">Developers, consultants, and permit expediters</span>
           </div>
         </div>
-        {/* Steward mode */}
-        <div className="card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ background: 'var(--mist)', borderBottom: '1px solid var(--line-soft)', padding: '16px 22px', display: 'flex', gap: 11, alignItems: 'center' }}>
-            <span style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--sand)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--line)' }}><Icon name="gavel" size={19} color="var(--evergreen)" /></span>
-            <div>
-              <h3 style={{ fontSize: 17 }}>Steward console</h3>
-              <span className="microcopy">Agencies, counties, commissions, tribal governments</span>
-            </div>
-          </div>
-          <div style={{ padding: '6px 22px 18px', flex: 1 }}>
-            <TierRow name="County / single office" price="from $12k" per="/yr" cta="Talk to us" kind="btn-quiet" onCta={ask('steward', 'County / single office', 'Talk to us')}
-              blurb="Docket lite · report cards · fact sheets · hearing exhibits" />
-            <TierRow name="State agency" price="from $60k" per="/yr" cta="Talk to us" kind="btn-primary" onCta={ask('steward', 'State agency', 'Talk to us')}
-              blurb="Full Docket · impasse register · litigation exports · Entra ID SSO · all geographies" />
-            <TierRow name="Mandated studies" price="$75–400k" per="" cta="Scope it" kind="btn-quiet" onCta={ask('steward', 'Mandated studies', 'Scope it')}
-              blurb="Study workbench · statutory deadline tracking · expert bench testimony" />
-            <p className="microcopy" style={{ margin: '12px 0 0' }}>Procurement-friendly contracting · sovereign consultation support built in.</p>
-          </div>
+        <div style={{ padding: '6px 22px 18px' }}>
+          <TierRow name="Screening batch" price="Quoted" per="" cta="Request a quote" kind="btn-primary" onCta={ask('builder', 'Site screening batch', 'Request a quote')}
+            blurb="Up to about 20 candidate sites · scored, ranked table · site screening report for each site · short memo on the strongest and weakest · 5-business-day turnaround" />
+          <p className="microcopy" style={{ margin: '12px 0 0' }}>An early desktop screen used before site studies, to decide which sites merit due-diligence spending. It is not a permit determination, an engineering opinion, or legal advice.</p>
         </div>
       </div>
       {/* free band */}
       <div className="panel" style={{ marginTop: 18, padding: '16px 22px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
         <div>
           <b style={{ fontSize: 14.5 }}>Free, and it stays free</b>
-          <p style={{ margin: '3px 0 0', fontSize: 13.5, color: 'var(--slate)', maxWidth: 620 }}>The Public Explorer, report cards, methodology, and fact sheets. They are the point, not the funnel.</p>
+          <p style={{ margin: '3px 0 0', fontSize: 13.5, color: 'var(--slate)', maxWidth: 520 }}>The Public Explorer, report cards, methodology, and fact sheets. They are the point, not the funnel.</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <a className="btn btn-quiet btn-sm" href="#/explorer">Open the Explorer</a>
         </div>
       </div>
-      {/* performance participation */}
-      <div className="callout" style={{ marginTop: 12, padding: '14px 22px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-        <div>
-          <b style={{ fontSize: 14 }}>Performance participation</b>
-          <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--slate)', maxWidth: 640 }}>Success-linked structures for placed sites — compensation indexed to long-run site truth, which enforces the firewall from the inside.</p>
-        </div>
-        <button className="btn btn-quiet btn-sm" onClick={ask('builder', 'Performance participation', 'Talk to us')}>Talk to us</button>
-      </div>
       <p className="microcopy" style={{ textAlign: 'center', marginTop: 22 }}>
-        ◈ Every tier sees the same scores. Paid tiers buy resolution and workflow, never outcomes.
+        ◈ Everyone sees the same scores. The fee buys the work, never a better score.
       </p>
       {lead && <LeadModal lead={lead} onClose={function() { setLead(null); }} />}
     </div>
@@ -172,7 +140,6 @@ function PricingPage() {
 // brand-new accounts on LoginPage below.
 const NEW_ROLES = [
   { id: 'builder', name: 'Builder', desc: 'Developers, operators, capital' },
-  { id: 'steward', name: 'Steward', desc: 'Agencies, counties, commissions, tribal governments' },
   { id: 'reporter', name: 'Reporter', desc: 'Verified press — read-only scores & fact sheets' }
 ];
 
@@ -199,7 +166,7 @@ function LoginPage() {
     var t = setInterval(function() { flip = !flip; setW(normalizeWeights({ ...M.DEFAULT_WEIGHTS }, 'community', flip ? 45 : 25)); }, 2800);
     return function() { clearInterval(t); };
   }, []);
-  var enter = function(r) { setRole(r); location.hash = r === 'builder' ? '#/builder' : r === 'steward' ? '#/steward' : '#/factsheets'; };
+  var enter = function(r) { setRole(r); location.hash = r === 'builder' ? '#/builder' : '#/factsheets'; };
   var handleRequest = function(e) {
     e.preventDefault();
     setErr(null);
@@ -244,11 +211,8 @@ function LoginPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '20px 0', color: 'var(--slate)', fontSize: 12.5 }}>
             <hr className="hr-soft" style={{ flex: 1 }} /> demo <hr className="hr-soft" style={{ flex: 1 }} />
           </div>
-          <button className="btn btn-quiet" style={{ width: '100%' }} onClick={function() { enter('steward'); }}>Sign in with Microsoft Entra ID</button>
-          <p className="microcopy" style={{ marginTop: 8 }}>For agency and enterprise workspaces. Your views and permissions are scoped by your organization — your scores are not.</p>
           <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
             <button className="btn btn-quiet btn-xs" style={{ flex: 1 }} onClick={function() { enter('builder'); }}>Demo SSO — Builder (Sarah Chen)</button>
-            <button className="btn btn-quiet btn-xs" style={{ flex: 1 }} onClick={function() { enter('steward'); }}>Demo SSO — Steward (Ecology)</button>
           </div>
           <div className="panel" style={{ marginTop: 20, padding: '15px 17px' }}>
             <b style={{ fontSize: 13.5 }}>New here? Which door did you come in through?</b>
@@ -282,18 +246,18 @@ function LoginPage() {
 
 /* ── methodology ── */
 // Table data for the "Geographies" section of MethodologyPage: which spatial
-// resolutions the product can roll scores up to, and which pricing tier
-// unlocks each one. [label, category, tier, use-case] tuples.
+// resolutions the product can roll scores up to, and whether each is available.
+// [label, category, availability, use-case] tuples.
 const GEOGRAPHIES = [
   ['ZCTA', 'Base layer', 'Public — free', 'The shared reference frame everyone argues from'],
-  ['County', 'Administrative', 'Group', 'Permitting posture, hearings, moratorium maps'],
-  ['Census tract / block group', 'Statistical', 'Group', 'EJ analysis at evidence-grade resolution'],
-  ['Utility / PUD service territory', 'Operational', 'Group', 'Rate cases, large-load tariff exposure'],
-  ['Parcel', 'Cadastral', 'Enterprise', 'Listings, dossiers, site control'],
-  ['Balancing authority', 'Operational', 'Enterprise', 'Queue & curtailment modeling'],
-  ['Watershed (HUC-8 / HUC-10)', 'Hydrologic', 'Agency', 'Water findings, replenishment conditions'],
-  ['Congressional district', 'Political', 'Agency', 'Delegation briefings, federal testimony'],
-  ['State legislative district', 'Political', 'Agency', 'Bill drafting, moratorium studies, fiscal notes']
+  ['County', 'Administrative', 'Not yet available', 'Permitting posture, hearings, moratorium maps'],
+  ['Census tract / block group', 'Statistical', 'Not yet available', 'EJ analysis at evidence-grade resolution'],
+  ['Utility / PUD service territory', 'Operational', 'Not yet available', 'Rate cases, large-load tariff exposure'],
+  ['Parcel', 'Cadastral', 'Sample only (Seattle)', 'Listings, dossiers, site control'],
+  ['Balancing authority', 'Operational', 'Not yet available', 'Queue & curtailment modeling'],
+  ['Watershed (HUC-8 / HUC-10)', 'Hydrologic', 'Not yet available', 'Water findings, replenishment conditions'],
+  ['Congressional district', 'Political', 'Not yet available', 'Delegation briefings, federal testimony'],
+  ['State legislative district', 'Political', 'Not yet available', 'Bill drafting, moratorium studies, fiscal notes']
 ];
 
 // The full 22-indicator methodology catalog: name, score column, default
@@ -667,11 +631,11 @@ function MethodologyPage() {
           <div id="m-geographies" style={{ scrollMarginTop: 72 }}>
             <h3 style={{ fontSize: 17, marginBottom: 8 }}>One engine, many geographies</h3>
             <p style={{ fontSize: 14.5, lineHeight: 1.65, marginBottom: 12 }}>
-              The public map is the 0.15&#176; grid, free forever. Paid tiers re-aggregate the same cell scores into the geographies that decisions actually use. All rollups are exact area-weighted averages of published cell scores &#8212; scores are never recomputed or re-weighted at a different resolution.
+              The public map is the ZIP-code (ZCTA) layer, free forever. Other geographies are not yet available, and parcel-level screening is only a sample so far. When a rollup is offered, it will be an exact area-weighted average of published scores &#8212; scores are never recomputed or re-weighted at a different resolution.
             </p>
             <div className="card" style={{ overflow: 'auto', marginBottom: 8 }}>
               <table className="mtable">
-                <thead><tr><th>Geography</th><th>Hierarchy</th><th>Tier</th><th>Built for</th></tr></thead>
+                <thead><tr><th>Geography</th><th>Hierarchy</th><th>Availability</th><th>Built for</th></tr></thead>
                 <tbody>
                   {GEOGRAPHIES.map(([g, h, t, b]) => (
                     <tr key={g}>

@@ -2,7 +2,8 @@
 Merascope browser smoke test.
 
 Starts a real Flask server on a temp port, uses Playwright Chromium (headless)
-to drive the full builder inquiry -> steward docket flow.
+to check the site-screening surfaces (home, Builder workspace, portfolio
+screening, screening report) and that the frozen steward/case routes are gone.
 
 Run:
     /home/simonhans/anaconda3/envs/merascope/bin/python3 tests/smoke_test.py
@@ -115,167 +116,82 @@ def run(page, base):
           'merascope' in page.title().lower())
     check('No Babel compile error',
           page.locator('text=Uncaught SyntaxError').count() == 0)
+    check('Builder door present on home page',
+          page.locator('text=Enter the Builder workspace').count() > 0)
+    check('Steward door removed from home page',
+          page.locator('text=Enter the Steward console').count() == 0)
+    check('No steward link in nav/footer',
+          page.locator('a[href="#/steward"]').count() == 0)
 
-    # ── 2. Builder tab ────────────────────────────────────────────────────
-    print('\n[2. Builder tab navigation]')
+    # ── 2. Builder workspace ──────────────────────────────────────────────
+    print('\n[2. Builder workspace]')
     nav(page, '#/builder')
-    check('"My Inquiry" tab visible in builder nav',
-          page.locator('text=My Inquiry').count() > 0)
-
-    # ── 3. Submit form renders ────────────────────────────────────────────
-    print('\n[3. Submit form]')
-    nav(page, '#/builder/case/')
-    check('"Submit site inquiry" tab button exists',
-          page.locator('button:has-text("Submit site inquiry")').count() > 0)
-    check('"Find your inquiry" heading exists',
-          page.locator('text=Find your inquiry').count() > 0)
-
-    page.locator('button:has-text("Submit site inquiry")').first.click()
-    page.wait_for_timeout(500)
-
-    check('"Submit a site inquiry" heading visible',
-          page.locator('text=Submit a site inquiry').count() > 0)
-    check('Step 1 "Select saved site" label visible',
-          page.locator('text=1. Select saved site').count() > 0)
-    check('Seeded cell card "Washington #42" visible',
+    check('"Portfolio screening" tab visible',
+          page.locator('text=Portfolio screening').count() > 0)
+    check('"My Inquiry" tab removed',
+          page.locator('text=My Inquiry').count() == 0)
+    check('Saved cell card "Washington" visible in workspace',
           page.locator('text=Washington').count() > 0)
+    check('No "Submit inquiry" button on saved cell',
+          page.locator('text=Submit inquiry').count() == 0)
 
-    # ── 4. Progressive reveal ─────────────────────────────────────────────
-    print('\n[4. Progressive reveal]')
-    check('Step 2 hidden before cell selected',
-          page.locator('text=2. Confirm project details').count() == 0)
-    check('Submit button hidden before cell selected',
-          page.locator('button[onclick*="submit"], button:has-text("Submit site inquiry")').count() == 0
-          or page.locator('text=4. Your details').count() == 0)
-
-    page.locator('text=Washington').first.click()
-    page.wait_for_timeout(600)
-
-    check('Step 2 "Confirm project details" appears after click',
-          page.locator('text=2. Confirm project details').count() > 0)
-    check('Step 3 "Lead agency" appears',
-          page.locator('text=3. Lead agency').count() > 0)
-    check('Step 4 "Your details" appears',
-          page.locator('text=4. Your details').count() > 0)
-    check('Submit button appears after cell selected',
-          page.locator('button:has-text("Submit site inquiry")').last.is_visible())
-
-    # ── 4b. Submit deep-link prefills the saved cell ──────────────────────
-    # Leave the case view entirely, then arrive via the deep link — a fresh
-    # mount must land on the submit tab with cell 42 already selected.
-    print('\n[4b. Submit deep-link]')
-    nav(page, '#/builder')
-    page.wait_for_timeout(400)
-    nav(page, '#/builder/case/?submit=42')
-    page.wait_for_timeout(900)
-    check('Deep-linked cell is pre-selected',
-          page.locator('text=Selected').count() > 0)
-    check('Step 2 visible without manual cell click',
-          page.locator('text=2. Confirm project details').count() > 0)
-
-    # ── 5. Submit the inquiry ─────────────────────────────────────────────
-    print('\n[5. Inquiry submission]')
-    page.fill('input[placeholder="e.g. Cascade Summit Data LLC"]', 'Smoke Test Corp')
-    page.fill('input[placeholder="jane@example.com"]', 'smoke@test.com')
-    page.locator('button:has-text("Submit site inquiry")').last.click()
-    page.wait_for_timeout(2000)
-
-    submitted = (
-        page.locator('text=Site inquiry submitted').count() > 0
-        or page.locator('text=Site inquiry received').count() > 0
-        or page.locator('text=In intake').count() > 0
-    )
-    check('Confirmation shown after submit', submitted)
-
-    # ── 6. API round-trip ─────────────────────────────────────────────────
-    print('\n[6. API round-trip]')
-    cases = api_get(base, '/api/cases').get('cases', [])
-    check('Submitted case in /api/cases', len(cases) >= 1)
-
-    case_id = None
-    if cases:
-        row = cases[0]
-        case_id = row['case_id']
-        check('Stage is "Site Inquiry"',
-              row['stage'] == 'Site Inquiry', f'got: {row.get("stage")}')
-
-        detail = api_get(base, '/api/builder/case/' + case_id)
-        check('GET /api/builder/case returns correct applicant',
-              detail.get('applicant') == 'Smoke Test Corp',
-              f'got: {detail.get("applicant")}')
-        check('contact_email persisted',
-              detail.get('contact_email') == 'smoke@test.com')
-
-    # ── 7. Steward docket ─────────────────────────────────────────────────
-    print('\n[7. Steward docket]')
-    switch_role(page, base, 'steward', '#/steward')
-
-    check('Docket page rendered',
-          page.locator('text=Docket').count() > 0
-          or page.locator('[data-screen-label*="Docket"]').count() > 0)
-
-    if case_id:
-        # Docket fetches /api/cases on mount — give it a moment
-        page.wait_for_timeout(1200)
-        # CaseCard shows k.site (Washington #42) and k.applicant (Smoke Test Corp)
-        check('Submitted case visible on docket',
-              page.locator('text=Smoke Test Corp').count() > 0
-              or page.locator('text=Washington #42').count() > 0
-              or page.locator(f'text={case_id}').count() > 0)
-
-    # ── 7b. Permitter inbox ────────────────────────────────────────────────
-    print('\n[7b. Permitter inbox]')
-    nav(page, '#/steward/inbox')
-    page.wait_for_timeout(1000)
-    check('Inbox page rendered',
-          page.locator('[data-screen-label*="Inbox"]').count() > 0)
-    check('"New inquiries" bucket visible',
-          page.locator('text=New inquiries').count() > 0)
-    check('"Stuck" bucket visible',
-          page.locator('text=Stuck').count() > 0)
-    check('No Babel/JS error on inbox page',
+    # ── 3. Portfolio screening ────────────────────────────────────────────
+    print('\n[3. Portfolio screening]')
+    nav(page, '#/builder/portfolio')
+    page.wait_for_timeout(500)
+    check('Portfolio page rendered',
+          page.locator('text=Portfolio').count() > 0)
+    check('No Babel/JS error on portfolio page',
           page.locator('text=Uncaught SyntaxError').count() == 0)
 
-    # ── 7c. Bulk import page ────────────────────────────────────────────────
-    print('\n[7c. Bulk import page]')
-    nav(page, '#/steward/bulk-import')
-    page.wait_for_timeout(500)
-    check('Bulk import page rendered',
-          page.locator('[data-screen-label*="Bulk import"]').count() > 0)
-    check('Upload CSV control visible',
-          page.locator('text=Upload CSV').count() > 0)
+    # ── 4. Frozen surfaces are gone ───────────────────────────────────────
+    print('\n[4. Frozen steward/case surfaces]')
+    for hash_path in ('#/steward', '#/steward/inbox', '#/co-party', '#/evidence'):
+        nav(page, hash_path)
+        check(f'{hash_path} falls through to the landing page',
+              page.locator('[data-screen-label="Landing"]').count() > 0
+              or page.locator('text=Reproducible evidence').count() > 0)
+    # /builder/case/ now resolves to the plain Workspace (the /builder prefix), not the old inquiry form
+    nav(page, '#/builder/case/')
+    check('#/builder/case/ no longer shows the inquiry form',
+          page.locator('text=Find your inquiry').count() == 0
+          and page.locator('text=Submit a site inquiry').count() == 0)
+    page.goto(base)
+    page.wait_for_load_state('networkidle', timeout=10000)
 
-    # ── 8. Steward intake case view ───────────────────────────────────────
-    if case_id:
-        print('\n[8. Steward intake case view]')
-        nav(page, '#/steward/case/' + case_id)
-        page.wait_for_timeout(1000)
+    # ── 4b. Pricing page ──────────────────────────────────────────────────
+    print('\n[4b. Pricing page]')
+    nav(page, '#/pricing')
+    check('Pricing offers the screening batch',
+          page.locator('text=Request a quote').count() > 0)
+    check('No Steward console tier on pricing',
+          page.locator('text=Steward console').count() == 0
+          and page.locator('text=Performance participation').count() == 0)
 
-        check('"New site inquiry received" callout visible',
-              page.locator('text=New site inquiry received').count() > 0)
-        check('Applicant name visible',
-              page.locator('text=Smoke Test Corp').count() > 0)
-        check('"Advance stage" section present',
-              page.locator('text=Advance stage').count() > 0)
-        check('Stage buttons exist',
-              page.locator('button:has-text("Move to")').count() > 0)
-        check('Permit justification report link present',
-              page.locator('a[href^="/report/"]').count() > 0)
-
-    # ── 9. Builder lookup ─────────────────────────────────────────────────
-    if case_id:
-        print('\n[9. Builder case lookup]')
-        switch_role(page, base, 'builder', '#/builder/case/')
+    # ── 4c. Explorer minimum-score slider is 0-1 with 3 decimals ──────────
+    print('\n[4c. Minimum score slider]')
+    nav(page, '#/explorer')
+    page.wait_for_timeout(1500)
+    sl = page.locator('input[aria-label="Minimum site score"]')
+    check('Minimum score slider present', sl.count() > 0)
+    if sl.count() > 0:
+        check('Slider runs 0 to 1, step 0.001',
+              sl.first.get_attribute('min') == '0' and sl.first.get_attribute('max') == '1'
+              and sl.first.get_attribute('step') == '0.001',
+              f"min={sl.first.get_attribute('min')} max={sl.first.get_attribute('max')} step={sl.first.get_attribute('step')}")
+        sl.first.evaluate("el => { const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(el, '0.5'); el.dispatchEvent(new Event('input', { bubbles: true })); }")
         page.wait_for_timeout(400)
+        check('Slider readout shows 3 decimals', page.locator('text=0.500').count() > 0)
+    page.goto(base)
+    page.wait_for_load_state('networkidle', timeout=10000)
 
-        page.fill('input[placeholder="e.g. 26-0142"]', case_id)
-        page.locator('button:has-text("Look up")').click()
-        page.wait_for_timeout(1200)
-
-        check('Intake view loads for submitted case',
-              page.locator('text=Site inquiry received').count() > 0
-              or page.locator('text=In intake').count() > 0,
-              page.content()[:200])
+    # ── 5. Site screening report ──────────────────────────────────────────
+    print('\n[5. Site screening report]')
+    import urllib.request
+    html = urllib.request.urlopen(base + '/report?state=WA&lat=47.5&lon=-120.3&name=Smoke').read().decode()
+    check('Report titled "Site Screening Report"', 'Site Screening Report' in html)
+    check('Old "Permit Justification Report" title gone', 'Permit Justification Report' not in html)
+    check('Scope and limitations section present', 'Scope and limitations' in html)
 
 
 # ── entry point ───────────────────────────────────────────────────────────────

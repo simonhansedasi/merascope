@@ -193,40 +193,6 @@ function App() {
     setTourStep(null);
   };
 
-  // Second, separate tour for the Steward console (STEWARD_TOUR_STEPS, ui.jsx).
-  // Auto-starts only for a *real* (authUser-backed) steward, and only once the
-  // public tour (tourStep) has finished/been skipped — the two tours never overlap.
-  const [stewardTourStep, setStewardTourStep] = React.useState(null);
-  React.useEffect(function() {
-    if (role === 'steward' && authUser && tourStep === null) {
-      try {
-        if (!localStorage.getItem('mera_steward_tour_done')) setStewardTourStep(0);
-      } catch (e) {}
-    }
-  }, [role, tourStep]);
-  const applySTourStep = function(step) {
-    if (step.role) setRole(step.role);
-    if (step.nav) location.hash = step.nav;
-  };
-  const startStewardTour = function() { applySTourStep(STEWARD_TOUR_STEPS[0]); setStewardTourStep(1); };
-  const nextStewardTour = function() {
-    const cur = STEWARD_TOUR_STEPS[stewardTourStep - 1];
-    if (cur && cur.done) { skipStewardTour(); return; }
-    const next = STEWARD_TOUR_STEPS[stewardTourStep];
-    if (next) applySTourStep(next);
-    setStewardTourStep(function(s) { return Math.min(s + 1, STEWARD_TOUR_STEPS.length); });
-  };
-  const backStewardTour = function() {
-    if (stewardTourStep <= 1) return;
-    const prev = STEWARD_TOUR_STEPS[stewardTourStep - 2];
-    if (prev) applySTourStep(prev);
-    setStewardTourStep(function(s) { return s - 1; });
-  };
-  const skipStewardTour = function() {
-    try { localStorage.setItem('mera_steward_tour_done', '1'); } catch (e) {}
-    setStewardTourStep(null);
-  };
-
   // Pushes the current tweak values onto :root as CSS custom properties / a
   // data-theme attribute, so styles.css's [data-theme="dark"] overrides and the
   // --basalt/--sans variables used throughout the app pick them up live.
@@ -238,46 +204,28 @@ function App() {
 
   // Route table: matches route.path against each surface's URL prefixes and picks
   // the page component to render. Order matters — more specific prefixes (e.g.
-  // '/builder/case/') are checked before their looser parents ('/builder').
+  // '/builder/status') are checked before their looser parent ('/builder').
   let page;
   if (path === '/') page = <LandingPage />;
   else if (path.startsWith('/explorer')) page = <ExplorerPage query={route.query} />;
-  else if (path.startsWith('/builder/case/')) page = <BuilderCaseView id={path.split('/')[3]} query={route.query} />;
   else if (path.startsWith('/builder/site/')) page = <SiteProfile id={path.split('/')[3]} />;
   else if (path === '/builder/status') page = <StatusPage />;
   else if (path === '/builder/portfolio') page = <PortfolioPage />;
   else if (path.startsWith('/builder')) page = <BuilderSearch />;
-  else if (path.startsWith('/steward/case/')) page = <CaseFilePage id={path.split('/')[3]} />;
-  else if (path === '/steward/impasse') page = <ImpassePage />;
-  else if (path === '/steward/litigation') page = <LitigationPage />;
-  else if (path === '/steward/studies') page = <StudiesPage />;
-  else if (path === '/steward/templates') page = <StewardTemplatesPage />;
-  else if (path === '/steward/inbox') page = <InboxPage />;
-  else if (path === '/steward/bulk-import') page = <BulkIntakePage />;
-  else if (path.startsWith('/steward')) page = <DocketPage />;
-  else if (path.startsWith('/co-party/case/')) page = <CaseFilePage id={path.split('/')[3]} />;
-  else if (path.startsWith('/co-party')) page = <CoDocketPage />;
+  // Steward, co-party, case and evidence surfaces are frozen (2026-10-29): their
+  // source lives in merascope/_frozen/ and is not part of the build, so their
+  // old URLs fall through to the landing page below.
   else if (path.startsWith('/factsheets')) page = <FactSheetsPage which={path.split('/')[2]} />;
   else if (path.startsWith('/pricing')) page = <PricingPage />;
   else if (path.startsWith('/login')) page = <LoginPage />;
   else if (path.startsWith('/risk')) page = <RiskPage query={route.query} />;
   else if (path.startsWith('/methodology')) page = <MethodologyPage />;
-  else if (path.startsWith('/evidence')) page = <EvidencePage caseId={route.query.case} />;
   else page = <LandingPage />;
 
-  /* Auth gate: if the route requires a persona (builder/steward/co-party) that
-     doesn't match the current role, swap the resolved page out for AuthWall —
-     unless the role is 'admin' (admins can view builder/steward surfaces), or
-     the surface is 'steward' and an unauthenticated demo session is active
-     (demo mode renders its own read-only docket, see steward.jsx DemoStewardDocket). */
-  const need = path.startsWith('/builder') ? 'builder'
-    : path.startsWith('/steward') ? 'steward'
-    : path.startsWith('/co-party') ? 'co-party'
-    : null;
-  if (need && role !== need && !(role === 'admin' && (need === 'steward' || need === 'builder'))) {
-    if (!(need === 'steward' && demoActive)) {
-      page = <AuthWall need={need} setRole={setRole} />;
-    }
+  /* Auth gate: the Builder surface requires the builder role (or admin); anything
+     else sees AuthWall instead of the resolved page. */
+  if (path.startsWith('/builder') && role !== 'builder' && role !== 'admin') {
+    page = <AuthWall need="builder" setRole={setRole} />;
   }
 
   return (
@@ -296,10 +244,8 @@ function App() {
           <TweakSelect label="UI font" value={t.uiFont} options={['Source Sans', 'Helvetica', 'IBM Plex']} onChange={v => setTweak('uiFont', v)} />
           <TweakSection label="Tour" />
           <button className="btn btn-quiet btn-sm" style={{ margin: '4px 8px 8px' }} onClick={() => { try { localStorage.removeItem('mera_tour_done'); } catch (e) { } setTourStep(0); }}>Replay guided tour</button>
-          <button className="btn btn-quiet btn-sm" style={{ margin: '0 8px 8px' }} onClick={() => { try { localStorage.removeItem('mera_steward_tour_done'); } catch (e) { } setStewardTourStep(0); }}>Replay steward tour</button>
         </TweaksPanel>
         <TourOverlay tourStep={tourStep} onStart={startTour} onNext={nextTour} onBack={backTour} onSkip={skipTour} />
-        <StewardTourOverlay tourStep={stewardTourStep} onStart={startStewardTour} onNext={nextStewardTour} onBack={backStewardTour} onSkip={skipStewardTour} />
       </AuthCtx.Provider>
     </MeraCtx.Provider>
   );

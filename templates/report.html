@@ -1,10 +1,10 @@
 <!--
-  report.html — Server-rendered (Jinja2, no React) permit-justification report.
+  report.html — Server-rendered (Jinja2, no React) site screening report.
   Rendered by server.py's report_case() (/report/<case_id>, real or demo case)
   and report_explorer() (/report, no case — ad hoc lat/lon lookup), both of
   which build their template context via _build_report_context(). Printable
-  as a PDF via the on-page print button; this is the document a builder hands
-  to a permitting agency as supporting evidence.
+  as a PDF via the on-page print button; this is a desktop screening document
+  used before site studies, not a permit application or a permitting determination.
 
   Indicator count: shows 22 scored indicators (server.py's _REPORT_INDICATORS)
   plus protected_score handled separately as a hard gate below, not a
@@ -15,7 +15,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{{ site_name }} — Permit Justification Report</title>
+  <title>{{ site_name }} — Site Screening Report</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -191,7 +191,7 @@
   <div class="rpt-header">
     <div>
       <div class="rpt-logo">MERASCOPE</div>
-      <div class="rpt-doc-title">Permit Justification Report</div>
+      <div class="rpt-doc-title">Site Screening Report</div>
     </div>
     <div class="rpt-meta">
       {% if case_id %}<div><strong>Case ID:</strong> {{ case_id }}</div>{% endif %}
@@ -264,7 +264,7 @@
   </table>
   {% if not all_gates_pass %}
   <div class="gate-fail-banner">
-    One or more hard gates failed. This site is ineligible for standard {{ site_type_label|lower }} permitting under Merascope criteria and is excluded from portfolio screening results.
+    One or more hard gates failed. This site failed a Merascope screening gate for {{ site_type_label|lower }} siting; flag it for due diligence. It is excluded from portfolio screening results.
   </div>
   {% endif %}
 
@@ -374,6 +374,12 @@
     <div class="unanchored">Record not yet anchored. Advance to Resolution stage in Merascope to generate a tamper-evident SHA-256 anchor hash.</div>
     {% endif %}
     <div style="margin-top: 2px;"><strong>Generated:</strong> {{ generated_at }}</div>
+  </div>
+
+  <!-- ── Scope ── -->
+  <h3 class="sec">Scope and limitations</h3>
+  <div class="repro">
+    <div>This is a desktop screening based on public datasets at ZIP-code (ZCTA) resolution, intended for use before site-specific studies. It is not a permit application, a permitting or eligibility determination, an engineering, geotechnical, or hydrologic opinion, or legal advice. Parcel-level conditions, local zoning and code requirements, utility interconnection and water availability must be confirmed through site-specific studies and the relevant agencies.</div>
   </div>
 
 </div><!-- end .page -->

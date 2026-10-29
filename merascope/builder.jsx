@@ -30,7 +30,7 @@ function _resolveAgency(key) {
    which button gets the 'on' style; navigation is a plain hash change (no client router state),
    so each tab's page component re-mounts fresh when clicked. */
 function BuilderSubNav({ active }) {
-  const tabs = [['search', 'Workspace', '#/builder'], ['status', 'Status', '#/builder/status'], ['portfolio', 'Portfolio screening', '#/builder/portfolio'], ['mycase', 'My Inquiry', '#/builder/case/']];
+  const tabs = [['search', 'Workspace', '#/builder'], ['status', 'Status', '#/builder/status'], ['portfolio', 'Portfolio screening', '#/builder/portfolio']];
   return (
     <div className="tabs" style={{ marginBottom: 18, flexWrap: 'wrap', overflowX: 'visible' }}>
       {tabs.map(([k, label, href]) => (
@@ -211,7 +211,6 @@ function SavedCellCard({ cell, inCompare, canAdd, onToggle, onRemove }) {
           title={(!inCompare && !canAdd) ? 'Max 4 selected' : ''}>
           {inCompare ? 'Comparing' : 'Compare'}
         </button>
-        <a className="btn btn-quiet btn-sm" href={'#/builder/case/?submit=' + cell.fid}>Submit inquiry</a>
         <button className="btn btn-ghost btn-sm" onClick={onRemove} style={{ marginLeft: 'auto', color: 'var(--slate)' }}>Remove</button>
       </div>
     </div>
@@ -1070,7 +1069,7 @@ function BuilderCaseView({ id, query }) {
                         background: 'var(--mist)', border: '1px solid var(--line)', borderRadius: 8,
                         color: 'var(--ink)', textDecoration: 'none' }}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 650, fontSize: 14 }}>Download permit justification report</div>
+                <div style={{ fontWeight: 650, fontSize: 14 }}>Download site screening report</div>
                 <div style={{ fontSize: 12, color: 'var(--slate)', marginTop: 2 }}>
                   Printable PDF-ready document &mdash; composite score, 22-indicator breakdown, data sources, reproducibility metadata
                 </div>

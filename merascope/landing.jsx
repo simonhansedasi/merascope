@@ -3,7 +3,7 @@
 // Framed around "reproducible evidence for infrastructure siting" (permitting,
 // not just GIS mapping) — see CONTEXT.md "Homepage framing overhaul". Composed of
 // a hero section, a schematic of the scoring pipeline (EngineVisual), the
-// dual-path "Builder vs Steward" doors, a stat band, a 3-step explainer, and a
+// Builder door, a stat band, a 3-step explainer, and a
 // couple of teaser sections that link into the Explorer and pricing pages.
 
 // Static schematic showing "public sources -> 23 indicators -> composite score"
@@ -83,7 +83,7 @@ function EngineVisual() {
           <div className="microcopy">per ZCTA</div>
           <div style={{ height: 1, background: 'var(--line-soft)', width: '75%' }}></div>
           <div style={{ fontSize: 12, color: 'var(--evergreen)', fontWeight: 650, lineHeight: 1.45 }}>◈ Same number<br />for every user</div>
-          <div className="microcopy" style={{ fontSize: 11 }}>Builder · Regulator · Press · Public</div>
+          <div className="microcopy" style={{ fontSize: 11 }}>Developers · Consultants · Public</div>
         </div>
 
       </div>
@@ -137,7 +137,7 @@ function LandingPage() {
               Reproducible evidence<br />for infrastructure siting.
             </h1>
             <p style={{ fontSize: 17, lineHeight: 1.6, color: 'var(--slate)', margin: '18px auto 28px', maxWidth: 560 }}>
-              When the score changes between rooms, the hearing fails. Merascope is a shared evidence platform — twenty-three public sources, twenty-two normalized indicators, one composite score that's identical for the developer, the agency, and the community at the table.
+              A siting mistake is found after the money is spent. Merascope screens candidate sites against twenty-three public sources — twenty-two normalized indicators, one composite score, a published methodology, the same for everyone.
             </p>
             <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
               <a className="btn btn-primary" href="#/explorer" style={{ fontSize: 15, padding: '11px 22px' }}>Explore the live map — free</a>
@@ -151,32 +151,22 @@ function LandingPage() {
         </div>
       </section>
 
-      {/* DUAL-PATH — two equal doors (Steward "review/approve" vs Builder "site/build"),
-          each linking to its gated console, joined visually by a connector SVG and
-          the "Same Score Promise" callout emphasizing both doors share one engine. */}
+      {/* BUILDER DOOR — the single entry into the gated Builder workspace
+          (saved sites, comparison, portfolio screening). The Steward door was
+          removed 2026-10-29 when the steward/case surfaces were frozen. */}
       <section style={{ padding: '30px 24px 0', maxWidth: 980, margin: '0 auto' }}>
-        <div className="dual-doors" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 22 }}>
-          <Door icon="gavel" h3="I review and approve projects"
-            body="The applicant arrives with consultants and a PDF. You should arrive with evidence they can't dispute. Merascope gives agencies, counties, commissions, and tribal governments independent scoring, mandated-study workbenches, and a case system that turns a hearing into a permanent record."
-            bullets={['Statewide atlases & scored report cards', 'The Docket: findings, conditions, rebuttals, versioned', 'Expert testimony backed by a reproducible scientific record']}
-            cta="Enter the Steward console" ctaHref="#/steward"
-            micro="Entra ID single sign-on · procurement-friendly contracting" />
+        <div style={{ maxWidth: 520, margin: '0 auto' }}>
           <Door icon="pylon" h3="I site and build projects"
-            body="A siting mistake is a nine-figure mistake. The fastest path to a permit is a site nobody has to fight about. Merascope gives developers an evidence record the agency already recognizes — twenty-three public datasets on the same scale, a composite score that survives a hearing, and a permitting dossier ready before you ask for it."
-            bullets={['Scored site comparables with indicator breakdowns', 'Watchlists with moratorium, rate-case & bill alerts', 'One-click board-ready dossiers with reproducibility metadata']}
+            body="A siting mistake is a nine-figure mistake. Screen your candidate sites on twenty-three public datasets before you commission studies — one composite score on the same scale for every site, with the indicator breakdown behind it."
+            bullets={['Scored site comparables with indicator breakdowns', 'Portfolio screening: upload a site list, get a ranked table', 'Site screening reports with reproducibility metadata']}
             cta="Enter the Builder workspace" ctaHref="#/builder"
-            micro="Portfolio screening · field surveys proctored & tracked" />
+            micro="An early desktop screen, not a permit determination" />
         </div>
         {/* connector to one engine */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 0 }}>
-          <svg width="320" height="58" viewBox="0 0 320 58" aria-hidden="true">
-            <path d="M70 0 V22 Q70 34 92 34 H148" fill="none" stroke="var(--line)" strokeWidth="1.6" />
-            <path d="M250 0 V22 Q250 34 228 34 H172" fill="none" stroke="var(--line)" strokeWidth="1.6" />
-            <line x1="160" y1="34" x2="160" y2="52" stroke="var(--line)" strokeWidth="1.6" />
-          </svg>
           <Glyph size={34} />
           <div style={{ fontSize: 14.5, fontWeight: 650, color: 'var(--evergreen)', marginTop: 8 }}>One engine. One score. No thumb on the scale.</div>
-          <div style={{ fontSize: 15.5, marginTop: 16, fontWeight: 600 }}>Both doors open onto the same map.</div>
+          <div style={{ fontSize: 15.5, marginTop: 16, fontWeight: 600 }}>Every screening runs on the same map.</div>
           <div className="callout" style={{ maxWidth: 660, margin: '14px 0 6px', padding: '16px 20px', fontSize: 13.5, lineHeight: 1.6, textAlign: 'left' }}>
             <b style={{ color: 'var(--evergreen)' }}>◈ THE SAME SCORE PROMISE</b> — {M.PROMISE.long}
           </div>
@@ -204,8 +194,8 @@ function LandingPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 26 }}>
           {[
             ['1', 'ANALYZE', 'Twenty-three public sources feed twenty-two normalized indicators. Two hard gates no slider overrides: FEMA flood zones and protected or sovereign land. Same model for every party.'],
-            ['2', 'FILE', 'A site inquiry creates a shared evidentiary record. Scores, weights, indicator breakdowns, and hard-gate analysis are locked at submission — visible to the developer, the agency, and any co-party.'],
-            ['3', 'RESOLVE', 'Dossiers for builders. Dockets for stewards. Fact sheets for everyone at the hearing. When the record closes, the evidence is anchored — same numbers on every page, permanently.']
+            ['2', 'SCREEN', 'Send a list of candidate sites. Each one is scored, run through the hard gates, and ranked, with the weights and indicator breakdown recorded.'],
+            ['3', 'DECIDE', 'A ranked table and a site screening report for each site show where due-diligence money is best spent, before any studies are commissioned. Screening evidence, not a permit determination.']
           ].map(([n, t, b]) => (
             <div key={n}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
@@ -257,7 +247,7 @@ function LandingPage() {
         </p>
         <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
           <a className="btn" href="#/explorer" style={{ background: '#fff', color: 'var(--evergreen)' }}>Open the Explorer</a>
-          <a className="btn" href="#/pricing" style={{ border: '1px solid rgba(255,255,255,.55)', color: '#fff' }}>Compare plans</a>
+          <a className="btn" href="#/pricing" style={{ border: '1px solid rgba(255,255,255,.55)', color: '#fff' }}>See pricing</a>
         </div>
       </section>
     </div>

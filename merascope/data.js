@@ -401,7 +401,7 @@ window.getCurrentWeights = function() {
   // ── REAL, LOAD-BEARING DATA (not part of the synthetic model above) ──
   // The 22 indicators used across the whole app: Explorer/Builder weight sliders,
   // fact sheets, indicator breakdown panels, confidence tiers shown to stewards, and
-  // the permit justification report. Each entry documents its own data lineage
+  // the site screening report. Each entry documents its own data lineage
   // (source/method/freq) and a confidence tier (High/Medium/Low) with a plain-English
   // caveat — this is what lets Merascope show its work rather than just a black-box score.
   // `def` is the default weight (0-100) baked into DEFAULT_WEIGHTS below; `score_col`/
