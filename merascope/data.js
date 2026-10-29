@@ -785,11 +785,11 @@ window.getCurrentWeights = function() {
   var STATE_GRADE = 'B+';
   var DATA_SOURCES = 'OSM (ODbL) · Census ACS · PRISM Climate Group · USGS NWIS + ASCE 7-22 · FEMA NFHL · EPA TRI + Envirofacts NPL + RCRA · EPA Green Book · SSURGO SDM · IHFC 2024 GHFDB · SRTM1 · EIA Form 860 + 860M · WRI Aqueduct 3.0 · PeeringDB';
   // The core trust claim shown across the site (homepage, PromiseBadge in ui.jsx): all
-  // users see the same methodology/weights/sources — subscriptions unlock workflow
-  // tooling, never a rosier score.
+  // users see the same methodology/weights/sources — paid screening buys the work of running
+  // sites through that method, never a rosier score.
   var PROMISE = {
     short: 'Same Score Promise',
-    long: 'Our methodology, weights, and sources are public and identical for every user. Subscriptions buy resolution and workflow. They have never bought a friendlier number, and they never will; a flattering score on a failing site bankrupts everyone who trusted it. The aquifer doesn\u2019t read press releases.'
+    long: 'Our methodology, weights, and sources are public and identical for every user. Paid screening buys the work of running your sites through that method. It has never bought a friendlier number, and it never will; a flattering score on a failing site bankrupts everyone who trusted it. The aquifer doesn\u2019t read press releases.'
   };
   var VERSION = 'v2026.06.25';
 
