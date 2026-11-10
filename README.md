@@ -118,6 +118,8 @@ Merascope scores two site types off the same 23 indicators, just reweighted — 
 
 ## Product surfaces
 
+**Steward, Co-party, case and evidence surfaces are frozen (2026-10-29).** Merascope narrowed to hand-delivered site screening; the Steward, Co-party, case-inquiry and evidence pages were moved to `merascope/_frozen/`, are not part of the build, and have no routes or nav links. The server routes, database tables and tests for them are unchanged, and the sections below that describe them are kept as a record of what exists in the code. To unfreeze, see the "Narrow focus" section of `CONTEXT.md`.
+
 ### Builder surface (`#/builder`)
 Workspace tab (saved cells, comparison panel), Status tab (CRM tracker per site: contacts/events/notes/pipeline), Portfolio screening (CSV upload of lat/lons, scored results with gate check), My Inquiry tab (submit a site inquiry + case lookup).
 
@@ -278,7 +280,7 @@ In local dev, omit `S3_ENDPOINT` (falls back to disk) and omit SMTP vars (magic 
 ## Testing and deploy
 
 ```bash
-# Full suite (313 tests, verified 2026-07-29). The DB-backed tests need Postgres via TEST_DATABASE_URL;
+# Full suite (346 tests with Postgres, verified 2026-10-29; 170 run without it). The DB-backed tests need Postgres via TEST_DATABASE_URL;
 # they skip cleanly if it is unset.
 TEST_DATABASE_URL=postgresql://merascope:merascope@localhost/merascope_test \
   /home/simonhans/anaconda3/envs/merascope/bin/python3 -m pytest tests/ -q
@@ -408,7 +410,9 @@ merascope/
     patch_raws.py         — retrofit raw physical columns on completed states
   data/                   — generated GeoJSON + CSVs (gitignored; sync with sync_data_hetzner.sh)
   vendor/                 — React, Leaflet, fonts (gitignored; built by fetch_vendor.sh)
-  tests/                  — pytest suite (313 total: 213 server, 37 indicators, 24 gates, 21 static, 18 config)
+  tests/                  — pytest suite (346 with Postgres; tests/smoke_test.py is a separate 26-check Playwright script)
+  parcels/                — per-place parcel scripts (grant_county.py, tri_cities.py) and the Seattle BESS sample (seattle_sample.py, make_seattle_report.py); proofs of concept, not product features
+  notebooks/              — dataset notebooks plus seattle_parcel_sensitivity.ipynb (ranking sensitivity checks for the Seattle sample)
 ```
 
 Reference docs in this repo under `contexts/`:
